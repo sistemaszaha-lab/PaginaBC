@@ -136,7 +136,6 @@
     <a href="{% url 'lista_solicitudes' %}">Solicitudes</a>
     <a href="{% url 'lista_cotizaciones' %}">Cotizaciones</a>
     <a href="{% url 'lista_referencias' %}">Referencias</a>
-    <a href="{% url 'editar_usuario' request.user.id %}">Mi perfil</a>
 
     {% if request.user.is_superuser %}
         <a href="{% url 'lista_usuarios' %}">Usuarios</a>
