@@ -87,21 +87,24 @@ class SeguridadPermisosTests(TestCase):
         self.solicitud.refresh_from_db()
         self.assertEqual(self.solicitud.ejecutivo_id, self.otro.pk)
 
-    def test_no_permite_crear_mas_de_tres_administradores(self):
+    def test_no_permite_crear_mas_de_cuatro_administradores(self):
         User.objects.create_user(
             username="admin2", password="admin123", is_superuser=True, is_staff=True
         )
         User.objects.create_user(
             username="admin3", password="admin123", is_superuser=True, is_staff=True
         )
+        User.objects.create_user(
+            username="admin4", password="admin123", is_superuser=True, is_staff=True
+        )
         self.client.login(username="admin", password="admin123")
 
         response = self.client.post(
             reverse("crear_usuario"),
             {
-                "username": "admin4",
-                "first_name": "Admin 4",
-                "email": "admin4@example.com",
+                "username": "admin5",
+                "first_name": "Admin 5",
+                "email": "admin5@example.com",
                 "password1": "Admin12345!!",
                 "password2": "Admin12345!!",
                 "rol": "admin",
@@ -109,8 +112,8 @@ class SeguridadPermisosTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Solo se permiten 3 usuarios con rol Administrador.")
-        self.assertFalse(User.objects.filter(username="admin4").exists())
+        self.assertContains(response, "Solo se permiten 4 usuarios con rol Administrador.")
+        self.assertFalse(User.objects.filter(username="admin5").exists())
 
     def test_crud_referencias_solo_admin_en_escritura(self):
         self.client.login(username="ejec", password="ejec123")

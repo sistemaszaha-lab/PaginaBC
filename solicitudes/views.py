@@ -21,7 +21,7 @@ ESTADOS_SIGUIENTES = {
 }
 
 TIPOS_TRANSPORTE = {"aereo", "maritimo", "terrestre"}
-MAX_ADMIN_USERS = 3
+MAX_ADMIN_USERS = 4
 
 
 def _es_admin(user):
