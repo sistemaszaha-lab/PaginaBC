@@ -8,6 +8,24 @@ from .models import Cotizacion, Referencia, Solicitud
 
 
 class SolicitudForm(forms.ModelForm):
+    TIPOS_SOLICITUD = (
+        ("Importación aérea", "Importación aérea"),
+        ("Importación maritima", "Importación maritima"),
+        ("Exportación aérea", "Exportación aérea"),
+        ("Exportación maritima", "Exportación maritima"),
+        ("Transporte Internacional", "Transporte Internacional"),
+        ("Exportación Terrestre", "Exportación Terrestre"),
+        ("Importación Terrestre", "Importación Terrestre"),
+        ("Transporte nacional", "Transporte nacional"),
+        ("Consultoría", "Consultoría"),
+    )
+
+    tipo = forms.ChoiceField(
+        choices=TIPOS_SOLICITUD,
+        label="Tipo",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
     class Meta:
         model = Solicitud
         exclude = ["estado_aereo", "estado_maritimo", "estado_terrestre", "creado"]
@@ -26,6 +44,10 @@ class SolicitudForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["sg"].required = False
         self.fields["sg"].disabled = True
+        if self.instance.pk and self.instance.tipo and self.instance.tipo not in dict(self.TIPOS_SOLICITUD):
+            self.fields["tipo"].choices = [(self.instance.tipo, self.instance.tipo)] + list(
+                self.TIPOS_SOLICITUD
+            )
         if not self.instance.pk:
             self.fields["anio"].initial = date.today().year
             self.fields["sg"].initial = self._generar_sg(self.fields["anio"].initial)
@@ -80,6 +102,8 @@ class CotizacionForm(forms.ModelForm):
         ("Transporte Internacional", "Transporte Internacional"),
         ("Importación Terrestre", "Importación Terrestre"),
         ("Exportación Terrestre", "Exportación Terrestre"),
+        ("Transporte nacional", "Transporte nacional"),
+        ("Consultoría", "Consultoría"),
     )
 
     tipo = forms.ChoiceField(
