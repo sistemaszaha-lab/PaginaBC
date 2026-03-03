@@ -8,6 +8,28 @@
 
 <div class="card shadow-sm">
     <div class="card-body">
+        {% if admin_count is not None and admin_count >= max_admin_users %}
+            <div class="alert alert-warning">
+                Ya alcanzaste el limite de {{ max_admin_users }} administradores.
+                Aun puedes crear usuarios con rol Ejecutivo.
+            </div>
+        {% endif %}
+
+        {% if form.errors %}
+            <div class="alert alert-danger">
+                <strong>No se pudo guardar.</strong>
+                <ul class="mb-0 mt-2">
+                    {% for field in form %}
+                        {% for error in field.errors %}
+                            <li>{{ field.label }}: {{ error }}</li>
+                        {% endfor %}
+                    {% endfor %}
+                    {% for error in form.non_field_errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
 
         <form method="post">
             {% csrf_token %}

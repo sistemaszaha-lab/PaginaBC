@@ -294,6 +294,7 @@ def lista_usuarios(request):
 @login_required
 def crear_usuario(request):
     _requiere_admin(request.user)
+    admin_count = User.objects.filter(is_superuser=True).count()
 
     if request.method == "POST":
         form = CrearUsuarioForm(request.POST)
@@ -311,7 +312,16 @@ def crear_usuario(request):
     else:
         form = CrearUsuarioForm()
 
-    return render(request, "usuarios/crear_usuario.html", {"form": form, "cancel_url": "lista_usuarios"})
+    return render(
+        request,
+        "usuarios/crear_usuario.html",
+        {
+            "form": form,
+            "cancel_url": "lista_usuarios",
+            "admin_count": admin_count,
+            "max_admin_users": MAX_ADMIN_USERS,
+        },
+    )
 
 
 @login_required
