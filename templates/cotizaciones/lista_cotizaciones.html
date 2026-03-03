@@ -1,0 +1,71 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Cotizaciones{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Cotizaciones</h2>
+
+<div class="mb-3">
+    <a href="{% url 'crear_cotizacion' %}" class="btn btn-success">+ Nueva cotización</a>
+    <a href="{% url 'exportar_cotizaciones_excel' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}" class="btn btn-outline-success ms-2">
+        Descargar Excel
+    </a>
+</div>
+
+<form method="get" class="mb-3">
+    <label><strong>Año:</strong></label>
+    <select name="anio" onchange="this.form.submit()" class="form-select w-auto d-inline">
+        {% for a in anios %}
+            <option value="{{ a }}" {% if a == anio_seleccionado %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+    </select>
+</form>
+
+<table class="table table-bordered">
+    <thead class="table-info text-center">
+        <tr>
+            <th>Cotización</th>
+            <th>Prospecto</th>
+            <th>Fecha solicitud</th>
+            <th>Fecha envío</th>
+            <th>Tipo</th>
+            <th>Ejecutivo</th>
+            <th>Tiempo entrega</th>
+            <th>Aérea</th>
+            <th>Marítima</th>
+            <th>Terrestre</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for c in cotizaciones %}
+        <tr>
+            <td>{{ c.consecutivo }}</td>
+            <td>{{ c.cliente }}</td>
+            <td>{{ c.fecha_solicitud }}</td>
+            <td>{{ c.fecha_envio|default:"-" }}</td>
+            <td>{{ c.tipo }}</td>
+            <td>{{ c.ejecutivo }}</td>
+            <td>{{ c.tiempo_entrega }}</td>
+            <td>{{ c.aerea }}</td>
+            <td>{{ c.maritima }}</td>
+            <td>{{ c.terrestre }}</td>
+            <td>
+                <a href="{% url 'editar_cotizacion' c.id %}" class="btn btn-sm btn-primary">Editar</a>
+                {% if request.user.is_superuser %}
+                    <form method="post" action="{% url 'eliminar_cotizacion' c.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                    </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="11" class="text-center">No hay cotizaciones registradas.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

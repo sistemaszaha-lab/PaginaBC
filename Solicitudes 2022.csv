@@ -1,0 +1,378 @@
+;Cliente;Fecha;Tipo
+SG22-001;SPECT;03-01-22;Despacho aduanal
+SG22-002;NETKEY;04-01-22;Despacho aduanal
+SG22-003;SPECT;06-01-22;Despacho aduanal
+SG22-004;AUSTREBERTA;07-01-22;Despacho aduanal
+SG22-005;NEWLINE;08-01-22;Despacho aduanal
+SG22-006;Marco Juarez;10-01-22;Despacho aduanal
+SG22-007;Oscar;12-01-22;Despacho aduanal
+SG22-008;SPECT;14-01-22;Despacho aduanal
+SG22-009;Samantha;14-01-22;Despacho aduanal
+SG22-010;Azucar;14-01-22;Despacho aduanal
+SG22-011;Spect;18-01-22;Despacho aduanal
+SG22-012;AUSTREBERTA;18-01-22;Despacho aduanal
+SG22-013;Gabriel;18-01-22;Despacho aduanal
+SG22-014;Sergio Cancun;18-01-22;Despacho aduanal
+SG22-015;Innovative  Squad;18-01-22;Despacho aduanal
+SG22-016;AM CAPITAL;18-01-22;Despacho aduanal
+SG22-017;Manuel Serrano;18-01-22;Despacho aduanal
+SG22-018;Computoner;19-01-22;Despacho aduanal
+SG22-019;ACM;19-01-22;Transporte terrestre
+SG22-020;GARDEX;19-01-22;Transporte maritimo
+SG22-021;SPECT;19-01-22;Despacho aduanal
+SG22-022;SPECT;20-01-22;Despacho aduanal
+SG22-023;Inducontrol;20-01-22;Despacho aduanal
+SG22-024;Dooble;20-01-22;Despacho aduanal
+SG22-025;Nancy;21-01-22;Despacho aduanal
+SG22-026;Tatuaje;21-01-22;Despacho aduanal
+SG22-027;ACM ;24-01-22;Despacho aduanal
+SG22-028;ACM;26-01-22;Despacho aduanal
+SG22-029;SPECT;26-01-22;Despacho aduanal
+SG22-030;DEFRUT NUTRA;28-01-22;Despacho aduanal
+SG22-031;EMMANUEL;28-01-22;Despacho aduanal
+SG22-032;SPECT;04-02-22;Despacho aduanal
+SG22-033;SPECT;04-02-22;Despacho aduanal
+SG22-034;SPECT;04-02-22;Despacho aduanal
+SG22-035;SID;04-02-22;Despacho aduanal
+SG22-036;NETKEY;04-02-22;Despacho aduanal
+SG22-037;CRIMSA;04-02-22;Despacho aduanal
+SG22-038;Juan Contreras;08-02-22;Despacho aduanal
+SG22-039;Newline;08-02-22;Despacho aduanal
+SG22-040;DILAMHID SA DE CV;09-02-22;Despacho aduanal
+SG22-041;CRIMSA;09-02-22;Despacho aduanal
+SG22-042;Ivan Carreño;09-02-22;Despacho aduanal
+SG22-043;Gabriel;11-02-22;Despacho aduanal
+SG22-044;Monica;11-02-22;Despacho aduanal
+SG22-045;SPECT;14-02-22;Despacho aduanal
+SG22-046;HUGO;14-02-22;Despacho aduanal
+SG22-047;Mendoza;14-02-22;Despacho aduanal
+SG22-048;ACM;15-02-22;Despacho aduanal
+SG22-049;Dooble;15-02-22;Despacho aduanal
+SG22-050;Comfivisa;15-02-22;Despacho aduanal
+SG22-051;HUGO;16-02-22;Despacho aduanal
+SG22-052;SPECT;17-02-22;Despacho aduanal
+SG22-053;COMFIvisa;17-02-22;Transporte
+SG22-054;Artesanias;21-02-22;Despacho aduanal
+SG22-055;Sr Diaz;21-02-22;Despacho aduanal
+SG22-056;Sr Diaz;21-02-22;Despacho aduanal
+SG22-057;SPECT;21-02-22;Despacho aduanal
+SG22-058;Cesar;21-02-22;Despacho aduanal
+SG22-059;SPECT;22-02-22;Despacho aduanal
+SG22-060;SPECT;23-02-22;Despacho aduanal
+SG22-061;Sensores;23-02-22;Despacho aduanal
+SG22-062;SPECT;23-02-22;Despacho aduanal
+SG22-063;Ivan Carreño;25-02-22;Despacho aduanal
+SG22-064;Ivan Carreño;25-02-22;Despacho aduanal
+SG22-065;Inducontrol;28-02-22;Despacho aduanal
+SG22-066;COMFIvisa;28-02-22;Despacho aduanal
+SG22-067;HUGO;28-02-22;Despacho aduanal
+SG22-068;SPECT;28-02-22;Despacho aduanal
+SG22-069;Arturo Espejel;02-03-22;Despacho aduanal
+SG22-070;Inducontrol;02-03-22;Despacho aduanal
+SG22-071;Roberto;04-03-22;Despacho aduanal
+SG22-072;Vadel;04-03-22;Despacho aduanal
+SG22-073;Spect;04-03-22;Despacho aduanal
+SG22-074;ACM;04-03-22;Despacho aduanal
+SG22-075;American;04-03-22;Despacho aduanal
+SG22-076;Mendoza;05-03-22;Despacho aduanal
+SG22-077;Spect;07-03-22;Despacho aduanal
+SG22-078;Mendoza;08-03-22;Despacho aduanal
+SG22-079;Dooble;08-03-22;Despacho aduanal
+SG22-080;Barabara;09-03-22;Despacho aduanal
+SG22-081;Mendoza;10-03-22;Despacho aduanal
+SG22-082;Ricardo;11-03-22;Despacho aduanal
+SG22-083;Inducontrol;11-03-22;Despacho aduanal
+SG22-084;Strack;11-03-22;Despacho aduanal
+SG22-085;SID;14-03-22;Despacho aduanal
+SG22-086;Ricardo Drlap;15-03-22;Despacho aduanal
+SG22-087;Comfivisa;17-03-22;Despacho aduanal
+SG22-088;Nancy;17-03-22;Despacho aduanal
+SG22-089;Comfivisa;18-03-22;Despacho aduanal
+SG22-090;Inducontrol;22-03-22;Despacho aduanal
+SG22-091;Nancy Bardales;23-03-22;Despacho aduanal
+SG22-092;Avodehy;24-03-22;Despacho aduanal
+SG22-093;Inducontrol;24-03-22;Despacho aduanal
+SG22-094;Comfivisa;25-03-22;Despacho aduanal
+SG22-095;Inducontrol ;28-03-22;Despacho aduanal
+SG22-096;Dagli;28-03-22;Despacho aduanal
+SG22-097;Gabriel;28-03-22;Despacho aduanal
+SG22-098;SPECT;29-03-22;Despacho aduanal
+SG22-099;DEFRUT Frijiol;30-03-22;Despacho aduanal
+SG22-100;Inducontrol;31-03-22;Despacho aduanal
+SG22-101;Inducontrol;31-03-22;Despacho aduanal
+SG22-102;ACM;31-03-22;Despacho aduanal
+SG22-103;VILCHEZ;08-04-22;Despacho aduanal
+SG22-104;SPECT;11-04-22;Despacho aduanal
+SG22-105;INDUCONTROL;18-04-22;Despacho aduanal
+SG22-106;Francisco Flores;18-04-22;Despacho aduanal
+SG22-107;GARDEX;18-04-22;Despacho aduanal
+SG22-108;Hugo;18-04-22;Despacho aduanal
+SG22-109;CRIMSA;20-04-22;Despacho aduanal
+SG22-110;SPECT;20-04-22;Despacho aduanal
+SG22-111;Strack;22-04-22;Despacho aduanal
+SG22-112;Engrapadoras;27-04-22;Despacho aduanal
+SG22-113;SPECT;27-04-22;Despacho aduanal
+SG22-114;Inducontrol;29-04-22;Despacho aduanal
+SG22-115;Menshen;05-05-22;Despacho aduanal
+SG22-116;DIICSA;06-05-22;Despacho aduanal
+SG22-117;Inducontrol;06-05-22;Despacho aduanal
+SG22-118;Avodehy;09-05-2022;Despacho aduanal
+SG22-119;MENSHEN;10-05-22;Despacho aduanal
+SG22-120;Menshen;10-05-22;Despacho aduanal
+SG22-121;Menshen;10-05-22;Despacho aduanal
+SG22-122;Mario Godinez;10-05-22;Despacho aduanal
+SG22-123;Mendoza;12-05-22;Despacho aduanal
+SG22-124;DEFRUT;18-05-22;Despacho aduanal
+SG22-125;Spect;18-05-22;Despacho aduanal
+SG22-126;DIICSA;18-05-22;Despacho aduanal
+SG22-127;Gabriel;18-05-22;Despacho aduanal
+SG22-128;Cesar;18-05-22;Despacho aduanal
+SG22-129;HUGO;19-05-22;Despacho aduanal
+SG22-130;Monica;19-05-22;Despacho aduanal
+SG22-131;Inducontrol;19-05-22;Despacho aduanal
+SG22-132;Dooble;19-05-22;Aereo
+SG22-133;SPECT;20-05-22;Despacho aduanal
+SG22-134;SPECT;23-05-22;Despacho aduanal
+SG22-135;COMFIVISA;24-05-22;Despacho aduanal
+SG22-136;Inducontrol;25-05-22;Despacho aduanal
+SG22-137;SID;26-05-22;Despacho aduanal
+SG22-138;SPECT;26-05-22;Despacho aduanal
+SG22-139;DIAZ;26-05-22;Despacho aduanal
+SG22-140;Inducontrol;27-05-22;Despacho aduanal
+SG22-141;Mendoza;27-05-22;Despacho aduanal
+SG22-142;ACM;27-05-22;Despacho aduanal
+SG22-143;Alfredo;30-05-22;Despacho aduanal
+SG22-144;COMFIVISA;31-05-2022;Despacho aduanal
+SG22-145;Inducontrol;31-05-22;Despacho aduanal
+SG22-146;Spect;01-06-22;Despacho aduanal
+SG22-146;Inducontrol;02-06-22;Despacho aduanal
+SG22-147;Dooble;03-06-22;Despacho aduanal
+SG22-148;ACM;07-06-22;Despacho aduanal
+SG22-149;ENgrapadoras;08-06-22;Despacho aduanal
+SG22-150;KENZEL;09-06-22;Despacho aduanal
+SG22-151;CASCABELES;10-06-22;Despacho aduanal
+SG22-152;ACM PARTES Y SERVICIOS;13-06-22;Despacho aduanal
+SG22-153;SPECT;13-06-22;Despacho aduanal
+SG22-154;SPECT;13-06-22;Despacho aduanal
+SG22-155;GABRIEL;13-06-22;Despacho aduanal
+SG22-156;SPECT;13-06-22;Despacho aduanal
+SG22-157;SPECT;14-06-22;Despacho aduanal
+SG22-158;Americn Coach;15-06-22;Despacho aduanal
+SG22-159;SPECT;22-06-22;Despacho aduanal
+SG22-160;ALCOCER;16-06-22;Despacho aduanal
+SG22-161;SPECT;16-06-22;Despacho aduanal
+SG22-162;Montserrat ;17-06-22;Despacho aduanal
+SG22-163;ACM;17-06-22;Despacho aduanal
+SG22-164;HITEX;18-06-22;Despacho aduanal
+SG22-165;PERFOMANCE;22-06-22;Despacho aduanal
+SG22-166;GHD Bilbao;22-06-22;Despacho aduanal
+SG22-167;SPECT;23-06-22;Despacho aduanal
+SG22-168;SPECT;24-06-22;Despacho aduanal
+SG22-169;SPECT;24-06-22;Despacho aduanal
+SG22-170;Dooble;24-06-22;Transporte 
+SG22-171;SPECT;24-06-22;Despacho aduanal
+SG22-172;MENDOZA;24-06-22;Despacho aduanal
+SG22-173;SPECT;27-06-22;Despacho aduanal
+SG22-174;DEFRUT;28-06-22;Despacho aduanal
+SG22-175;INDUCONTROL;29-06-22;Despacho aduanal
+SG22-176;DIICSA;29-06-22;Despacho aduanal
+SG22-177;AUSTREBERTA;01-07-22;Despacho aduanal
+SG22-178;ALCOCER;04-07-22;Despacho aduanal
+SG22-179;SPECT;04-07-22;Despacho aduanal
+SG22-180;Mariana Viñas;05-07-22;Despacho aduanal
+SG22-181;MENDOZA TRASCO;06-07-22;Despacho aduanal
+SG22-182;MENDOZA TRASCO 2;06-07-22;Despacho aduanal
+SG22-183;CRIMSA;07-07-22;Despacho aduanal
+SG22-184;BENITO;07-07-22;Despacho aduanal
+SG22-185;CRIMSA;07-07-22;Despacho aduanal
+SG22-186;Cesar;12-07-22;Despacho aduanal
+SG22-187;IDM;14-07-22;Despacho aduanal
+SG22-188;MAURO ;15-07-22;Despacho aduanal
+SG22-189;Vilchez;15-07-22;Despacho aduanal
+SG22-190;GARDEX;15-07-22;Despacho aduanal
+SG22-191;Newline;15-07-22;Despacho aduanal
+SG22-192;DIICSA;19-07-22;Despacho aduanal
+SG22-193;GABRIEL;19-07-22;Despacho aduanal
+SG22-194;ELETI;19-07-22;Despacho aduanal
+SG22-195;CIVYSA;20-07-22;Despacho aduanal
+SG22-196;Jose Luis Alvarez;21-07-22;Despacho aduanal
+SG22-197;CPLUS;21-07-22;Despacho aduanal
+SG22-198;SID MEXICO;21-07-22;Despacho aduanal
+SG22-199;GARDEX;22-07-22;Despacho aduanal
+SG22-200;PERFORMANCE;22-07-22;Despacho aduanal
+SG22-201;PERFORMANCE;26-07-22;Despacho aduanal
+SG22-202;EMMANUEL;26-07-22;Despacho aduanal
+SG22-203;KENZEL;27-07-22;Despacho aduanal
+SG22-204;Gabriel;27-07-22;Despacho aduanal
+SG22-205;ENgrapadoras;27-07-22;Despacho aduanal
+SG22-206;KENZEL;27-07-22;Despacho aduanal
+SG22-207;ACM;28-07-22;Transporte
+SG22-208;ENgrapadoras;28-07-22;Despacho aduanal
+SG22-209;Formato 333;28-07-22;Despacho aduanal
+SG22-210;ROberto;28-07-22;Despacho aduanal
+SG22-211;Inducontrol;02-08-22;Despacho aduanal
+SG22-212;CIVYSA;02-08-22;Despacho aduanal
+SG22-213;VADEL;02-08-22;Despacho aduanal
+SG22-214;ACM WAYTEK;03-08-22;Transporte
+SG22-215;Inducontrol;03-08-22;Despacho aduanal
+SG22-216;Inducontrol;03-08-22;Despacho aduanal
+SG22-217;Sebaltec;03-08-22;Despacho aduanal
+SG22-218;SPECT;03-08-22;Despacho aduanal
+SG22-219;DEFRUT;04-08-22;Despacho aduanal
+SG22-220;Alessio;04-08-22;Despacho aduanal
+SG22-221;SPECT;10-08-22;Despacho aduanal
+SG22-222;Esteban Perez;11-08-22;Despacho aduanal
+SG22-223;SPECT;15-08-22;Despacho aduanal
+SG22-224;ACM;16-08-22;Despacho aduanal
+SG22-225;AMERICAN;16-08-22;Despacho aduanal
+SG22-226;AUSTREBERTA;16-08-22;Despacho aduanal
+SG22-227;Industrias Volfre;16-08-22;Despacho aduanal
+SG22-228;Marco Vinicio;17-08-22;Despacho aduanal
+SG22-229;COMFIVISA;18-08-22;Despacho aduanal
+SG22-220;CARLOS ;19-08-22;Despacho aduanal
+SG22-221;DAGLI;22-08-22;Despacho aduanal
+SG22-222;AVODEHY;22-08-22;Despacho aduanal
+SG22-223;SPECT;22-08-22;Despacho aduanal
+SG22-224;SPECT;24-08-22;Despacho aduanal
+SG22-225;SPECT;25-08-22;Despacho aduanal
+SG22-226;SID MEXICO;25-08-22;Despacho aduanal
+SG22-227;MARCO JUAREZ;25-08-22;Despacho aduanal
+SG22-228;COMFIVISA;25-08-22;Despacho aduanal
+SG22-229;Inducontrol;25-08-22;Despacho aduanal
+SG22-230;Inducontrol;25-08-22;Despacho aduanal
+SG22-231;Mendoza;26-08-22;Despacho aduanal
+SG22-232;Inducontrol;30-08-22;Despacho aduanal
+SG22-233;Alfredo;31-08-22;Despacho aduanal
+SG22-234;Mauro Leon;02-09-22;Despacho aduanal
+SG22-235;Iveth;05-09-22;Despacho aduanal
+SG22-236;Mendoza;08-09-22;Despacho aduanal
+SG22-237;Gabriel;08-09-22;Despacho aduanal
+SG22-238;GARDEX;08-09-22;Despacho aduanal
+SG22-239;SPECT;12-09-22;Despacho aduanal
+SG22-240;ELETI;13-09-22;Despacho aduanal
+SG22-241;SPECT;13-09-22;Despacho aduanal
+SG22-242;SPECT;14-09-22;Transporte
+SG22-243;GAVIONES;14-09-22;Despacho aduanal
+SG22-244;DIICSA;15-09-22;Despacho aduanal
+SG22-245;BENITO;15-09-22;Despacho aduanal
+SG22-246;ACM;15-09-22;Despacho aduanal
+SG22-247;ACM;19-09-22;Transporte
+SG22-248;ACM;19-09-22;Transporte
+SG22-249;SPECT;20-09-22;Despacho aduanal
+SG22-250;NETKEY;21-09-22;Despacho aduanal
+SG22-251;DEFRUT;22-09-22;Despacho aduanal
+SG22-252;ACM;26-09-22;Transporte
+SG22-253;SPECT;27-09-22;Despacho aduanal
+SG22-254;COMFIVISA;27-09-22;Despacho aduanal
+SG22-255;ACM;27-09-22;Despacho aduanal
+SG22-256;EMMANUEL;28-09-22;Despacho aduanal
+SG22-257;ACM;29-09-22;Transporte
+SG22-258;INDUCONTROL;29-09-22;Transporte
+SG22-259;SPECT;29-09-22;Despacho aduanal
+SG22-260;SITCI;29-09-22;Despacho aduanal
+SG22-261;INDUCONTROL;29-09-22;Despacho aduanal
+SG22-262;INDUCONTROL;29-09-22;Despacho aduanal
+SG22-263;Cesar;30-09-22;Despacho aduanal
+SG22-264;SPECT;03-10-22;Despacho aduanal
+SG22-265;SPECT;03-10-22;Despacho aduanal
+SG22-266;EMMANUEL SANDOVAL;04-10-22;Despacho aduanal
+SG22-267;VOLFRE;05-10-22;Despacho aduanal
+SG22-268;Gabriel;06-10-22;Despacho aduanal
+SG22-269;IVAN CARREÑO;06-10-22;Despacho aduanal
+SG22-270;Oliver;06-10-22;Despacho aduanal
+SG22-271;Inducontrol;07-10-22;Despacho aduanal
+SG22-272;AUSTREBERTA;07-10-22;Despacho aduanal
+SS22-273;SPECT;07-10-22;Despacho aduanal
+SG22-274;AMERICAN COACH;12-10-22;Despacho aduanal
+SG22-275;ACM PARTES Y SERVICIOS;12-10-22;Despacho aduanal
+SG22-276;Gabriel;12-10-22;Despacho aduanal
+SG22-277;OLEITHA;12-10-22;Despacho aduanal
+SG22-278;COMFIVISA;13-10-22;Despacho aduanal
+SG22-279;Maria del Rocio;13-10-22;Despacho aduanal
+SG22-280;Marco Juárez;14-10-22;Despacho aduanal
+SG22-281;Gabriel;14-10-22;Despacho aduanal
+SG22-282;DEFRUT;17-10-22;Despacho aduanal
+SG22-282;EMMANUEL SANDOVAL;17-10-22;Despacho aduanal
+SG22-283;CRIMSA;17-10-22;Despacho aduanal
+SG22-284;SPECT;17-10-22;Despacho aduanal
+SG22-285;TRITURADORA;17-10-22;Despacho aduanal
+SG22-286;Federico;18-10-22;Despacho aduanal
+SG22-287;Federico;18-10-22;Despacho aduanal
+SG22-288;MONICA PELCASTRE;18-10-22;Despacho aduanal
+SG22-289;ELETI;19-10-22;Despacho aduanal
+SG22-290;Industrias Volfre;19-10-22;Despacho aduanal
+SG22-291;VILCHEZ;21-10-22;Despacho aduanal
+SG22-292;GAVIONES VIMAR;21-10-22;Despacho aduanal
+SG22-293;CORPORACION TECNOLÓGICA NEW LINE;25-10-22;Despacho aduanal
+SG22-294;COMFIVISA;25-10-22;Despacho aduanal
+SG22-295;GARDEX;26-10-22;Despacho aduanal
+SG22-296;NEWLINE;26-10-22;Despacho aduanal
+SG22-297;COMFIVISA;28-10-22;Despacho aduanal
+SG22-298;NELSON;03-11-22;Despacho aduanal
+SG22-299;CRIMSA;03-11-22;Despacho aduanal
+SG22-300;MENDOZA;07-11-22;Despacho aduanal
+SG22-301;VILCHEZ;07-11-22;Despacho aduanal
+SG22-302;NELSON;07-11-22;Despacho aduanal
+SG22-303;MENDOZA;08-11-22;Despacho aduanal
+SG22-304;SPECT;09-11-22;Despacho aduanal
+SG22-305;DIICSA;09-11-22;Despacho aduanal
+SG22-306;ACM;09-11-22;Despacho aduanal
+SG22-307;KENZEL;09-11-22;Despacho aduanal
+SG22-308;MARCO JUAREZ;10-11-22;Despacho aduanal
+SG22-309;CESAR;10-11-11;Despacho aduanal
+SG22-310;SPECT;11-11-22;Despacho aduanal
+SG22-311;DIICSA;11-11-22;Despacho aduanal
+SG22-312;SPECT;11-11-22;Despacho aduanal
+SG22-313;FEDERICO;11-11-22;Despacho aduanal
+SG22-314;SID;14-11-22;Despacho aduanal
+SG22-315;KENZEL;15-11-22;Despacho aduanal
+SG22-316;INDUCONTROL;15-11-22;Despacho aduanal
+SG22-317;DEFRUT;15-11-22;Despacho aduanal
+SG22-318;Carlos Pardo;17-11-22;Despacho aduanal
+SG22-319;DIICSA;18-11-22;Despacho aduanal
+SG22-320;NETKEY;18-11-22;Despacho aduanal
+SG22-321;VADEL;22-11-22;Despacho aduanal
+SG22-322;PINTALIA;22-11-22;Despacho aduanal
+SG22-323;INDUCONTROL;23-11-22;Despacho aduanal
+SG22-324;MAURO SAMIR;23-11-22;Despacho aduanal
+SG22-325;CARLOS TOVILLA;23-11-22;Despacho aduanal
+SG22-326;MAURO SAMIR;25-11-22;Despacho aduanal
+SG22-327;SPECT;29-11-22;Despacho aduanal
+SG22-328;SPECT;29-11-22;Despacho aduanal
+SG22-329;SPECT;29-11-22;Despacho aduanal
+SG22-330;MONICA PELCASTRE;29-11-22;Despacho aduanal
+SG22-331;MENDOZA;01-12-22;Despacho aduanal
+SG22-332;ACM;02-12-22;Despacho aduanal
+SG22-333;SPECT;05-12-22;Despacho aduanal
+SG22-334;SPECT;05-12-22;Despacho aduanal
+SG22-335;INDUCONTROL;05-12-22;Despacho aduanal
+SG22-336;PINTALIA;05-12-22;Despacho aduanal
+SG22-337;MENDOZA;5-12-22;Despacho aduanal
+SG22-338;HUMBERTO;05-12-22;Despacho aduanal
+SG22-339;SPECT;07-12-22;Despacho aduanal
+SG22-340;ACM PARTES Y SERVICIOS;07-12-22;Despacho aduanal
+SG22-341;DIICSA;;Despacho aduanal
+SG22-342;SPECT;09-12-2022;Despacho aduanal
+SG22-343;SPECT;09-12-2022;Despacho aduanal
+SG22-344;SPECT;09-12-2022;Despacho aduanal
+SG22-345;PERFORMANCE;12-12-22;Transporte
+SG22-346;SPECT;13-12-22;Despacho aduanal
+SG22-347;DIICSA;13-12-22;Despacho aduanal
+SG22-348;CRIMSA;12-12-22;Despacho aduanal
+SG22-349;CRIMSA;13-12-22;Despacho aduanal
+SG22-350;MAURO;13-12-22;Despacho aduanal
+SG22-351;MAURO;13-12-22;Despacho aduanal
+SG22-352;COMFIVISA;13-12-22;Despacho aduanal
+SG22-353;ACM;16-12-22;Despacho aduanal
+SG22-354;MANUEL SERRANO;19-12-22;Despacho aduanal
+SG22-355;SPECT;19-12-22;Despacho aduanal
+SG22-356;GARDEX;19-12-22;Despacho aduanal
+SG22-357;COMFIVISA;21-12-22;Despacho aduanal
+SG22-358;NELSON;;Flete
+SG22-359;MENDOZA;21-12-22;Despacho aduanal
+SG22-360;CESAR;22-12-22;Despacho aduanal
+SG22-361;VADEL;23-12-22;Flete
+SG22-362;VILCHEZ;27-12-22;Despacho aduanal
+SG22-363;DEFRUT;27-12-22;Despacho aduanal
+SG22-364;INDUCONTROL;28-12-22;Despacho aduanal
+;;;

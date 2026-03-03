@@ -1,0 +1,59 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Referencias{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Referencias</h2>
+
+<div class="mb-3">
+    <a href="{% url 'exportar_referencias_excel' %}" class="btn btn-outline-success">Descargar Excel</a>
+</div>
+
+{% if request.user.is_superuser %}
+<div class="mb-3">
+    <a href="{% url 'crear_referencia' %}" class="btn btn-success">+ Nueva Referencia</a>
+</div>
+{% endif %}
+
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+        <tr>
+            <th>Referencia</th>
+            <th>Ejecutivo</th>
+            <th>Cliente</th>
+            <th>Servicio</th>
+            <th>Agencia aduanal</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for r in referencias %}
+        <tr>
+            <td>{{ r.referencia }}</td>
+            <td>{{ r.ejecutivo }}</td>
+            <td>{{ r.cliente }}</td>
+            <td>{{ r.servicio_legible }}</td>
+            <td>{{ r.agencia_aduanal }}</td>
+            <td>{{ r.fecha }}</td>
+            <td>
+                {% if request.user.is_superuser %}
+                    <a href="{% url 'editar_referencia' r.id %}" class="btn btn-sm btn-primary">Editar</a>
+                    <form method="post" action="{% url 'eliminar_referencia' r.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                    </form>
+                {% else %}
+                    <span class="text-muted">Solo lectura</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="7" class="text-center">No hay referencias registradas.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,433 @@
+SG;Cliente;Fecha;;Tipo;Ejecutivo;Cotizaciones;Aérea;Maritima;Terrestre
+Indicar el consecutivo de la solicitud anterior;Indicar nombre de la empresa fisical / moral;Indicar la fecha en la que se recibe la solictud ;Indicar la fecha en la que se envia el presupuesto ;Seleccionar la opción del menu  que corresponde;Seleccionar a la persona  del menu  ;Tiempo de entrega;2 días;EXW 2 días FOB 1 día;1 día
+SG24-001;COMFIVISA;28-12-23;;IMPORTACIÓN;Antonio;;;;
+SG24-002;COMFIVISA;28-12-23;;IMPORTACIÓN;Antonio;;;;
+SG24-003;Austreberta;28-12-23;;Importación ;Raúl;;;;
+SG24-004;INDUCONTROL;04-01-24;;IMPORTACION;Elizabeth;;;;
+SG24-005;CRIMSA;05-01-24;;IMPORTACION;Elizabeth;;;;
+SG24-006;SPECT;06-01-23;;IMPORTACION;Antonio;;;;
+SG24-007;SERMAPAX;08-01-24;;IMPORTACION;Elizabeth;;;;
+SG24-008;Alejandro;10-01-24;;Importacion ;Raúl ;;;;
+SG24-009;Manuel Serrano;10-01-24;;Importación;Raúl;;;;
+SG24-010;CRIMSA;10-01-24;;IMPORTACION;Elizabeth;;;;
+SG24-011;AMERICAN COACH;11-01-24;;IMPORTACION;Elizabeth;;;;
+SG24-012;SPECT;11-01-24;;IMPORTACION;Antonio;;;;
+SG24-013;CRIMSA;11-01-24;;IMPORTACION;Elizabeth;;;;
+SG24-012;Juan Alberto;12-01-24;;Importacion ;Raúl ;;;;
+SG24-013;PSD;15-01-24;;Importacion;Raúl;;;;
+SG24-014;Alcocer;16-01-24;;Importacion;Antonio;;;;
+SG24-015;SPECT;17-01-24;;Importacion;Antonio;;;;
+SG24-016;VADEL;18-01-24;;Importacion;Antonio;;;;
+SG24-017;Mauro Samir ;16-01-24;;Importación ;Raúl;;;;
+SG24-018;CESAR;17-01-24;;Importación;Elizabeth;;;;
+SG24-019;INDUCONTROL;18-01-24;;Importación;Elizabeth;;;;
+SG24-020;Mauro Samir ;19-01-24;;Importación;Raúl;;;;
+SG24-021;Mauro Samir ;19-01-24;;Importación;Raúl;;;;
+SG24-022;Spect;20-01-24;;Importación;Antonio;;;;
+SG24-023;Spect;21-01-24;;Importación;Antonio;;;;
+SG24-024;Mendoza;23-01-24;;Importación ;Raúl;;;;
+SG24-025;Mendoza;24-01-24;;Importación ;Raúl ;;;;
+SG24-026;SPECT;25-01-24;;Importación ;Antonio;;;;
+SG24-027;SPECT;25-01-24;;Importación ;Antonio;;;;
+SG24-028;INDUCONTROL;25-01-24;;Importación ;Antonio;;;;
+SG24-029;VILCHEZ;26-01-24;;Importación ;Antonio;;;;
+SG24-030;DIANA SPOTA;27-01-24;;Importación ;Antonio;;;;
+SG24-031;AHORA MARKET;29-01-24;;Importación;Elizabeth;;;;
+SG24-032;NATALIA RUIZ;30-01-24;;Importación;Antonio;;;;
+SG24-033;ELETI;29-01-24;;Importación ;Raúl ;;;;
+SG24-034;INDUCONTROL;29-01-24;;Importación;Elizabeth;;;;
+SG24-035;Austreberta;29-01-24;;Importación;Raúl;;;;
+SG24-036;INDUCONTROL;30-01-24;;Importación;Elizabeth;;;;
+SG24-037;Volfre;30-01-24;;Importación ;Raúl;;;;
+SG24-038;Gabriel;30-01-24;;Importación;Elizabeth;;;;
+SG24-039;Eleti ;31-01-24;;Importación ;Raúl;;;;
+SG24-040;NEWLINE;01-02-24;;Exportación;Elizabeth;;;;
+SG24-041;Mauro Samir ;02-02-24;;Importación;Raúl;;;;
+SG24-042;Mendoza;02-02-24;;Importación;Raúl;;;;
+SG24-043;SPECT;03-02-24;;Importación;Antonio;;;;
+SG24-044;Mauro Samir ;06-02-24;;Importación;Raúl;;;;
+SG24-045;Mendoza;07-02-24;;Importación;Raúl;;;;
+SG24-046;SPECT;08-02-24;;Importación;Antonio;;;;
+SG24-047;VILCHEZ;09-02-24;;Importación;Elizabeth;;;;
+SG24-048;VILCHEZ;12-02-24;;Importación;Elizabeth;;;;
+SG24-049;SPECT;13-02-24;;Importación;Antonio;;;;
+SG24-050;INDUCONTROL;13-02-24;;Importación;Elizabeth;;;;
+SG24-051;CRIMSA;13-02-24;;Importación;Elizabeth;;;;
+SG24-052;COMFIVISA;16-02-24;;Importación;Antonio;;;;
+SG24-053;COMFIVISA;16-02-24;;Importación;Antonio;;;;
+SG24-054;COMFIVISA;16-02-24;;Importación;Antonio;;;;
+SG24-055;INDUCONTROL;19-02-24;;Importación;Elizabeth;;;;
+SG24-056;STHEFANY;20-02-24;;Importación;Elizabeth;;;;
+SG24-057;AHORA MARKET;20-02-24;;Importaciòn;Elizabeth;;;;
+SG24-058;CRIMSA;21-02-24;;Importación;Elizabeth;;;;
+SG24-059;MIEL;22-02-24;;Importación;Elizabeth;;;;
+SG24-060;SPECT;23-02-24;;Importación;Antonio;;;;
+SG24-061;COMFIVISA;24-02-24;;Importación;Antonio;;;;
+SG24-062;ACM PARTES;29-02-24;;Flete;Elizabeth;;;;
+SG24-063;ACM PARTES;29-02-24;;Flete;Elizabeth;;;;
+SG24-064;ACM PARTES;29-02-24;;Flete;Elizabeth;;;;
+SG24-065;ACM PARTES;29-02-24;;Flete;Elizabeth;;;;
+SG24-066;AMERICAN COACH;29-02-24;;Flete;Elizabeth;;;;
+SG24-067;GAS;01-03-24;;Importación;Angeles;;;;
+SG24-068;Vadel;01-03-24;;Exportación;Raúl;;;;
+SG24-069;VILCHEZ;04-02-24;;Importación;Elizabeth;;;;
+SG24-070;ORKANTEK;05-02-24;;Importación;Antonio;;;;
+SG24-071;Juan Alberto;05-03-24;;Importación;Raúl;;;;
+SG24-072;INDUCONTROL;05-03-24;;Importación;Elizabeth;;;;
+SG24-073;COMFIVISA;05-03-24;;Importación;Antonio;;;;
+SG24-074;JAVIER VERONA;06-03-24;;Importación;Antonio;;;;
+SG24-075;SPECT;07-03-24;;Importación;Antonio;;;;
+SG24-076;CRIMSA;07-04-24;;Importación;Elizabeth;;;;
+SG24-077;ALESSIO;08-04-24;;Importación;Elizabeth;;;;
+SG24-078;SPECT;09-04-24;;Flete;Antonio;;;;
+SG24-079;AHORA MARKET;10-04-24;;Importación;Antonio;;;;
+SG24-080;SPECT;11-04-24;;Importación;Antonio;;;;
+SG24-081;INDUCONTROL;12-03-24;;Exportación;Elizabeth;;;;
+SG24-082;LUIS;13-03-24;;Importacion;Antonio;;;;
+SG24-083;RAMSES;14-03-24;;Importacion;Antonio;;;;
+SG24-084;COMFIVISA;15-03-24;;Importacion;Antonio;;;;
+SG24-085;AHORA MARKET;19-03-24;;Importación;Elizabeth;;;;
+SG24-086 ;SPECT;19-03-24;;Importación ;Antonio ;;;;
+SG24-087;MAURO SAMIR ;19-03-24;;Importación;Elizabeth;;;;
+SG24-088;AHORA MARKET;20-03-24;;Importación;Elizabeth;;;;
+SG24-089;MAURO SAMIR ;20-03-24;;Importación;Elizabeth;;;;
+SG24-090;ORKANTEK;21-03-24;;Flete;Elizabeth;;;;
+SG24-091;ACM PARTES;21-03-24;;Flete;Elizabeth;;;;
+SG24-092;CRIMSA;22-03-24;;Importación ;Raúl ;;;;
+SG24-093;VILCHEZ;22-03-24;;Importación;Elizabeth;;;;
+SG24-094;ACM PARTES;22-03-24;;Importación;Elizabeth;;;;
+SG24-095;SPECT;23-03-24;;Importación;Antonio;;;;
+SG24-096;SPECT;24-03-24;;Importación;Antonio;;;;
+SG24-097;Mendoza;01-04-24;;Importación;Raúl ;;;;
+SG24-098;ALCOCER;02-04-24;;Importación;Antonio;;;;
+SG24-099;COMPUTONER;03-04-24;;Importación;Antonio;;;;
+SG24-100;SPECT;04-04-24;;Importación;Antonio;;;;
+SG24-101;Mendoza;01-04-24;;Importación ;Raúl ;;;;
+SG24-102;CRIMSA;02-04-24;;Importación ;Raúl ;;;;
+SG24-103;Jonathan Arrieta;02-04-24;;Importación ;Raúl ;;;;
+SG24-104;ORKANTEK;03-04-24;;Importación ;Antonio;;;;
+SG24-105;ALCOCER;04-04-24;;Importación ;Antonio;;;;
+SG24-106;CRIMSA;04-04-24;;Importación;Raúl;;;;
+SG24-107;ALOCER;05-04-24;;Importación;Antonio;;;;
+SG24-108;INDUCONTROL;08-04-24;;Importación;Elizabeth;;;;
+SG24-109;MAURO SAMIR ;08-04-24;;Importación;Elizabeth;;;;
+SG24-110;CRIMSA;10-04-24;;Importación ;Raúl;;;;
+SG24-111;INDUCONTROL;10-04-24;;Importación;Elizabeth;;;;
+SG24-112;SEBALTEC;11-04-24;;Importación;Antonio;;;;
+SG24-113;SPECT;11-04-24;;Importación;Antonio;;;;
+SG24-114;AMERICAN COACH;12-04-24;;Importación;Elizabeth;;;;
+SG24-115;INDUCONTROL;12-04-24;;Importación;Elizabeth;;;;
+SG24-116;GABRIEL;12-04-24;;Importación;Elizabeth;;;;
+SG24-117;ACM PARTES;13-04-24;;Importación;Antonio;;;;
+SG24-118;RICARDO SANCHEZ;14-04-24;;Importación;Antonio;;;;
+SG24-119;ORBISCORP;15-04-24;;Importación;Antonio;;;;
+SG24-120;MENDOZA;24-04-15;;Importación ;Raúl;;;;
+SG24-121;FERNANDO ALONSO;00-01-00;;Importación ;Raúl;;;;
+SG24-122;INDUCONTROL;16-04-24;;Importación;Elizabeth;;;;
+SG24-123;Juan Alberto;16-04-24;;Importación;Raúl;;;;
+SG24-124;SITCI ;16-04-24;;Importación;Raúl;;;;
+SG24-125;SPECT;17-04-24;;Importación;Antonio;;;;
+SG24-126;SPECT;18-04-24;;Importación;Antonio;;;;
+SG24-127;AMERICAN COACH;18-04-24;;Importación;Elizabeth;;;;
+SG24-128;DEFRUT;19-04-24;;Importación;Raúl;;;;
+SG24-129;VILCHEZ;22-04-24;;Importación;Elizabeth;;;;
+SG24-130;MAURO SAMIR ;23-04-24;;Importación;Elizabeth;;;;
+SG24-131;AMERICAN COACH;23-04-24;;Flete;Elizabeth;;;;
+SG24-132;NEWLINE;24-04-24;;Flete;Elizabeth;;;;
+SG24-133;DEFRUT;25-04-24;;Exportación;Raúl;;;;
+SG24-134;AMERICAN COACH;26-04-24;;Flete;Elizabeth;;;;
+SG24-135;ZUIO;27-04-24;;Importación;Elizabeth;;;;
+SG24-136;CESAR;29-04-24;;Importacion;Elizabeth;;;;
+SG24-137;AMERICAN COACH;30-04-24;;Flete;Elizabeth;;;;
+SG24-138;AMERICAN COACH;02-05-24;;Importacion;Elizabeth;;;;
+SG24-139;NEWLINE;03-05-24;;Exportación;Elizabeth;;;;
+SG24-140;VILCHEZ;03-05-24;;Importacion;Elizabeth;;;;
+SG24-141;NEWLINE;06-05-24;;Exportación;Elizabeth;;;;
+SG24-142;MENDOZA;07-05-24;;Importación ;Raúl ;;;;
+SG24-143;CRIMSA;07-05-24;;Importación ;Raúl;;;;
+SG24-144;Jonathan Arrieta;08-05-24;;Importación;Raúl ;;;;
+SG24-145;CRIMSA;08-05-24;;Importación;Raúl ;;;;
+SG24-146;COPYCOPIAS;08-05-24;;Importcioon;Angeles;;;;
+SG24-147;CESAR;08-05-24;;Flete;Elizabeth;;;;
+SG24-148;INDUCONTROL;09-05-24;;Importación;Elizabeth;;;;
+SG24-149;SPECT;09-05-24;;Importación;Antonio;;;;
+SG24-150;AMERICAN COACH;09-05-24;;Importación;Elizabeth;;;;
+SG24-151;AMERICAN COACH;13-05-24;;Importación;Elizabeth;;;;
+SG24-152;MAURO SAMIR ;13-05-24;;Importación;Elizabeth;;;;
+SG24-153;MAURO SAMIR ;13-05-24;;Importación;Elizabeth;;;;
+SG24-154;ORKANTEK;13-05-24;;Importación;Antonio;;;;
+SG24-155;ALCOCER;14-05-24;;Importación;Antonio;;;;
+SG24-156;NEWLINE;14-05-24;;Exportación;Elizabeth;;;;
+SG24-157;MAURO SAMIR ;14-05-24;;Importacion;Elizabeth;;;;
+SG24-158;Jonathan Arrieta;14-05-24;;Importacion;Raúl ;;;;
+SG24-159;Austreberta;14-05-24;;Importación ;Raúl ;;;;
+SG24-160;CARLOS PARDO;15-05-24;;Importación ;Raúl ;;;;
+SG24-161;AMERICAN COACH;15-04-24;;Importación;Elizabeth;;;;
+SG24-162;Mendoza;15-05-24;;Importación;Raúl ;;;;
+SG24-163;GABRIEL;15-05-24;;Importación;Elizabeth;;;;
+SG24-164;INDUCONTROL;15-05-24;;Importacion;Elizabeth;;;;
+SG24-165;DEFRUT;15-05-24;;Importación;Raúl;;;;
+SG24-166;CRIMSA;17-05-24;;Importación ;Raúl;;;;
+SG24-167;CRIMSA;17-05-24;;Importación ;Raúl;;;;
+SG24-168;AMERICAN COACH;17-05-24;;Importación;Elizabeth;;;;
+SG24-169;RAQSA;20-05-24;;Exportación;Angeles;;;;
+SG24-170;MAURO SAMIR ;20-05-24;;Importacion;Elizabeth;;;;
+SG24-171;SPECT;22-05-24;;Importacion;Antonio;;;;
+SG24-172;AMERICAN COACH;22-05-24;;Flete;Elizabeth;;;;
+SG24-173;AMERICAN COACH;22-05-24;;Flete;Elizabeth;;;;
+SG24-174;AMERICAN COACH;23-05-24;;Importacion;Elizabeth;;;;
+SG24-175;PAUL;23-04-24;;Importacion;Elizabeth;;;;
+SG24-176;INDUCONTROL;24-05-25;;Importación;Elizabeth;;;;
+SG24-177;AMERICAN COACH;24-05-24;;Importacion;Elizabeth;;;;
+SG24-178;NEWLINE;27-05-24;;Importacion;Elizabeth;;;;
+SG24-179;MENDOZA;27-05-24;;Importacion;Raúl;;;;
+SG24-180;MULTIENVASES;27-05-24;;Importacion;Raúl;;;;
+SG24-181;SPECT;28-05-24;;Importacion;Antonio;;;;
+SG24-182;Monica;28-05-24;;Importacion;Raúl;;;;
+SG24-183;MAURO SAMIR ;29-05-24;;Importación;Elizabeth;;;;
+SG24-184;AMERICAN COACH;29-05-24;;Flete;Elizabeth;;;;
+SG24-185;ALDO RODRIGUEZ;30-05-24;;Exportación;Antonio;;;;
+SG24-186;JOSÉ FIDEL;31-05-24;;Importación;Antonio;;;;
+SG24-187;AMERICAN COACH;31-05-24;;Flete;Elizabeth;;;;
+SG24-188;AMERICAN COACH;31-05-24;;Flete;Elizabeth;;;;
+SG24-189;SPECT;03-06-24;;Flete;Antonio;;;;
+SG24-190;DEFRUT;03-06-24;;Importación ;Raúl;;;;
+SG24-191;TALAVERA;05-06-24;;Importacion;Angeles;;;;
+SG24-192;SPECT;05-06-24;;Importacion;Antonio;;;;
+SG24-193;SISTEMAS CORPORATIVOS;06-06-24;;Flete;Elizabeth;;;;
+SG24-194;RAQSA;07-06-24;;Exportación;Angeles;;;;
+SG24-195;CRIMSA;06-06-24;;Flete;Raúl;;;;
+SG24-196;RAQSA;06-06-24;;Exportación;Angeles;;;;
+SG24-197;DIICSA;07-06-24;;Importación;Elizabeth;;;;
+SG24-198;SPECT;08-06-24;;Importación;Antonio;;;;
+SG24-199;PSD;07-06-24;;Importación;Elizabeth;;;;
+SG24-200;SPECT;08-06-24;;Importación;Antonio;;;;
+SG24-201;CRIMSA;09-06-24;;Importación;Raúl;;;;
+SG24-202;COMFIVISA;10-06-24;;Importación;Raúl;;;;
+SG24-203;VILCHEZ;10-06-24;;Importacion;Elizabeth;;;;
+SG24-204;FAGRO;11-06-24;;Importacion;Antonio;;;;
+SG24-205;AMERICAN COACH;12-06-24;;Flete;Elizabeth;;;;
+SG24-206;INDUCONTROL;13-06-24;;Importacion;Elizabeth;;;;
+SG24-207;DIICSA;13-06-24;;Importacion;Elizabeth;;;;
+SG24-208;DIICSA;14-06-24;;Importacion;Elizabeth;;;;
+SG24-209;INDUCONTROL;17-06-24;;Importacion;Elizabeth;;;;
+SG24-210;ALDO RODRIGUEZ;18-06-24;;Importacion;Elizabeth;;;;
+SG24-211;CESAR;18-06-24;;Importacion;Elizabeth;;;;
+SG24-212;CRIMSA;18-06-24;;Importacion;Raúl;;;;
+SG24-213;GABRIEL;18-06-24;;Importacion;Elizabeth;;;;
+SG24-214;AMERICAN COACH;18-06-24;;Importación;Elizabeth;;;;
+SG24-215;FRANCISCO;18-06-24;;Importacion;Angie;;;;
+SG24-216;AMERICAN COACH;19-06-24;;Importacion;Elizabeth;;;;
+SG24-217;QUALITY;19-06-24;;Importación;Raúl;;;;
+SG24-218;SPECT;20-06-24;;Importación;Antonio;;;;
+SG24-219;MENDOZA;20-06-24;;Importación;Raúl ;;;;
+SG24-220;PAKMAIL;22-06-24;;Importación;Antonio;;;;
+SG24-221;SPECT;24-06-24;;Importación;Antonio;;;;
+SG24-222;SPECT;24-06-24;;Importación;Antonio;;;;
+SG24-223;CRIMSA;26-06-24;;Importación ;Raúl;;;;
+SG24-224;COMPUTONER;27-06-24;;Importación ;Antonio;;;;
+SG24-225;SPECT;28-06-24;;Importación ;Antonio;;;;
+SG24-226;INDUCONTROL;28-06-24;;Importación;Elizabeth;;;;
+SG24-227;VICTOR CRUZ;29-06-24;;Importación;Antonio;;;;
+SG24-228;AMERICAN COACH;02-07-24;;Flete;Elizabeth;;;;
+SG24-229;AMERICAN COACH;02-07-24;;Flete;Elizabeth;;;;
+SG24-230;SISTEMAS CORPORATIVOS;04-07-24;;Importacion;Elizabeth;;;;
+SG24-231;ALDO RODRIGUEZ;05-07-24;;Importacion;Antonio;;;;
+SG24-232;CRIMSA;05-07-24;;Importación;Raúl;;;;
+SG24-233;SPECT;06-07-24;;Importación;Antonio;;;;
+SG24-234;SHEILA HIDALGO;07-07-24;;Importación;Antonio;;;;
+SG24-235;Bioesol;05-07-24;;Importacion;Angeles;;;;
+SG24-236;SPECT;06-07-24;;Importacion;Antonio;;;;
+SG24-237;RAQSA;07-07-24;;Importacion;Antonio;;;;
+SG24-238;SPECT;08-07-24;;Importacion;Antonio;;;;
+SG24-239;Jorge;08-07-24;;Importacion;Antonio;;;;
+SG24-240;SEBALTEC;09-07-24;;Importacion;Antonio;;;;
+SG24-241;AMERICAN COACH;10-07-24;;Flete;Elizabeth;;;;
+SG24-242;MAURO SAMIR ;11-07-24;;Importacion;Elizabeth;;;;
+SG24-243;SPECT;12-07-24;;Importacion;Antonio;;;;
+SG24-244;MAURO SAMIR ;12-07-24;;Importacion;Elizabeth;;;;
+SG24-245;ACM PARTES;12-07-24;;Importacion;Raúl;;;;
+SG24-246;ORKANTEK;13-07-24;;Importacion;Antonio;;;;
+SG24-247;INDUCONTROL;15-07-24;;Importación;Elizabeth;;;;
+SG24-248;American Coach;16-07-24;;Importación ;Raúl;;;;
+SG24-249;American Coach;16-07-24;;Importación ;Raúl;;;;
+SG24-250;American Coach;16-07-24;;Importación;Elizabeth;;;;
+SG24-250;VILCHEZ;17-07-24;;Importación;Elizabeth;;;;
+SG24-251;American Coach;17-07-24;;Importación;Elizabeth;;;;
+SG24-252;MAURO SAMIR ;17-07-24;;Importación;Elizabeth;;;;
+SG24-253;SEBALTEC;17-07-24;;Importación;Antonio;;;;
+SG24-254;COMFIVISA;18-07-24;;Importación;Antonio;;;;
+SG24-255;MAURO SAMIR ;18-07-24;;Importación;Elizabeth;;;;
+SG24-256;PAKMAIL;18-07-24;;Importación;Antonio;;;;
+SG24-257;NEWLINE;19-07-24;;Exportación;Elizabeth;;;;
+SG24-258;SPECT;20-07-24;;Exportación;Antonio;;;;
+SG24-259;Defrut;19-07-24;;Exportación;Raúl;;;;
+SG24-260;Crimsa;19-07-24;;Importación;Raúl;;;;
+SG24-261;SPECT;20-07-24;;Importación;Antonio;;;;
+SG24-262;SPECT;21-07-24;;Importación;Antonio;;;;
+SG24-263;SEBALTEC;22-07-24;;Importacion;Antonio;;;;
+SG24-264;American Coach;23-07-24;;Importacion;Elizabeth;;;;
+SG24-265;Mendoza;24-07-24;;Importacion;Raúl;;;;
+SG24-266;SPECT;25-07-24;;Importacion;Antonio;;;;
+SG24-267;SPECT;26-07-24;;Importacion;Antonio;;;;
+SG24-268;LEADER;26-07-24;;Flete;Elizabeth;;;;
+SG24-269;ALDO RODRIGUEZ;26-07-24;26-07-24;Flete;Elizabeth;;;;Cumplido
+SG24-270;DEFRUT;30-07-24;30-07-24;Importación maritima;Raul;;;Cumplido;
+SG24-271;SPECT;30-07-24;31-07-24;Importación aérea;Antonio;;;;Cumplido
+SG24-272;Mendoza;31-07-24;31-07-24;Importación maritima;Raul;;;;Cumplido
+SG24-273;Crimsa;01-07-24;02-08-24;Importación aérea;Raul;;Cumplido;;
+SG24-274;SPECT;31-07-24;31-07-24;Importación aérea;Antonio;;;;Cumplido
+SG24-275;Paul Caudana;01-08-24;01-08-24;Importación maritima;Antonio;;;;Cumplido
+SG24-276;SISTEMAS CORPORATIVOS;02-08-24;02-08-24;Importación maritima;Antonio;;;Cumplido;Cumplido
+SG24-277;Israel Moreno;12-08-24;;Importación aérea;Raul;;;;
+SG24-278;CRIMSA;12-08-24;12-08-24;Importación maritima;Raul;;;;
+SG24-279;Gabriel;15-08-24;15-08-24;Importación maritima;Antonio;1 día;;Cumplido;
+SG24-280;Inducontrol;15-08-24;15-08-24;Importación aérea;Raul;;Cumplido;;
+SG24-281;Inducontrol;20-08-24;20-08-24;Importación maritima;Raul;;;Cumplido;
+SG24-282;American Coach;20-08-24;20-08-24;Transporte Internacional;Antonio;1 día;;;Cumplido
+SG24-283;ALDO RODRIGUEZ;20-08-24;21-08-24;Importación aérea;Antonio;1 día;;;Cumplido
+SG24-284;MAURO SAMIR ;22-08-24;;Importación maritima;Antonio;;;;
+SG24-285;Carlos Pardo;22-08-24;;Exportación aérea;Raul;;;;
+SG24-286;SPECT;26-08-24;26-08-24;Importación aérea;Antonio;1 día;;Cumplido;Cumplido
+SG24-287;FAGRO;26-08-24;27-08-24;Exportación maritima ;Antonio;1 día;;Cumplido;
+SG24-288;Austreberta ;27-08-24;27-08-24;Importación aérea;Raul;;Cumplido;;
+SG24-289;FAGRO;27-08-24;27-08-24;Importación maritima;Antonio;;;Cumplido;
+SG24-290;SEBALTEC;27-08-24;27-08-24;Importación aérea;Antonio;;;;
+SG24-291;ORKANTEK;28-08-24;28-08-24;Importación aérea;Antonio;;;;Cumplido
+SG24-292;Carlos Pardo;28-08-24;;Exportación maritima ;Raul;;;;
+SG24-293;NEWLINE;28-08-24;;Exportación maritima ;Antonio;;;;
+SG24-294;FAGRO;29-08-24;;Exportación maritima ;Antonio;1 día;;;Cumplido
+SG24-295;Juan Alberto;30-08-24;30-08-24;Importación maritima;Raul;;;;
+SG24-296;ALEJANDRO;02-09-24;;Importación maritima;Antonio;;;;
+SG24-297;SPECT;02-09-24;02-09-24;Importación aérea;Antonio;1 día;;;Cumplido
+SG24-298;DIICSA;03-09-24;03-09-24;Exportación aérea;Antonio;;;;Cumplido
+SG24-299;Mendoza;02-09-24;;Importación aérea;Raul;;;;
+SG24-300;FAGRO;04-09-24;;Exportación Terrestre;Antonio;1 día;;;Cumplido
+SG24-301;FAGRO;04-09-24;;Exportación Terrestre;Antonio;1 día;;;Cumplido
+SG24-302;ALEJANDRO;05-09-24;;Importación maritima;Antonio;1 día;;;Cumplido
+SG24-303;MAURO SAMIR ;05-09-24;;Importación maritima;Antonio;;;Cumplido;
+SG24-304;ORKANTEK;05-09-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-305;Inducontrol;06-09-24;;Importación aérea;Raul;;;;
+SG24-306;American Coach;10-09-24;10-09-24;Importación Terrestre;Antonio;;;;Cumplido
+SG24-307;Vilchez;10-09-24;;Importación maritima;Raul;;;;
+SG24-308;SPECT;13-09-24;13-09-24;Importación aérea;Antonio;;;;Cumplido
+SG24-309;Induontrol;18-09-24;;Importación aérea;Raul;;;;
+SG24-310;COMFIVISA;19-09-24;20-09-24;Importación maritima;Antonio;;;;Cumplido
+SG24-311;DAVID ANDRADE;19-09-24;;Importación maritima;Antonio;;;;Cumplido
+SG24-312;ORKANTEK;20-09-24;;Importación aérea;Antonio;;Cumplido;;
+SG24-313;SPECT;23-09-24;24-09-24;Importación aérea;Antonio;;;;Cumplido
+SG24-314;Vilchez;23-09-24;23-09-24;Importación maritima;Raul;;;;
+SG24-315;CRIMSA;23-09-24;;Importación maritima;Raul;;;;
+SG24-316;DEFRUT;24-09-24;;Importación maritima;Raul;;;;
+SG24-317;AUSTREBERTA;24-09-24;;Importación maritima;Raul;;;;
+SG24-318;SPECT;25-09-24;25-09-24;Importación aérea;Antonio;;;;Cumplido
+SG24-319;Inducontrol;25-09-24;25-09-24;Importación aérea;Raul;;;;
+SG24-320;Jose Pablo;26-08-24;;Importación aérea;Angeles;;;;
+SG24-321;ALDO RODRIGUEZ;26-08-24;;Exportación Terrestre;Antonio;;;;Cumplido
+SG24-322;SPECT;30-09-24;30-09-24;Importación aérea;Antonio;;;;Cumplido
+SG24-323;ORKANTEK;30-09-24;;Importación aérea;Antonio;;;;
+SG24-324;CRIMSA;02-10-24;;Importación aérea;Raul;;;;
+SG24-325;FAGRO;03-10-24;03-10-24;Transporte Internacional;Antonio;;;;Cumplido
+SG24-326;DEFRUT;03-10-24;;Transporte Internacional;Raul;;;;
+SG24-327;SPECT;04-10-24;;Importación maritima;Antonio;;;Cumplido;
+SG24-328;CARVIFLON;07-10-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-329;Inducontrol;07-10-24;;Importación aérea;Raul;;;;
+SG24-330;PSD;08-10-24;;Importación maritima;Raul;;;Cumplido;
+SG24-331;Inducontrol;09-10-24;;Importación maritima;Raul;;;Cumplido;
+SG24-332;David Andrade;09-10-24;09-10-24;Tansporte nacional;Raul;;;;Cumplido
+SG24-333;Defrut;09-10-24;;Importación maritima;Raul;;;Cumplido;
+SG24-334;Inducontrol;10-10-24;;Exportación Terrestre;Raul;;;;Cumplido
+SG24-335;Crimsa;10-10-24;;Transporte Internacional;Raul;;;Cumplido;
+SG24-336;SEBALTEC;11-10-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-337;FAGRO;15-10-24;;Exportación aérea;Antonio;;;;Cumplido
+SG24-338;American Coach;16-10-24;;Exportación Terrestre;Antonio;;;Cumplido;
+SG24-339;SPECT;17-10-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-340;Vilchez;17-10-24;;Importación maritima;Raul;;;;Cumplido
+SG24-341;Inducontrol;18-10-24;;Importación Terrestre;Raul;;;;Cumplido
+SG24-342;SPECT;22-10-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-343;GABRIEL;23-10-24;;Importación maritima;Antonio;;;;Cumplido
+SG24-344;SPECT;24-10-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-345;QUALITY;24-10-24;;Importación maritima;Raul;;;;Cumplido
+SG24-346;Mendoza;25-10-24;;Importación maritima;Raul;;Cumplido;;
+SG24-347;SPECT;28-10-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-348;SPECT;28-10-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-349;Vilchez;28-10-24;;Importación maritima;Raul;;;Cumplido;
+SG24-350;Vilchez;28-10-24;;Importación maritima;Raul;;;Cumplido;
+SG24-351;SPECT;29-10-24;;Importación aérea;Raul;;;;Cumplido
+SG24-352;Inducontrol;29-10-24;;Importación aérea;Raul;;;;
+SG24-353;CRIMSA;29-10-24;;Importación aérea;Raul;;;;Cumplido
+SG24-354;SELVATEC;30-10-24;;Importación aérea;Antonio;;;;No  cumplido
+SG24-355;SPECT;31-10-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-356;Jonathan Arrieta;31-10-24;;Importación maritima;Raul;;;Cumplido;
+SG24-357;AHORA MARKET;01-11-24;;Importación maritima;Antonio;;;Cumplido;
+SG24-358;Inducontrol;04-11-24;;Importación aérea;Raul;;;;
+SG24-359;FAGRO;05-11-24;;Importación maritima;Antonio;;;;Cumplido
+SG24-360;SPECT;05-11-24;;Importación maritima;Antonio;;;;Cumplido
+SG24-361;Carlos Pardo;05-11-24;;Exportación maritima ;Raul;;;;
+SG24-362;Inspros;06-11-24;;Importación maritima;Raul;;;;
+SG24-363;American Coach;06-11-24;;Transporte Internacional;Antonio;;;;Cumplido
+SG24-364;American Coach;07-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-365;SPECT;08-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-366;SPECT;08-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-367;DEFRUT;08-11-24;;Importación maritima;Raul;;;;
+SG24-368;American Coach;09-11-24;;Importación aérea;Antonio;;;;
+SG24-369;SPECT;10-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-370;American Coach;14-11-24;;Importación Terrestre;Antonio;;;;Cumplido
+SG24-371;Crimsa;15-11-24;;Importación maritima;Raul;;;;
+SG24-372;SPECT;15-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-373;SPECT;15-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-374;SPECT;15-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-375;Mendoza;15-11-24;;Importación aérea;Raul;;;;Cumplido
+SG24-376;FAGRO;16-11-24;;Exportación maritima ;Antonio;;;;
+SG24-377;FAGRO;17-11-24;;Exportación maritima ;Antonio;;;;
+SG24-378;Inducontrol;19-11-24;;Importación maritima;Raul;;;;
+SG24-379;SPECT;15-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-380;American Coach;19-11-24;;Exportación aérea;Antonio;;;;Cumplido
+SG24-381;CESAR;19-11-24;;Importación maritima;Antonio;;;;Cumplido
+SG24-382;SPECT;20-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-383;DIICSA;21-11-24;;Importación Terrestre;Antonio;;;;Cumplido
+SG24-384;SPECT;22-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-385;SPECT;22-11-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-386;DEFRUT;22-11-24;;Importación maritima;Raul;;;;
+SG24-387;Gabriel;25-11-24;;Importación maritima;Raul;;;;
+SG24-388;SPECT;25-11-24;;Importación aérea;Angeles;;;;
+SG24-389;SPECT;26-11-24;;Importación aérea;Raul;;;;Cumplido
+SG24-390;Carlos Pardo;28-11-24;;Exportación Terrestre;Raul;;;;Cumplido
+SG24-391;MAURO SAMIR ;28-11-24;;Importación maritima;Angeles;;;;
+SG24-392;Rodrigo;28-11-24;;Transporte Internacional;Angeles;;;;
+SG24-393;SPECT;04-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-394;Inducontrol;04-12-24;;Exportación Terrestre;Raul;;;;
+SG24-395;COMFIVISA;05-12-24;;Importación Terrestre;Antonio;;;;Cumplido
+SG24-396;Vilchez;05-12-24;;Importación maritima;Raul;;;;
+SG24-397;SPECT;04-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-398;SPECT;05-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-399;Crimsa;06-12-24;;Importación aérea;Raul;;;;
+SG24-400;SPECT;05-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-401;SPECT;06-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-402;Mendoza;09-12-24;;Importación aérea;Raul;;;;
+SG24-403;LOWSITE;10-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-404;Inducontrol;10-12-24;;Importación aérea;Raul;;;;
+SG24-405;DIICSA;10-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-406;Vilchez;10-12-24;;Importación maritima;Raul;;;;
+SG24-407;SPECT;06-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-408;Inducontrol;11-12-24;;Importación maritima;Raul;;;;
+SG24-409;SISTEMAS CORPORATIVOS;12-12-24;;Importación Terrestre;Antonio;;;;Cumplido
+SG24-410;DEFRUT;12-12-24;;Importación Terrestre;Raul;;;;
+SG24-411;Mendoza;13-12-24;;Importación aérea;Raul;;;;
+SG24-412;SPECT;14-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-413;SPECT;15-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-414;Inducontrol;16-12-24;;Importación maritima;Raul;;;;
+SG24-415;SEBALTEC;18-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-416;DEFRUT;19-12-24;;Importación maritima;Raul;;;;
+SG24-417;DEFRUT;19-12-24;;Importación maritima;Raul;;;;
+SG24-418;Austreberta;19-12-24;;Importación maritima;Raul;;;;
+SG24-419;SPECT;20-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-420;SPECT;21-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-421;SPECT;22-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-422;SPECT;23-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-423;SPECT;23-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-424;Mendoza;23-12-24;;Importación aérea;Raul;;;;
+SG24-425;SPECT;23-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-426;SPECT;24-12-24;;Importación aérea;Antonio;;;;Cumplido
+SG24-427;Inducontrol;27-12-24;;Importación aérea;Raul;;;;
+SG24-428;SITCI;28-12-24;;Importación aérea;Raul;;;;

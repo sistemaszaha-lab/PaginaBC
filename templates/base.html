@@ -1,0 +1,214 @@
+﻿<!DOCTYPE html>
+<html lang="es" data-bs-theme="light">
+<head>
+    {% load static %}
+    <meta charset="UTF-8">
+    <title>{% block title %}Sistema{% endblock %}</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            position: relative;
+            background-color: #f1f5f9;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background-image: url("{% static 'img/fondo_app.png' %}");
+            background-size: 55% auto;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            opacity: 0.50;
+        }
+
+        @media (max-width: 768px) {
+            body::before {
+                background-size: 75% auto;
+            }
+        }
+
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            background-color: #016b6b;
+            color: white;
+            padding-top: 20px;
+            transition: left 0.25s ease;
+            z-index: 1000;
+        }
+
+        .sidebar a {
+            color: white;
+            display: block;
+            padding: 12px 20px;
+            text-decoration: none;
+            transition: 0.2s;
+        }
+
+        .sidebar a:hover {
+            background-color: #464747;
+        }
+
+        .header {
+            height: 60px;
+            background-color: white;
+            border-bottom: 1px solid #3e9fa2;
+            padding: 10px 20px;
+            margin-left: 250px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: margin-left 0.25s ease;
+        }
+
+        .content {
+            margin-left: 250px;
+            padding: 20px;
+            transition: margin-left 0.25s ease;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar-toggle {
+            border: 1px solid #3e9fa2;
+            background: #ffffff;
+            color: #016b6b;
+            width: 32px;
+            height: 32px;
+            line-height: 1;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        body.sidebar-collapsed .sidebar {
+            left: -250px;
+        }
+
+        body.sidebar-collapsed .header,
+        body.sidebar-collapsed .content {
+            margin-left: 0;
+        }
+
+        .role-badge {
+            font-size: 0.8rem;
+        }
+
+        [data-bs-theme="dark"] body {
+            background-color: #121212;
+        }
+
+        [data-bs-theme="dark"] body::before {
+            opacity: 0.15;
+        }
+
+        [data-bs-theme="dark"] .sidebar {
+            background-color: #012f2f;
+        }
+
+        [data-bs-theme="dark"] .header {
+            background-color: #1e1e1e;
+            border-bottom: 1px solid #333;
+        }
+
+        [data-bs-theme="dark"] .sidebar a:hover {
+            background-color: #333;
+        }
+    </style>
+</head>
+
+<body>
+<div class="sidebar">
+    <h5 class="text-center mb-4">Sistema</h5>
+
+    <a href="{% url 'inicio' %}">Inicio</a>
+    <a href="{% url 'lista_solicitudes' %}">Solicitudes</a>
+    <a href="{% url 'lista_cotizaciones' %}">Cotizaciones</a>
+    <a href="{% url 'lista_referencias' %}">Referencias</a>
+
+    {% if request.user.is_superuser %}
+        <a href="{% url 'lista_usuarios' %}">Usuarios</a>
+    {% endif %}
+
+    <form method="post" action="{% url 'logout' %}" class="px-3 mt-3">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger w-100">Cerrar sesion</button>
+    </form>
+</div>
+
+<div class="header">
+    <div class="header-left">
+        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Mostrar u ocultar panel lateral">◀</button>
+        <div>
+        Bienvenido, <strong>{{ request.user.first_name|default:request.user.username }}</strong>
+        {% if request.user.is_superuser %}
+            <span class="badge bg-danger role-badge">Administrador</span>
+        {% else %}
+            <span class="badge bg-primary role-badge">Ejecutivo</span>
+        {% endif %}
+        </div>
+    </div>
+
+    <button id="themeToggle" class="btn btn-outline-secondary btn-sm">Modo oscuro</button>
+</div>
+
+<div class="content">
+    {% block content %}{% endblock %}
+</div>
+
+<script>
+    const toggleBtn = document.getElementById("themeToggle");
+    const htmlElement = document.documentElement;
+    const body = document.body;
+    const sidebarToggle = document.getElementById("sidebarToggle");
+
+    const savedTheme = localStorage.getItem("theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+    if (savedTheme) {
+        htmlElement.setAttribute("data-bs-theme", savedTheme);
+        updateButton(savedTheme);
+    } else if (prefersDark) {
+        htmlElement.setAttribute("data-bs-theme", "dark");
+        updateButton("dark");
+    }
+
+    toggleBtn.addEventListener("click", () => {
+        const currentTheme = htmlElement.getAttribute("data-bs-theme");
+        const newTheme = currentTheme === "dark" ? "light" : "dark";
+
+        htmlElement.setAttribute("data-bs-theme", newTheme);
+        localStorage.setItem("theme", newTheme);
+        updateButton(newTheme);
+    });
+
+    function updateButton(theme) {
+        toggleBtn.innerHTML = theme === "dark" ? "Modo claro" : "Modo oscuro";
+    }
+
+    const savedSidebarState = localStorage.getItem("sidebarCollapsed");
+    if (savedSidebarState === "true") {
+        body.classList.add("sidebar-collapsed");
+        sidebarToggle.textContent = "▶";
+    }
+
+    sidebarToggle.addEventListener("click", () => {
+        body.classList.toggle("sidebar-collapsed");
+        const collapsed = body.classList.contains("sidebar-collapsed");
+        sidebarToggle.textContent = collapsed ? "▶" : "◀";
+        localStorage.setItem("sidebarCollapsed", collapsed ? "true" : "false");
+    });
+</script>
+</body>
+</html>

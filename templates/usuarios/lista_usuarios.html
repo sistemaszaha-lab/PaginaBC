@@ -1,0 +1,50 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Usuarios{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Usuarios</h2>
+
+<a href="{% url 'crear_usuario' %}" class="btn btn-success mb-3">+ Crear Usuario</a>
+
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+        <tr>
+            <th>Usuario</th>
+            <th>Nombre</th>
+            <th>Correo</th>
+            <th>Rol</th>
+            <th>Ultimo acceso</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for u in usuarios %}
+        <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.first_name }}</td>
+            <td>{{ u.email }}</td>
+            <td>
+                {% if u.is_superuser %}
+                    <span class="badge bg-danger">Administrador</span>
+                {% else %}
+                    <span class="badge bg-primary">Ejecutivo</span>
+                {% endif %}
+            </td>
+            <td>{{ u.last_login|default:"Nunca" }}</td>
+            <td>
+                {% if u.id != request.user.id %}
+                    <form method="post" action="{% url 'eliminar_usuario' u.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                    </form>
+                {% else %}
+                    <span class="text-muted">Sesion actual</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
