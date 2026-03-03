@@ -16,6 +16,7 @@ class SolicitudForm(forms.ModelForm):
             "fecha_recepcion": "Fecha de inicio",
         }
         widgets = {
+            "sg": forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"}),
             "anio": forms.NumberInput(attrs={"readonly": "readonly", "class": "form-control"}),
             "fecha_recepcion": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "fecha_entrega": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
@@ -23,8 +24,31 @@ class SolicitudForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["sg"].required = False
+        self.fields["sg"].disabled = True
         if not self.instance.pk:
             self.fields["anio"].initial = date.today().year
+            self.fields["sg"].initial = self._generar_sg(self.fields["anio"].initial)
+
+    def save(self, commit=True):
+        solicitud = super().save(commit=False)
+        if not solicitud.pk:
+            solicitud.sg = self._generar_sg(solicitud.anio)
+        else:
+            solicitud.sg = self.instance.sg
+        if commit:
+            solicitud.save()
+        return solicitud
+
+    def _generar_sg(self, anio):
+        prefijo = f"SG{str(anio)[-2:]}"
+        consecutivos = Solicitud.objects.filter(sg__startswith=prefijo).values_list("sg", flat=True)
+        ultimo = 0
+        for sg in consecutivos:
+            sufijo = sg[len(prefijo):]
+            if sufijo.isdigit():
+                ultimo = max(ultimo, int(sufijo))
+        return f"{prefijo}{ultimo + 1:03d}"
 
 
 class CrearUsuarioForm(UserCreationForm):

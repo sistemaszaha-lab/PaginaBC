@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from .forms import CotizacionForm
+from .forms import CotizacionForm, SolicitudForm
 from .models import Cotizacion, Referencia, Solicitud
 
 
@@ -237,3 +237,76 @@ class CotizacionFormTests(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn("tipo", form.errors)
+
+
+class SolicitudFormTests(TestCase):
+    def setUp(self):
+        self.ejecutivo = User.objects.create_user(username="ejec_sg", password="ejec123")
+
+    def test_genera_sg_automatico_consecutivo(self):
+        form_1 = SolicitudForm(
+            data={
+                "anio": 2026,
+                "sg": "",
+                "cliente": "Cliente 1",
+                "fecha_recepcion": "2026-01-10",
+                "fecha_entrega": "",
+                "tipo": "Operacion",
+                "ejecutivo": self.ejecutivo.pk,
+                "aerea": True,
+                "maritima": False,
+                "terrestre": False,
+            }
+        )
+        self.assertTrue(form_1.is_valid(), form_1.errors)
+        solicitud_1 = form_1.save()
+        self.assertEqual(solicitud_1.sg, "SG26001")
+
+        form_2 = SolicitudForm(
+            data={
+                "anio": 2026,
+                "sg": "",
+                "cliente": "Cliente 2",
+                "fecha_recepcion": "2026-01-11",
+                "fecha_entrega": "",
+                "tipo": "Operacion",
+                "ejecutivo": self.ejecutivo.pk,
+                "aerea": False,
+                "maritima": True,
+                "terrestre": False,
+            }
+        )
+        self.assertTrue(form_2.is_valid(), form_2.errors)
+        solicitud_2 = form_2.save()
+        self.assertEqual(solicitud_2.sg, "SG26002")
+
+    def test_sg_no_se_puede_manipular_en_edicion(self):
+        solicitud = Solicitud.objects.create(
+            anio=2026,
+            sg="SG26001",
+            cliente="Cliente Base",
+            fecha_recepcion=date(2026, 1, 10),
+            tipo="Operacion",
+            aerea=True,
+            estado_aereo="Pendiente",
+            ejecutivo=self.ejecutivo,
+        )
+
+        form = SolicitudForm(
+            data={
+                "anio": 2026,
+                "sg": "SG99999",
+                "cliente": "Cliente Editado",
+                "fecha_recepcion": "2026-01-10",
+                "fecha_entrega": "",
+                "tipo": "Operacion",
+                "ejecutivo": self.ejecutivo.pk,
+                "aerea": True,
+                "maritima": False,
+                "terrestre": False,
+            },
+            instance=solicitud,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        actualizado = form.save()
+        self.assertEqual(actualizado.sg, "SG26001")
