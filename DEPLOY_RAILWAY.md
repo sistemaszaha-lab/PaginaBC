@@ -39,11 +39,16 @@ Railway usara por defecto:
 - Install: `pip install -r requirements.txt`
 - Start: `python manage.py migrate && python manage.py collectstatic --noinput && gunicorn solicitudes_app.wsgi --bind 0.0.0.0:$PORT --log-file -`
 
-Si necesitas crear admin una sola vez (en Railway shell):
+Si Railway no muestra shell, crea el admin con variables de entorno:
 
 ```bash
-python manage.py createsuperuser
+DJANGO_SUPERUSER_USERNAME=admin
+DJANGO_SUPERUSER_EMAIL=admin@empresa.com
+DJANGO_SUPERUSER_PASSWORD=TuPasswordSeguro123!
 ```
+
+Con esas variables definidas, el arranque crea el superusuario automaticamente
+si no existe.
 
 ## 5) Migrar datos actuales de SQLite a PostgreSQL (opcional recomendado)
 
