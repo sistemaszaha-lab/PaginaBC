@@ -24,6 +24,11 @@
             {{ form.password }}
         </div>
 
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="toggleLoginPassword">
+            <label class="form-check-label" for="toggleLoginPassword">Mostrar contraseña</label>
+        </div>
+
         <button type="submit" class="btn btn-primary w-100">Entrar</button>
     </form>
 
@@ -31,6 +36,16 @@
         <div class="alert alert-danger mt-3">Usuario o contrasena incorrectos.</div>
     {% endif %}
 </div>
+
+<script>
+    const loginPassword = document.getElementById("id_password");
+    const toggleLoginPassword = document.getElementById("toggleLoginPassword");
+    if (loginPassword && toggleLoginPassword) {
+        toggleLoginPassword.addEventListener("change", function () {
+            loginPassword.type = this.checked ? "text" : "password";
+        });
+    }
+</script>
 
 </body>
 </html>
