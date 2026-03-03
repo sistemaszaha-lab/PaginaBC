@@ -120,8 +120,12 @@ class EditarUsuarioForm(forms.ModelForm):
         fields = ("username", "first_name", "email", "rol")
 
     def __init__(self, *args, **kwargs):
+        self.can_edit_role = kwargs.pop("can_edit_role", True)
         super().__init__(*args, **kwargs)
-        self.fields["rol"].initial = "admin" if self.instance.is_superuser else "usuario"
+        if self.can_edit_role:
+            self.fields["rol"].initial = "admin" if self.instance.is_superuser else "usuario"
+        else:
+            self.fields.pop("rol")
 
     def clean(self):
         cleaned_data = super().clean()
@@ -137,9 +141,10 @@ class EditarUsuarioForm(forms.ModelForm):
 
     def save(self, commit=True):
         user = super().save(commit=False)
-        rol = self.cleaned_data["rol"]
-        user.is_superuser = rol == "admin"
-        user.is_staff = rol == "admin"
+        if self.can_edit_role:
+            rol = self.cleaned_data["rol"]
+            user.is_superuser = rol == "admin"
+            user.is_staff = rol == "admin"
 
         password1 = self.cleaned_data.get("password1")
         if password1:

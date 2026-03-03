@@ -311,31 +311,39 @@ def crear_usuario(request):
     else:
         form = CrearUsuarioForm()
 
-    return render(request, "usuarios/crear_usuario.html", {"form": form})
+    return render(request, "usuarios/crear_usuario.html", {"form": form, "cancel_url": "lista_usuarios"})
 
 
 @login_required
 def editar_usuario(request, pk):
-    _requiere_admin(request.user)
+    es_admin = _es_admin(request.user)
+    if not es_admin and request.user.pk != pk:
+        raise PermissionDenied("No tienes permisos para esta acción.")
     usuario = get_object_or_404(User, pk=pk)
+    puede_editar_rol = es_admin
+    destino = "lista_usuarios" if es_admin else "inicio"
 
     if request.method == "POST":
-        form = EditarUsuarioForm(request.POST, instance=usuario)
+        form = EditarUsuarioForm(request.POST, instance=usuario, can_edit_role=puede_editar_rol)
         if form.is_valid():
-            rol = form.cleaned_data["rol"]
-            promoviendo_a_admin = rol == "admin" and not usuario.is_superuser
-            if promoviendo_a_admin and User.objects.filter(is_superuser=True).count() >= MAX_ADMIN_USERS:
-                form.add_error("rol", f"Solo se permiten {MAX_ADMIN_USERS} usuarios con rol Administrador.")
+            if puede_editar_rol:
+                rol = form.cleaned_data["rol"]
+                promoviendo_a_admin = rol == "admin" and not usuario.is_superuser
+                if promoviendo_a_admin and User.objects.filter(is_superuser=True).count() >= MAX_ADMIN_USERS:
+                    form.add_error("rol", f"Solo se permiten {MAX_ADMIN_USERS} usuarios con rol Administrador.")
+                else:
+                    form.save()
+                    return redirect(destino)
             else:
                 form.save()
-                return redirect("lista_usuarios")
+                return redirect(destino)
     else:
-        form = EditarUsuarioForm(instance=usuario)
+        form = EditarUsuarioForm(instance=usuario, can_edit_role=puede_editar_rol)
 
     return render(
         request,
         "usuarios/crear_usuario.html",
-        {"form": form, "modo_edicion": True},
+        {"form": form, "modo_edicion": True, "cancel_url": destino},
     )
 
 

@@ -61,10 +61,25 @@ class SeguridadPermisosTests(TestCase):
         response = self.client.get(reverse("lista_usuarios"))
         self.assertEqual(response.status_code, 200)
 
-    def test_editar_usuario_solo_admin(self):
+    def test_editar_usuario_permisos(self):
         self.client.login(username="ejec", password="ejec123")
         response = self.client.get(reverse("editar_usuario", args=[self.otro.pk]))
         self.assertEqual(response.status_code, 403)
+
+        response = self.client.post(
+            reverse("editar_usuario", args=[self.ejecutivo.pk]),
+            {
+                "username": "ejec",
+                "first_name": "Ejecutivo Editado",
+                "email": "ejec_editado@example.com",
+                "password1": "",
+                "password2": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.ejecutivo.refresh_from_db()
+        self.assertEqual(self.ejecutivo.first_name, "Ejecutivo Editado")
+        self.assertEqual(self.ejecutivo.email, "ejec_editado@example.com")
 
         self.client.login(username="admin", password="admin123")
         response = self.client.post(
