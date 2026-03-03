@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook
 from openpyxl.styles import Font
-from .forms import CotizacionForm, CrearUsuarioForm, ReferenciaForm, SolicitudForm
+from .forms import CotizacionForm, CrearUsuarioForm, EditarUsuarioForm, ReferenciaForm, SolicitudForm
 from .models import Cotizacion, Referencia, Solicitud
 
 ESTADOS_SIGUIENTES = {
@@ -312,6 +312,31 @@ def crear_usuario(request):
         form = CrearUsuarioForm()
 
     return render(request, "usuarios/crear_usuario.html", {"form": form})
+
+
+@login_required
+def editar_usuario(request, pk):
+    _requiere_admin(request.user)
+    usuario = get_object_or_404(User, pk=pk)
+
+    if request.method == "POST":
+        form = EditarUsuarioForm(request.POST, instance=usuario)
+        if form.is_valid():
+            rol = form.cleaned_data["rol"]
+            promoviendo_a_admin = rol == "admin" and not usuario.is_superuser
+            if promoviendo_a_admin and User.objects.filter(is_superuser=True).count() >= MAX_ADMIN_USERS:
+                form.add_error("rol", f"Solo se permiten {MAX_ADMIN_USERS} usuarios con rol Administrador.")
+            else:
+                form.save()
+                return redirect("lista_usuarios")
+    else:
+        form = EditarUsuarioForm(instance=usuario)
+
+    return render(
+        request,
+        "usuarios/crear_usuario.html",
+        {"form": form, "modo_edicion": True},
+    )
 
 
 @login_required

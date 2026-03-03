@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Crear Usuario{% endblock %}
+{% block title %}{% if modo_edicion %}Editar Usuario{% else %}Crear Usuario{% endif %}{% endblock %}
 
 {% block content %}
 
-<h2 class="mb-4">Crear Usuario</h2>
+<h2 class="mb-4">{% if modo_edicion %}Editar Usuario{% else %}Crear Usuario{% endif %}</h2>
 
 <div class="card shadow-sm">
     <div class="card-body">
@@ -16,7 +16,7 @@
 
             <div class="mt-3">
                 <button type="submit" class="btn btn-success">
-                    Guardar
+                    {% if modo_edicion %}Actualizar{% else %}Guardar{% endif %}
                 </button>
 
                 <a href="{% url 'lista_usuarios' %}"

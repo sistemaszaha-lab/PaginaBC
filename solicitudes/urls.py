@@ -13,6 +13,7 @@ urlpatterns = [
     path("cambiar-ejecutivo/<int:pk>/", views.cambiar_ejecutivo, name="cambiar_ejecutivo"),
     path("usuarios/", views.lista_usuarios, name="lista_usuarios"),
     path("usuarios/nuevo/", views.crear_usuario, name="crear_usuario"),
+    path("usuarios/editar/<int:pk>/", views.editar_usuario, name="editar_usuario"),
     path("usuarios/eliminar/<int:pk>/", views.eliminar_usuario, name="eliminar_usuario"),
     path("cotizaciones/", views.lista_cotizaciones, name="lista_cotizaciones"),
     path("cotizaciones/exportar-excel/", views.exportar_cotizaciones_excel, name="exportar_cotizaciones_excel"),

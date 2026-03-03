@@ -93,6 +93,63 @@ class CrearUsuarioForm(UserCreationForm):
         fields = ("username", "first_name", "email", "password1", "password2", "rol")
 
 
+class EditarUsuarioForm(forms.ModelForm):
+    ROLES = (
+        ("admin", "Administrador"),
+        ("usuario", "Ejecutivo"),
+    )
+
+    rol = forms.ChoiceField(
+        choices=ROLES,
+        label="Rol",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    password1 = forms.CharField(
+        required=False,
+        label="Nueva contraseña",
+        widget=forms.PasswordInput(attrs={"class": "form-control"}),
+    )
+    password2 = forms.CharField(
+        required=False,
+        label="Confirmar nueva contraseña",
+        widget=forms.PasswordInput(attrs={"class": "form-control"}),
+    )
+
+    class Meta:
+        model = User
+        fields = ("username", "first_name", "email", "rol")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["rol"].initial = "admin" if self.instance.is_superuser else "usuario"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password1 = cleaned_data.get("password1")
+        password2 = cleaned_data.get("password2")
+
+        if password1 or password2:
+            if password1 != password2:
+                self.add_error("password2", "Las contraseñas no coinciden.")
+            elif len(password1) < 8:
+                self.add_error("password1", "La contraseña debe tener al menos 8 caracteres.")
+        return cleaned_data
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        rol = self.cleaned_data["rol"]
+        user.is_superuser = rol == "admin"
+        user.is_staff = rol == "admin"
+
+        password1 = self.cleaned_data.get("password1")
+        if password1:
+            user.set_password(password1)
+
+        if commit:
+            user.save()
+        return user
+
+
 class CotizacionForm(forms.ModelForm):
     TIPOS_COTIZACION = (
         ("Importación aérea", "Importación aérea"),
