@@ -19,7 +19,7 @@
 
 <h2 class="mb-4">Solicitudes</h2>
 
-<div class="mb-3 d-flex gap-2">
+<div class="mb-3 d-flex gap-2 flex-wrap">
     <a href="{% url 'crear_solicitud' %}" class="btn btn-success">+ Nueva Solicitud</a>
     <a href="{% url 'exportar_solicitudes_excel' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}" class="btn btn-outline-success">
         Descargar Excel
@@ -35,6 +35,7 @@
     </select>
 </form>
 
+<div class="table-responsive">
 <table class="table table-bordered table-striped">
     <thead>
         <tr class="header-main">
@@ -176,4 +177,5 @@
         {% endfor %}
     </tbody>
 </table>
+</div>
 {% endblock %}
