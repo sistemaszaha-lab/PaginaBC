@@ -36,11 +36,39 @@
         @media (max-width: 991.98px) {
             .sidebar {
                 left: -250px;
+                width: min(82vw, 320px);
             }
 
             .header,
             .content {
                 margin-left: 0;
+            }
+
+            .header {
+                height: auto;
+                min-height: 60px;
+                padding: 10px 12px;
+                gap: 8px;
+                align-items: flex-start;
+            }
+
+            .header-left {
+                min-width: 0;
+            }
+
+            .header-left > div {
+                line-height: 1.2;
+                font-size: 0.95rem;
+            }
+
+            .content {
+                padding: 14px;
+            }
+
+            #themeToggle {
+                font-size: 0.8rem;
+                padding: 4px 8px;
+                white-space: nowrap;
             }
 
             body.sidebar-open .sidebar {
@@ -200,12 +228,13 @@
     {% block content %}{% endblock %}
 </div>
 
-<script>
+    <script>
     const toggleBtn = document.getElementById("themeToggle");
     const htmlElement = document.documentElement;
     const body = document.body;
     const sidebarToggle = document.getElementById("sidebarToggle");
     const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+    const sidebarLinks = document.querySelectorAll(".sidebar a");
 
     const savedTheme = localStorage.getItem("theme");
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -276,6 +305,16 @@
 
         body.classList.remove("sidebar-open");
         sidebarToggle.textContent = "▶";
+    });
+
+    sidebarLinks.forEach((link) => {
+        link.addEventListener("click", () => {
+            if (!mobileQuery.matches) {
+                return;
+            }
+            body.classList.remove("sidebar-open");
+            sidebarToggle.textContent = "▶";
+        });
     });
 </script>
 </body>
