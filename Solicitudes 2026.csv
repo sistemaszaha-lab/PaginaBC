@@ -1,0 +1,62 @@
+SG;Cliente;Fecha;;Tipo;Ejecutivo;Cotizaciones;Aérea;Maritima;Terrestre
+Indicar el consecutivo de la solicitud anterior;Indicar nombre de la empresa fisical / moral;Indicar la fecha en la que se recibe la solictud ;Indicar la fecha en la que se envia el presupuesto ;Seleccionar la opción del menu  que corresponde;Seleccionar a la persona  del menu  ;Tiempo de entrega;2 días;EXW 2 días FOB 1 día;1 día
+SG26-001;FAGRO;05-01-26;;Exportación maritima ;Antonio;;;Cumplido;
+SG26-002;AMERICAN;05-01-26;;Importación aérea;Antonio;;Cumplido;;
+SG26-003;ALDO;08-01-26;;Importación Terrestre;Antonio;;;;Cumplido
+SG26-004;NEWLINE;08-01-26;;Exportación Terrestre;Antonio;;;;Cumplido
+SG26-005;Inducontrol;08-01-26;;Importación maritima;Raul;;;;
+SG26-006;NEWLINE;12-01-26;;Exportación Terrestre;Antonio;;;;Cumplido
+SG26-007;ALDO;13-01-26;;Importación Terrestre;Antonio;;;;
+SG26-008;EDITH;13-02-16;;;;;;;
+SG26-009;Inducontrol;13-01-26;;Exportación aérea;Raul;;;;
+SG26-010;ALDO;15-01-26;;Importación Terrestre;Antonio;;;;
+SG26-011;Comfivisa;15-01-26;;Importación maritima;Raul;;;Cumplido;
+SG26-012;NEWLINE;16-01-26;;Importación maritima;Raul;;;;
+SG26-013;SEBALTEC;16-01-26;;Importación maritima;Raul;;;;
+SG26-014;AMERICAN;19-01-26;;Importación Terrestre;Antonio;;;;
+SG26-015;Inducontrol;19-01-26;;Transporte Internacional;Raul;;;;
+SG26-016;Alfredo Vilchez;19-01-26;;Importación maritima;Raul;;;;
+SG26-017;MENDOZA;20-01-26;;Importación aérea;Antonio;;;;
+SG26-018;AMERICAN;21-01-26;;Importación Terrestre;Antonio;;;;
+SG26-019;AMERICAN;22-01-26;;Importación Terrestre;Antonio;;;;
+SG26-020;LOWSITE;23-01-26;;Importación Terrestre;Antonio;;;;
+SG26-021;Inducontrol;23-01-26;;Importación aérea;Raul;;;;
+SG26-022;Acm ;23-01-26;;Importación aérea;Raul;;;;
+SG26-023;Acm ;24-01-26;;Importación aérea;Raul;;;;
+SG26-024;MENDOZA;25-01-26;;Importación aérea;Antonio;;;;
+SG26-025;NEWLINE;26-01-26;;Importación aérea;Antonio;;;;
+SG26-026;ALDO;27-01-26;;Importación Terrestre;Antonio;;;;
+SG26-027;AMERICAN;03-02-26;;Importación Terrestre;Antonio;;;;
+SG26-028;NEWLINE;04-02-26;;Exportación maritima ;Antonio;;;;
+SG26-029;ALDO;05-02-26;;Importación maritima;Antonio;;;;
+SG26-030;NEWLINE;05-02-26;;Transporte Internacional;Antonio;;;;
+SG26-031;NEWLINE;05-02-26;;Transporte Internacional;Antonio;;;;
+SG26-032;FAGRO;06-02-26;;Exportación maritima ;Antonio;;;;
+SG26-033;FAGRO;07-02-26;;Exportación Terrestre;Antonio;;;;
+SG26-034;AMERICAN;08-02-26;;Exportación Terrestre;Antonio;;;;
+SG26-035;NEWLINE;09-02-26;;Exportación Terrestre;Antonio;;;;
+SG26-036;NEWLINE;10-02-26;;Exportación Terrestre;Antonio;;;;
+SG26-037;NEWLINE;12-02-26;;Importación maritima;Antonio;;;;
+SG26-038;JDJ;13-02-26;;Importación aérea;Raul;;;;
+SG26-039;Leader;13-02-26;;Importación aérea;Raul;;;;
+SG26-040;AP Safety ;19-02-26;;Exportación Terrestre;Raul;;;;
+SG26-041;AMERICAN;20-02-26;;Exportación Terrestre;Raul;;;;
+SG26-042;Comfivisa;21-02-26;;Importación maritima;Raul;;;;
+SG26-043;NEWLINE;22-02-26;;Exportación maritima ;Antonio;;;;
+SG26-044;ORKANTEK;23-02-26;;Importación maritima;Antonio;;;;
+SG26-045;NEWLINE;25-02-26;;Exportación Terrestre;Antonio;;;;
+SG26-046;AP Safety ;06/03/2026;;Exportación aérea;Raul;;;;
+SG26-047;ACM ;06/03/2026;;Exportación Terrestre;Raul;;;;
+SG26-048;Leader;06/03/2026;;Transporte Internacional;Raul;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
+;;;;;;;;;
