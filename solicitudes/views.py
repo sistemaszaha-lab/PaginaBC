@@ -1,4 +1,5 @@
 ﻿import csv
+import re
 from datetime import date, datetime
 from io import BytesIO
 from unicodedata import normalize
@@ -111,6 +112,24 @@ def _leer_csv_subido(archivo):
     return filas
 
 
+def _fila_parece_encabezado(row, claves):
+    if not row:
+        return False
+    fila_norm = " ".join(_normalizar_texto(celda) for celda in row if str(celda).strip())
+    return any(clave in fila_norm for clave in claves)
+
+
+def _obtener_filas_datos(filas, claves_encabezado):
+    if not filas:
+        return []
+    return filas[1:] if _fila_parece_encabezado(filas[0], claves_encabezado) else filas
+
+
+def _extraer_consecutivo(texto):
+    match = re.search(r"(\d+)$", str(texto or "").strip())
+    return int(match.group(1)) if match else 0
+
+
 def _buscar_indice(headers, aliases, default=None):
     encabezados = [_normalizar_texto(h) for h in headers]
     aliases_norm = [_normalizar_texto(alias) for alias in aliases]
@@ -212,6 +231,10 @@ def _generar_referencia(fecha, servicio):
 
 def _importar_solicitudes_desde_filas(filas):
     headers = filas[0] if filas else []
+    data_rows = _obtener_filas_datos(
+        filas,
+        ["sg", "cliente", "fecha", "tipo", "ejecutivo", "solicitud"],
+    )
     sg_idx = _buscar_indice(headers, ["sg", "numero de solicitud", "solicitud"], default=0)
     cliente_idx = _buscar_indice(headers, ["cliente", "empresa"], default=1)
     fecha_idx = _buscar_indice(headers, ["fecha recepcion", "fecha inicio", "fecha"], default=2)
@@ -227,7 +250,7 @@ def _importar_solicitudes_desde_filas(filas):
     omitidos = 0
     anios_tocados = set()
 
-    for row in filas[1:]:
+    for row in data_rows:
         try:
             sg = _valor_columna(row, sg_idx)
             if not sg or "indicar" in _normalizar_texto(sg):
@@ -239,10 +262,8 @@ def _importar_solicitudes_desde_filas(filas):
                 _parse_anio(_valor_columna(row, anio_idx))
                 or _anio_desde_codigo(sg, "sg")
                 or (fecha_recepcion.year if fecha_recepcion else None)
+                or date.today().year
             )
-            if not anio:
-                omitidos += 1
-                continue
 
             aerea, estado_aereo = _parse_estado_transporte(_valor_columna(row, aerea_idx))
             maritima, estado_maritimo = _parse_estado_transporte(_valor_columna(row, maritima_idx))
@@ -276,6 +297,10 @@ def _importar_solicitudes_desde_filas(filas):
 
 def _importar_cotizaciones_desde_filas(filas):
     headers = filas[0] if filas else []
+    data_rows = _obtener_filas_datos(
+        filas,
+        ["cotizacion", "cotización", "consecutivo", "prospecto", "fecha", "tipo"],
+    )
     anio_idx = _buscar_indice(headers, ["anio", "año"])
     consecutivo_idx = _buscar_indice(headers, ["consecutivo", "cotizacion", "cotización"], default=0)
     cliente_idx = _buscar_indice(headers, ["cliente", "prospecto"], default=1)
@@ -293,7 +318,7 @@ def _importar_cotizaciones_desde_filas(filas):
     omitidos = 0
     anios_tocados = set()
 
-    for row in filas[1:]:
+    for row in data_rows:
         try:
             consecutivo = _valor_columna(row, consecutivo_idx)
             if not consecutivo:
@@ -305,10 +330,8 @@ def _importar_cotizaciones_desde_filas(filas):
                 _parse_anio(_valor_columna(row, anio_idx))
                 or _anio_desde_codigo(consecutivo, "c")
                 or (fecha_solicitud.year if fecha_solicitud else None)
+                or date.today().year
             )
-            if not anio:
-                omitidos += 1
-                continue
 
             _, creado = Cotizacion.objects.update_or_create(
                 anio=anio,
@@ -337,6 +360,10 @@ def _importar_cotizaciones_desde_filas(filas):
 
 def _importar_referencias_desde_filas(filas):
     headers = filas[0] if filas else []
+    data_rows = _obtener_filas_datos(
+        filas,
+        ["referencia", "ejecutivo", "cliente", "servicio", "agencia", "fecha"],
+    )
     referencia_idx = _buscar_indice(headers, ["referencia"], default=0)
     ejecutivo_idx = _buscar_indice(headers, ["ejecutivo", "usuario"], default=1)
     cliente_idx = _buscar_indice(headers, ["cliente"], default=2)
@@ -348,7 +375,7 @@ def _importar_referencias_desde_filas(filas):
     actualizados = 0
     omitidos = 0
 
-    for row in filas[1:]:
+    for row in data_rows:
         try:
             fecha = _parse_fecha(_valor_columna(row, fecha_idx))
             servicio = _normalizar_servicio(_valor_columna(row, servicio_idx))
@@ -426,11 +453,8 @@ def lista_solicitudes(request):
         if anio_param and anio_param.isdigit()
         else (anios[-1] if anios else None)
     )
-    solicitudes = (
-        Solicitud.objects.filter(anio=anio).order_by("-fecha_recepcion")
-        if anio
-        else Solicitud.objects.none()
-    )
+    solicitudes = list(Solicitud.objects.filter(anio=anio)) if anio else []
+    solicitudes.sort(key=lambda s: (_extraer_consecutivo(s.sg), s.sg))
 
     return render(
         request,
@@ -705,7 +729,8 @@ def lista_cotizaciones(request):
         if anio_param and anio_param.isdigit()
         else (anios[-1] if anios else None)
     )
-    cotizaciones = Cotizacion.objects.filter(anio=anio) if anio else Cotizacion.objects.none()
+    cotizaciones = list(Cotizacion.objects.filter(anio=anio)) if anio else []
+    cotizaciones.sort(key=lambda c: (_extraer_consecutivo(c.consecutivo), c.consecutivo))
 
     return render(
         request,
@@ -916,6 +941,9 @@ def eliminar_referencia(request, pk):
     referencia = get_object_or_404(Referencia, pk=pk)
     referencia.delete()
     return redirect("lista_referencias")
+
+
+
 
 
 
