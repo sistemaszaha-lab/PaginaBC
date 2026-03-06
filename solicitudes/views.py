@@ -115,8 +115,16 @@ def _leer_csv_subido(archivo):
 def _fila_parece_encabezado(row, claves):
     if not row:
         return False
-    fila_norm = " ".join(_normalizar_texto(celda) for celda in row if str(celda).strip())
-    return any(clave in fila_norm for clave in claves)
+    celdas = [_normalizar_texto(celda) for celda in row if str(celda).strip()]
+    if not celdas:
+        return False
+    coincidencias = 0
+    for celda in celdas:
+        for clave in claves:
+            if celda == clave or celda.startswith(clave):
+                coincidencias += 1
+                break
+    return coincidencias >= 2
 
 
 def _obtener_filas_datos(filas, claves_encabezado):
