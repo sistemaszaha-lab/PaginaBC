@@ -261,8 +261,9 @@ def _importar_solicitudes_desde_filas(filas):
     actualizados = 0
     omitidos = 0
     anios_tocados = set()
+    errores = []
 
-    for row in data_rows:
+    for row_num, row in enumerate(data_rows, start=1):
         try:
             sg = _normalizar_consecutivo(_valor_columna(row, sg_idx))
             if not sg or "indicar" in _normalizar_texto(sg):
@@ -302,9 +303,10 @@ def _importar_solicitudes_desde_filas(filas):
                 creados += 1
             else:
                 actualizados += 1
-        except Exception:
+        except Exception as exc:
             omitidos += 1
-    return creados, actualizados, omitidos, anios_tocados
+            errores.append(f"fila {row_num}: {exc}")
+    return creados, actualizados, omitidos, anios_tocados, errores
 
 
 def _importar_cotizaciones_desde_filas(filas):
@@ -492,11 +494,14 @@ def importar_solicitudes_csv(request):
 
     try:
         filas = _leer_csv_subido(archivo)
-        creados, actualizados, omitidos, anios_tocados = _importar_solicitudes_desde_filas(filas)
+        creados, actualizados, omitidos, anios_tocados, errores = _importar_solicitudes_desde_filas(filas)
         messages.success(
             request,
             f"Solicitudes importadas. Creadas: {creados}, actualizadas: {actualizados}, omitidas: {omitidos}.",
         )
+        if errores:
+            muestra = " | ".join(errores[:3])
+            messages.warning(request, f"Se omitieron filas con error. Ejemplos: {muestra}")
         if anios_tocados:
             return redirect(f"{reverse('lista_solicitudes')}?anio={max(anios_tocados)}")
     except Exception as exc:
