@@ -10,6 +10,7 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook
@@ -224,49 +225,53 @@ def _importar_solicitudes_desde_filas(filas):
     creados = 0
     actualizados = 0
     omitidos = 0
+    anios_tocados = set()
 
     for row in filas[1:]:
-        sg = _valor_columna(row, sg_idx)
-        if not sg or "indicar" in _normalizar_texto(sg):
+        try:
+            sg = _valor_columna(row, sg_idx)
+            if not sg or "indicar" in _normalizar_texto(sg):
+                omitidos += 1
+                continue
+
+            fecha_recepcion = _parse_fecha(_valor_columna(row, fecha_idx))
+            anio = (
+                _parse_anio(_valor_columna(row, anio_idx))
+                or _anio_desde_codigo(sg, "sg")
+                or (fecha_recepcion.year if fecha_recepcion else None)
+            )
+            if not anio:
+                omitidos += 1
+                continue
+
+            aerea, estado_aereo = _parse_estado_transporte(_valor_columna(row, aerea_idx))
+            maritima, estado_maritimo = _parse_estado_transporte(_valor_columna(row, maritima_idx))
+            terrestre, estado_terrestre = _parse_estado_transporte(_valor_columna(row, terrestre_idx))
+
+            _, creado = Solicitud.objects.update_or_create(
+                sg=sg,
+                anio=anio,
+                defaults={
+                    "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
+                    "fecha_recepcion": fecha_recepcion or date(anio, 1, 1),
+                    "tipo": _valor_columna(row, tipo_idx) or "Sin tipo",
+                    "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
+                    "aerea": aerea,
+                    "maritima": maritima,
+                    "terrestre": terrestre,
+                    "estado_aereo": estado_aereo,
+                    "estado_maritimo": estado_maritimo,
+                    "estado_terrestre": estado_terrestre,
+                },
+            )
+            anios_tocados.add(anio)
+            if creado:
+                creados += 1
+            else:
+                actualizados += 1
+        except Exception:
             omitidos += 1
-            continue
-
-        fecha_recepcion = _parse_fecha(_valor_columna(row, fecha_idx))
-        anio = (
-            _parse_anio(_valor_columna(row, anio_idx))
-            or _anio_desde_codigo(sg, "sg")
-            or (fecha_recepcion.year if fecha_recepcion else None)
-        )
-        if not anio:
-            omitidos += 1
-            continue
-
-        aerea, estado_aereo = _parse_estado_transporte(_valor_columna(row, aerea_idx))
-        maritima, estado_maritimo = _parse_estado_transporte(_valor_columna(row, maritima_idx))
-        terrestre, estado_terrestre = _parse_estado_transporte(_valor_columna(row, terrestre_idx))
-
-        _, creado = Solicitud.objects.update_or_create(
-            sg=sg,
-            anio=anio,
-            defaults={
-                "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
-                "fecha_recepcion": fecha_recepcion or date(anio, 1, 1),
-                "tipo": _valor_columna(row, tipo_idx) or "Sin tipo",
-                "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
-                "aerea": aerea,
-                "maritima": maritima,
-                "terrestre": terrestre,
-                "estado_aereo": estado_aereo,
-                "estado_maritimo": estado_maritimo,
-                "estado_terrestre": estado_terrestre,
-            },
-        )
-        if creado:
-            creados += 1
-        else:
-            actualizados += 1
-
-    return creados, actualizados, omitidos
+    return creados, actualizados, omitidos, anios_tocados
 
 
 def _importar_cotizaciones_desde_filas(filas):
@@ -286,44 +291,48 @@ def _importar_cotizaciones_desde_filas(filas):
     creados = 0
     actualizados = 0
     omitidos = 0
+    anios_tocados = set()
 
     for row in filas[1:]:
-        consecutivo = _valor_columna(row, consecutivo_idx)
-        if not consecutivo:
+        try:
+            consecutivo = _valor_columna(row, consecutivo_idx)
+            if not consecutivo:
+                omitidos += 1
+                continue
+
+            fecha_solicitud = _parse_fecha(_valor_columna(row, fecha_solicitud_idx))
+            anio = (
+                _parse_anio(_valor_columna(row, anio_idx))
+                or _anio_desde_codigo(consecutivo, "c")
+                or (fecha_solicitud.year if fecha_solicitud else None)
+            )
+            if not anio:
+                omitidos += 1
+                continue
+
+            _, creado = Cotizacion.objects.update_or_create(
+                anio=anio,
+                consecutivo=consecutivo,
+                defaults={
+                    "cliente": _valor_columna(row, cliente_idx) or "Sin prospecto",
+                    "fecha_solicitud": fecha_solicitud or date(anio, 1, 1),
+                    "fecha_envio": _parse_fecha(_valor_columna(row, fecha_envio_idx)),
+                    "tipo": _valor_columna(row, tipo_idx) or "Sin tipo",
+                    "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
+                    "tiempo_entrega": _valor_columna(row, tiempo_idx),
+                    "aerea": _valor_columna(row, aerea_idx),
+                    "maritima": _valor_columna(row, maritima_idx),
+                    "terrestre": _valor_columna(row, terrestre_idx),
+                },
+            )
+            anios_tocados.add(anio)
+            if creado:
+                creados += 1
+            else:
+                actualizados += 1
+        except Exception:
             omitidos += 1
-            continue
-
-        fecha_solicitud = _parse_fecha(_valor_columna(row, fecha_solicitud_idx))
-        anio = (
-            _parse_anio(_valor_columna(row, anio_idx))
-            or _anio_desde_codigo(consecutivo, "c")
-            or (fecha_solicitud.year if fecha_solicitud else None)
-        )
-        if not anio:
-            omitidos += 1
-            continue
-
-        _, creado = Cotizacion.objects.update_or_create(
-            anio=anio,
-            consecutivo=consecutivo,
-            defaults={
-                "cliente": _valor_columna(row, cliente_idx) or "Sin prospecto",
-                "fecha_solicitud": fecha_solicitud or date(anio, 1, 1),
-                "fecha_envio": _parse_fecha(_valor_columna(row, fecha_envio_idx)),
-                "tipo": _valor_columna(row, tipo_idx) or "Sin tipo",
-                "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
-                "tiempo_entrega": _valor_columna(row, tiempo_idx),
-                "aerea": _valor_columna(row, aerea_idx),
-                "maritima": _valor_columna(row, maritima_idx),
-                "terrestre": _valor_columna(row, terrestre_idx),
-            },
-        )
-        if creado:
-            creados += 1
-        else:
-            actualizados += 1
-
-    return creados, actualizados, omitidos
+    return creados, actualizados, omitidos, anios_tocados
 
 
 def _importar_referencias_desde_filas(filas):
@@ -340,30 +349,33 @@ def _importar_referencias_desde_filas(filas):
     omitidos = 0
 
     for row in filas[1:]:
-        fecha = _parse_fecha(_valor_columna(row, fecha_idx))
-        servicio = _normalizar_servicio(_valor_columna(row, servicio_idx))
-        referencia = _valor_columna(row, referencia_idx)
-        if not referencia and fecha:
-            referencia = _generar_referencia(fecha, servicio)
+        try:
+            fecha = _parse_fecha(_valor_columna(row, fecha_idx))
+            servicio = _normalizar_servicio(_valor_columna(row, servicio_idx))
+            referencia = _valor_columna(row, referencia_idx)
+            if not referencia and fecha:
+                referencia = _generar_referencia(fecha, servicio)
 
-        if not referencia or not fecha:
+            if not referencia or not fecha:
+                omitidos += 1
+                continue
+
+            _, creado = Referencia.objects.update_or_create(
+                referencia=referencia,
+                defaults={
+                    "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
+                    "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
+                    "servicio": servicio or "importacion",
+                    "agencia_aduanal": _valor_columna(row, agencia_idx) or "Sin agencia",
+                    "fecha": fecha,
+                },
+            )
+            if creado:
+                creados += 1
+            else:
+                actualizados += 1
+        except Exception:
             omitidos += 1
-            continue
-
-        _, creado = Referencia.objects.update_or_create(
-            referencia=referencia,
-            defaults={
-                "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
-                "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
-                "servicio": servicio or "importacion",
-                "agencia_aduanal": _valor_columna(row, agencia_idx) or "Sin agencia",
-                "fecha": fecha,
-            },
-        )
-        if creado:
-            creados += 1
-        else:
-            actualizados += 1
 
     return creados, actualizados, omitidos
 
@@ -443,11 +455,13 @@ def importar_solicitudes_csv(request):
 
     try:
         filas = _leer_csv_subido(archivo)
-        creados, actualizados, omitidos = _importar_solicitudes_desde_filas(filas)
+        creados, actualizados, omitidos, anios_tocados = _importar_solicitudes_desde_filas(filas)
         messages.success(
             request,
             f"Solicitudes importadas. Creadas: {creados}, actualizadas: {actualizados}, omitidas: {omitidos}.",
         )
+        if anios_tocados:
+            return redirect(f"{reverse('lista_solicitudes')}?anio={max(anios_tocados)}")
     except Exception as exc:
         messages.error(request, f"No se pudo importar solicitudes: {exc}")
     return redirect("lista_solicitudes")
@@ -715,11 +729,13 @@ def importar_cotizaciones_csv(request):
 
     try:
         filas = _leer_csv_subido(archivo)
-        creados, actualizados, omitidos = _importar_cotizaciones_desde_filas(filas)
+        creados, actualizados, omitidos, anios_tocados = _importar_cotizaciones_desde_filas(filas)
         messages.success(
             request,
             f"Cotizaciones importadas. Creadas: {creados}, actualizadas: {actualizados}, omitidas: {omitidos}.",
         )
+        if anios_tocados:
+            return redirect(f"{reverse('lista_cotizaciones')}?anio={max(anios_tocados)}")
     except Exception as exc:
         messages.error(request, f"No se pudo importar cotizaciones: {exc}")
     return redirect("lista_cotizaciones")
@@ -900,8 +916,6 @@ def eliminar_referencia(request, pk):
     referencia = get_object_or_404(Referencia, pk=pk)
     referencia.delete()
     return redirect("lista_referencias")
-
-
 
 
 
