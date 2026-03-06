@@ -227,6 +227,21 @@ def _normalizar_servicio(valor):
     return candidatos.get(limpio, limpio.replace(" ", "_"))
 
 
+def _servicio_formulario_desde_csv(valor):
+    texto = _normalizar_texto(valor)
+    if "export" in texto:
+        return "exportacion"
+    if "consult" in texto:
+        return "servicios_consultoria"
+    if "transporte" in texto or "servicio" in texto:
+        return "servicios_transporte"
+    if "comercializador" in texto or "comercializadora" in texto:
+        if "export" in texto:
+            return "comercializador_exportacion"
+        return "comercializador_importacion"
+    return "importacion"
+
+
 def _generar_referencia(fecha, servicio):
     codigo = ReferenciaForm.CODIGOS_OPERACION.get(servicio)
     if not codigo:
@@ -391,24 +406,24 @@ def _importar_referencias_desde_filas(filas):
     for row in data_rows:
         try:
             fecha = _parse_fecha(_valor_columna(row, fecha_idx)) or date.today()
-            servicio = _normalizar_servicio(_valor_columna(row, servicio_idx))
-            if servicio not in ReferenciaForm.CODIGOS_OPERACION:
-                servicio = "importacion"
+            servicio = _servicio_formulario_desde_csv(_valor_columna(row, servicio_idx))
+            ejecutivo = _resolver_usuario(_valor_columna(row, ejecutivo_idx))
 
-            referencia = _generar_referencia(fecha, servicio)
-            if not referencia:
-                omitidos += 1
-                continue
-
-            Referencia.objects.create(
-                referencia=referencia,
-                ejecutivo=_resolver_usuario(_valor_columna(row, ejecutivo_idx)),
-                cliente=_valor_columna(row, cliente_idx) or "Sin cliente",
-                servicio=servicio,
-                agencia_aduanal=_valor_columna(row, agencia_idx) or "Sin agencia",
-                fecha=fecha,
+            # Reutiliza exactamente la lógica del formulario para generar referencia consecutiva.
+            form = ReferenciaForm(
+                data={
+                    "ejecutivo": ejecutivo.id if ejecutivo else "",
+                    "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
+                    "servicio": servicio,
+                    "agencia_aduanal": _valor_columna(row, agencia_idx) or "Sin agencia",
+                    "fecha": fecha.strftime("%Y-%m-%d"),
+                }
             )
-            creados += 1
+            if form.is_valid():
+                form.save()
+                creados += 1
+            else:
+                omitidos += 1
         except Exception:
             omitidos += 1
 
