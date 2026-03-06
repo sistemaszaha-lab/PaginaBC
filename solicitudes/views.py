@@ -481,8 +481,9 @@ def lista_solicitudes(request):
 
 
 @login_required
-@require_POST
 def importar_solicitudes_csv(request):
+    if request.method != "POST":
+        return redirect("lista_solicitudes")
     _requiere_admin(request.user)
     archivo = request.FILES.get("archivo_csv")
     if not archivo:
@@ -756,8 +757,9 @@ def lista_cotizaciones(request):
 
 
 @login_required
-@require_POST
 def importar_cotizaciones_csv(request):
+    if request.method != "POST":
+        return redirect("lista_cotizaciones")
     _requiere_admin(request.user)
     archivo = request.FILES.get("archivo_csv")
     if not archivo:
@@ -870,8 +872,9 @@ def lista_referencias(request):
 
 
 @login_required
-@require_POST
 def importar_referencias_csv(request):
+    if request.method != "POST":
+        return redirect("lista_referencias")
     _requiere_admin(request.user)
     archivo = request.FILES.get("archivo_csv")
     if not archivo:
