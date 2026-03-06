@@ -1,5 +1,9 @@
-﻿from datetime import datetime
+﻿import csv
+from datetime import date, datetime
 from io import BytesIO
+from unicodedata import normalize
+
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
@@ -75,6 +79,293 @@ def _respuesta_excel(nombre_archivo, headers, rows):
     )
     response["Content-Disposition"] = f'attachment; filename="{nombre_archivo}_{timestamp}.xlsx"'
     return response
+def _normalizar_texto(valor):
+    texto = normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode("ascii")
+    return " ".join(texto.strip().lower().split())
+
+
+def _detectar_delimitador(contenido):
+    muestra = contenido[:4096]
+    try:
+        return csv.Sniffer().sniff(muestra, delimiters=",;|	").delimiter
+    except csv.Error:
+        return ";"
+
+
+def _leer_csv_subido(archivo):
+    bruto = archivo.read()
+    for encoding in ("utf-8-sig", "latin-1"):
+        try:
+            contenido = bruto.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            contenido = None
+    if contenido is None:
+        raise ValueError("No se pudo leer el archivo CSV con codificaciones soportadas.")
+
+    delimitador = _detectar_delimitador(contenido)
+    filas = list(csv.reader(contenido.splitlines(), delimiter=delimitador))
+    if not filas:
+        raise ValueError("El CSV está vacío.")
+    return filas
+
+
+def _buscar_indice(headers, aliases, default=None):
+    encabezados = [_normalizar_texto(h) for h in headers]
+    aliases_norm = [_normalizar_texto(alias) for alias in aliases]
+    for idx, encabezado in enumerate(encabezados):
+        if any(alias in encabezado for alias in aliases_norm):
+            return idx
+    return default
+
+
+def _valor_columna(row, index):
+    if index is None:
+        return ""
+    return row[index].strip() if index < len(row) else ""
+
+
+def _parse_fecha(valor):
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    for formato in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d-%m-%y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(texto, formato).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_anio(valor):
+    texto = str(valor or "").strip()
+    if texto.isdigit() and len(texto) == 4:
+        return int(texto)
+    return None
+
+
+def _parse_estado_transporte(valor):
+    texto = _normalizar_texto(valor)
+    if not texto:
+        return False, None
+    estados = {
+        "pendiente": "Pendiente",
+        "cumplido": "Cumplido",
+        "no cumplido": "No cumplido",
+        "fuera de plazo": "Fuera de plazo",
+    }
+    return True, estados.get(texto, "Pendiente")
+
+
+def _resolver_usuario(valor):
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    return (
+        User.objects.filter(username__iexact=texto).first()
+        or User.objects.filter(email__iexact=texto).first()
+        or User.objects.filter(first_name__iexact=texto).first()
+    )
+
+
+def _anio_desde_codigo(codigo, prefijo):
+    texto = _normalizar_texto(codigo).replace(" ", "")
+    if not texto.startswith(prefijo):
+        return None
+    sufijo = texto[len(prefijo): len(prefijo) + 2]
+    if sufijo.isdigit():
+        return 2000 + int(sufijo)
+    return None
+
+
+def _normalizar_servicio(valor):
+    limpio = _normalizar_texto(valor).replace("-", " ").replace("_", " ")
+    limpio = " ".join(limpio.split())
+    candidatos = {
+        "importacion": "importacion",
+        "exportacion": "exportacion",
+        "servicios transporte": "servicios_transporte",
+        "servicios y transporte": "servicios_transporte",
+        "servicios consultoria": "servicios_consultoria",
+        "comercializador importacion": "comercializador_importacion",
+        "comercializadora importacion": "comercializador_importacion",
+        "comercializador exportacion": "comercializador_exportacion",
+        "comercializadora exportacion": "comercializador_exportacion",
+    }
+    return candidatos.get(limpio, limpio.replace(" ", "_"))
+
+
+def _generar_referencia(fecha, servicio):
+    codigo = ReferenciaForm.CODIGOS_OPERACION.get(servicio)
+    if not codigo:
+        return None
+    prefijo = f"{ReferenciaForm.PREFIJO_EMPRESA}{fecha.strftime('%y')}{codigo}"
+    referencias = Referencia.objects.filter(referencia__startswith=prefijo).values_list("referencia", flat=True)
+    ultimo = 0
+    for referencia in referencias:
+        sufijo = referencia[len(prefijo):]
+        if sufijo.isdigit():
+            ultimo = max(ultimo, int(sufijo))
+    return f"{prefijo}{ultimo + 1:03d}"
+
+
+def _importar_solicitudes_desde_filas(filas):
+    headers = filas[0] if filas else []
+    sg_idx = _buscar_indice(headers, ["sg", "numero de solicitud", "solicitud"], default=0)
+    cliente_idx = _buscar_indice(headers, ["cliente", "empresa"], default=1)
+    fecha_idx = _buscar_indice(headers, ["fecha recepcion", "fecha inicio", "fecha"], default=2)
+    anio_idx = _buscar_indice(headers, ["anio", "año"])
+    tipo_idx = _buscar_indice(headers, ["tipo"], default=4)
+    ejecutivo_idx = _buscar_indice(headers, ["ejecutivo", "usuario"], default=5)
+    aerea_idx = _buscar_indice(headers, ["aerea"], default=7)
+    maritima_idx = _buscar_indice(headers, ["maritima"], default=8)
+    terrestre_idx = _buscar_indice(headers, ["terrestre"], default=9)
+
+    creados = 0
+    actualizados = 0
+    omitidos = 0
+
+    for row in filas[1:]:
+        sg = _valor_columna(row, sg_idx)
+        if not sg or "indicar" in _normalizar_texto(sg):
+            omitidos += 1
+            continue
+
+        fecha_recepcion = _parse_fecha(_valor_columna(row, fecha_idx))
+        anio = (
+            _parse_anio(_valor_columna(row, anio_idx))
+            or _anio_desde_codigo(sg, "sg")
+            or (fecha_recepcion.year if fecha_recepcion else None)
+        )
+        if not anio:
+            omitidos += 1
+            continue
+
+        aerea, estado_aereo = _parse_estado_transporte(_valor_columna(row, aerea_idx))
+        maritima, estado_maritimo = _parse_estado_transporte(_valor_columna(row, maritima_idx))
+        terrestre, estado_terrestre = _parse_estado_transporte(_valor_columna(row, terrestre_idx))
+
+        _, creado = Solicitud.objects.update_or_create(
+            sg=sg,
+            anio=anio,
+            defaults={
+                "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
+                "fecha_recepcion": fecha_recepcion or date(anio, 1, 1),
+                "tipo": _valor_columna(row, tipo_idx) or "Sin tipo",
+                "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
+                "aerea": aerea,
+                "maritima": maritima,
+                "terrestre": terrestre,
+                "estado_aereo": estado_aereo,
+                "estado_maritimo": estado_maritimo,
+                "estado_terrestre": estado_terrestre,
+            },
+        )
+        if creado:
+            creados += 1
+        else:
+            actualizados += 1
+
+    return creados, actualizados, omitidos
+
+
+def _importar_cotizaciones_desde_filas(filas):
+    headers = filas[0] if filas else []
+    anio_idx = _buscar_indice(headers, ["anio", "año"])
+    consecutivo_idx = _buscar_indice(headers, ["consecutivo", "cotizacion", "cotización"], default=0)
+    cliente_idx = _buscar_indice(headers, ["cliente", "prospecto"], default=1)
+    fecha_solicitud_idx = _buscar_indice(headers, ["fecha solicitud"], default=2)
+    fecha_envio_idx = _buscar_indice(headers, ["fecha envio", "fecha envío"], default=3)
+    tipo_idx = _buscar_indice(headers, ["tipo"], default=4)
+    ejecutivo_idx = _buscar_indice(headers, ["ejecutivo", "usuario"], default=5)
+    tiempo_idx = _buscar_indice(headers, ["tiempo entrega"], default=6)
+    aerea_idx = _buscar_indice(headers, ["aerea"], default=7)
+    maritima_idx = _buscar_indice(headers, ["maritima"], default=8)
+    terrestre_idx = _buscar_indice(headers, ["terrestre"], default=9)
+
+    creados = 0
+    actualizados = 0
+    omitidos = 0
+
+    for row in filas[1:]:
+        consecutivo = _valor_columna(row, consecutivo_idx)
+        if not consecutivo:
+            omitidos += 1
+            continue
+
+        fecha_solicitud = _parse_fecha(_valor_columna(row, fecha_solicitud_idx))
+        anio = (
+            _parse_anio(_valor_columna(row, anio_idx))
+            or _anio_desde_codigo(consecutivo, "c")
+            or (fecha_solicitud.year if fecha_solicitud else None)
+        )
+        if not anio:
+            omitidos += 1
+            continue
+
+        _, creado = Cotizacion.objects.update_or_create(
+            anio=anio,
+            consecutivo=consecutivo,
+            defaults={
+                "cliente": _valor_columna(row, cliente_idx) or "Sin prospecto",
+                "fecha_solicitud": fecha_solicitud or date(anio, 1, 1),
+                "fecha_envio": _parse_fecha(_valor_columna(row, fecha_envio_idx)),
+                "tipo": _valor_columna(row, tipo_idx) or "Sin tipo",
+                "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
+                "tiempo_entrega": _valor_columna(row, tiempo_idx),
+                "aerea": _valor_columna(row, aerea_idx),
+                "maritima": _valor_columna(row, maritima_idx),
+                "terrestre": _valor_columna(row, terrestre_idx),
+            },
+        )
+        if creado:
+            creados += 1
+        else:
+            actualizados += 1
+
+    return creados, actualizados, omitidos
+
+
+def _importar_referencias_desde_filas(filas):
+    headers = filas[0] if filas else []
+    referencia_idx = _buscar_indice(headers, ["referencia"], default=0)
+    ejecutivo_idx = _buscar_indice(headers, ["ejecutivo", "usuario"], default=1)
+    cliente_idx = _buscar_indice(headers, ["cliente"], default=2)
+    servicio_idx = _buscar_indice(headers, ["servicio", "tipo operacion", "tipo operación"], default=3)
+    agencia_idx = _buscar_indice(headers, ["agencia aduanal", "agencia"], default=4)
+    fecha_idx = _buscar_indice(headers, ["fecha"], default=5)
+
+    creados = 0
+    actualizados = 0
+    omitidos = 0
+
+    for row in filas[1:]:
+        fecha = _parse_fecha(_valor_columna(row, fecha_idx))
+        servicio = _normalizar_servicio(_valor_columna(row, servicio_idx))
+        referencia = _valor_columna(row, referencia_idx)
+        if not referencia and fecha:
+            referencia = _generar_referencia(fecha, servicio)
+
+        if not referencia or not fecha:
+            omitidos += 1
+            continue
+
+        _, creado = Referencia.objects.update_or_create(
+            referencia=referencia,
+            defaults={
+                "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
+                "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
+                "servicio": servicio or "importacion",
+                "agencia_aduanal": _valor_columna(row, agencia_idx) or "Sin agencia",
+                "fecha": fecha,
+            },
+        )
+        if creado:
+            creados += 1
+        else:
+            actualizados += 1
+
+    return creados, actualizados, omitidos
 
 
 @login_required
@@ -139,6 +430,27 @@ def lista_solicitudes(request):
             "usuarios": User.objects.all().order_by("username"),
         },
     )
+
+
+@login_required
+@require_POST
+def importar_solicitudes_csv(request):
+    _requiere_admin(request.user)
+    archivo = request.FILES.get("archivo_csv")
+    if not archivo:
+        messages.error(request, "Selecciona un archivo CSV para importar solicitudes.")
+        return redirect("lista_solicitudes")
+
+    try:
+        filas = _leer_csv_subido(archivo)
+        creados, actualizados, omitidos = _importar_solicitudes_desde_filas(filas)
+        messages.success(
+            request,
+            f"Solicitudes importadas. Creadas: {creados}, actualizadas: {actualizados}, omitidas: {omitidos}.",
+        )
+    except Exception as exc:
+        messages.error(request, f"No se pudo importar solicitudes: {exc}")
+    return redirect("lista_solicitudes")
 
 
 @login_required
@@ -393,6 +705,27 @@ def lista_cotizaciones(request):
 
 
 @login_required
+@require_POST
+def importar_cotizaciones_csv(request):
+    _requiere_admin(request.user)
+    archivo = request.FILES.get("archivo_csv")
+    if not archivo:
+        messages.error(request, "Selecciona un archivo CSV para importar cotizaciones.")
+        return redirect("lista_cotizaciones")
+
+    try:
+        filas = _leer_csv_subido(archivo)
+        creados, actualizados, omitidos = _importar_cotizaciones_desde_filas(filas)
+        messages.success(
+            request,
+            f"Cotizaciones importadas. Creadas: {creados}, actualizadas: {actualizados}, omitidas: {omitidos}.",
+        )
+    except Exception as exc:
+        messages.error(request, f"No se pudo importar cotizaciones: {exc}")
+    return redirect("lista_cotizaciones")
+
+
+@login_required
 def exportar_cotizaciones_excel(request):
     anios = list(
         Cotizacion.objects.values_list("anio", flat=True).distinct().order_by("anio")
@@ -484,6 +817,27 @@ def lista_referencias(request):
 
 
 @login_required
+@require_POST
+def importar_referencias_csv(request):
+    _requiere_admin(request.user)
+    archivo = request.FILES.get("archivo_csv")
+    if not archivo:
+        messages.error(request, "Selecciona un archivo CSV para importar referencias.")
+        return redirect("lista_referencias")
+
+    try:
+        filas = _leer_csv_subido(archivo)
+        creados, actualizados, omitidos = _importar_referencias_desde_filas(filas)
+        messages.success(
+            request,
+            f"Referencias importadas. Creadas: {creados}, actualizadas: {actualizados}, omitidas: {omitidos}.",
+        )
+    except Exception as exc:
+        messages.error(request, f"No se pudo importar referencias: {exc}")
+    return redirect("lista_referencias")
+
+
+@login_required
 def exportar_referencias_excel(request):
     referencias = Referencia.objects.select_related("ejecutivo").order_by("-fecha")
     headers = [
@@ -546,3 +900,9 @@ def eliminar_referencia(request, pk):
     referencia = get_object_or_404(Referencia, pk=pk)
     referencia.delete()
     return redirect("lista_referencias")
+
+
+
+
+
+

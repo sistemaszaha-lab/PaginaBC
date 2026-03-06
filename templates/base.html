@@ -210,7 +210,7 @@
 
 <div class="header">
     <div class="header-left">
-        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Mostrar u ocultar panel lateral">◀</button>
+        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Mostrar u ocultar panel lateral">?</button>
         <div>
         Bienvenido, <strong>{{ request.user.first_name|default:request.user.username }}</strong>
         {% if request.user.is_superuser %}
@@ -225,6 +225,16 @@
 </div>
 
 <div class="content">
+    {% if messages %}
+        <div class="mb-3">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
     {% block content %}{% endblock %}
 </div>
 
@@ -267,17 +277,17 @@
         if (mobileQuery.matches) {
             body.classList.remove("sidebar-collapsed");
             body.classList.remove("sidebar-open");
-            sidebarToggle.textContent = "▶";
+            sidebarToggle.textContent = "?";
             return;
         }
 
         body.classList.remove("sidebar-open");
         if (savedSidebarState === "true") {
             body.classList.add("sidebar-collapsed");
-            sidebarToggle.textContent = "▶";
+            sidebarToggle.textContent = "?";
         } else {
             body.classList.remove("sidebar-collapsed");
-            sidebarToggle.textContent = "◀";
+            sidebarToggle.textContent = "?";
         }
     }
 
@@ -288,13 +298,13 @@
         if (mobileQuery.matches) {
             body.classList.toggle("sidebar-open");
             const open = body.classList.contains("sidebar-open");
-            sidebarToggle.textContent = open ? "◀" : "▶";
+            sidebarToggle.textContent = open ? "?" : "?";
             return;
         }
 
         body.classList.toggle("sidebar-collapsed");
         const collapsed = body.classList.contains("sidebar-collapsed");
-        sidebarToggle.textContent = collapsed ? "▶" : "◀";
+        sidebarToggle.textContent = collapsed ? "?" : "?";
         localStorage.setItem("sidebarCollapsed", collapsed ? "true" : "false");
     });
 
@@ -304,7 +314,7 @@
         }
 
         body.classList.remove("sidebar-open");
-        sidebarToggle.textContent = "▶";
+        sidebarToggle.textContent = "?";
     });
 
     sidebarLinks.forEach((link) => {
@@ -313,9 +323,11 @@
                 return;
             }
             body.classList.remove("sidebar-open");
-            sidebarToggle.textContent = "▶";
+            sidebarToggle.textContent = "?";
         });
     });
 </script>
 </body>
 </html>
+
+

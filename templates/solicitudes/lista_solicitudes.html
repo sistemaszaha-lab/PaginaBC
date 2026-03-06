@@ -19,11 +19,18 @@
 
 <h2 class="mb-4">Solicitudes</h2>
 
-<div class="mb-3 d-flex gap-2 flex-wrap">
+<div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
     <a href="{% url 'crear_solicitud' %}" class="btn btn-success">+ Nueva Solicitud</a>
     <a href="{% url 'exportar_solicitudes_excel' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}" class="btn btn-outline-success">
         Descargar Excel
     </a>
+    {% if request.user.is_superuser %}
+    <form method="post" action="{% url 'importar_solicitudes_csv' %}" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">
+        {% csrf_token %}
+        <input type="file" name="archivo_csv" accept=".csv,text/csv" class="form-control" style="max-width: 280px;" required>
+        <button type="submit" class="btn btn-outline-primary">Importar CSV</button>
+    </form>
+    {% endif %}
 </div>
 
 <form method="get" class="mb-3">
@@ -179,3 +186,5 @@
 </table>
 </div>
 {% endblock %}
+
+
