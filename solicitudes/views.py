@@ -953,10 +953,3 @@ def eliminar_referencia(request, pk):
     referencia = get_object_or_404(Referencia, pk=pk)
     referencia.delete()
     return redirect("lista_referencias")
-
-
-
-
-
-
-
