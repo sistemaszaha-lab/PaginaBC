@@ -378,7 +378,6 @@ def _importar_referencias_desde_filas(filas):
         filas,
         ["referencia", "ejecutivo", "cliente", "servicio", "agencia", "fecha"],
     )
-    referencia_idx = _buscar_indice(headers, ["referencia"], default=0)
     ejecutivo_idx = _buscar_indice(headers, ["ejecutivo", "usuario"], default=1)
     cliente_idx = _buscar_indice(headers, ["cliente"], default=2)
     servicio_idx = _buscar_indice(headers, ["servicio", "tipo operacion", "tipo operación"], default=3)
@@ -391,30 +390,25 @@ def _importar_referencias_desde_filas(filas):
 
     for row in data_rows:
         try:
-            fecha = _parse_fecha(_valor_columna(row, fecha_idx))
+            fecha = _parse_fecha(_valor_columna(row, fecha_idx)) or date.today()
             servicio = _normalizar_servicio(_valor_columna(row, servicio_idx))
-            referencia = _valor_columna(row, referencia_idx)
-            if not referencia and fecha:
-                referencia = _generar_referencia(fecha, servicio)
+            if servicio not in ReferenciaForm.CODIGOS_OPERACION:
+                servicio = "importacion"
 
-            if not referencia or not fecha:
+            referencia = _generar_referencia(fecha, servicio)
+            if not referencia:
                 omitidos += 1
                 continue
 
-            _, creado = Referencia.objects.update_or_create(
+            Referencia.objects.create(
                 referencia=referencia,
-                defaults={
-                    "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
-                    "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
-                    "servicio": servicio or "importacion",
-                    "agencia_aduanal": _valor_columna(row, agencia_idx) or "Sin agencia",
-                    "fecha": fecha,
-                },
+                ejecutivo=_resolver_usuario(_valor_columna(row, ejecutivo_idx)),
+                cliente=_valor_columna(row, cliente_idx) or "Sin cliente",
+                servicio=servicio,
+                agencia_aduanal=_valor_columna(row, agencia_idx) or "Sin agencia",
+                fecha=fecha,
             )
-            if creado:
-                creados += 1
-            else:
-                actualizados += 1
+            creados += 1
         except Exception:
             omitidos += 1
 
@@ -872,7 +866,8 @@ def eliminar_cotizacion(request, pk):
 
 @login_required
 def lista_referencias(request):
-    referencias = Referencia.objects.all().order_by("-fecha")
+    referencias = list(Referencia.objects.all())
+    referencias.sort(key=lambda r: (r.referencia[:6], _extraer_consecutivo(r.referencia), r.referencia))
     return render(request, "referencias/lista_referencias.html", {"referencias": referencias})
 
 
