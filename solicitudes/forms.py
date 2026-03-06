@@ -1,5 +1,5 @@
 ﻿from datetime import date
-
+import re
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
@@ -67,9 +67,9 @@ class SolicitudForm(forms.ModelForm):
         consecutivos = Solicitud.objects.filter(sg__startswith=prefijo).values_list("sg", flat=True)
         ultimo = 0
         for sg in consecutivos:
-            sufijo = sg[len(prefijo):]
-            if sufijo.isdigit():
-                ultimo = max(ultimo, int(sufijo))
+            match = re.search(r"(\d+)$", str(sg))
+            if match:
+                ultimo = max(ultimo, int(match.group(1)))
         return f"{prefijo}{ultimo + 1:03d}"
 
 
@@ -212,9 +212,9 @@ class CotizacionForm(forms.ModelForm):
         )
         ultimo = 0
         for consecutivo in consecutivos:
-            sufijo = consecutivo[len(prefijo):]
-            if sufijo.isdigit():
-                ultimo = max(ultimo, int(sufijo))
+            match = re.search(r"(\d+)$", str(consecutivo))
+            if match:
+                ultimo = max(ultimo, int(match.group(1)))
         return f"{prefijo}{ultimo + 1:03d}"
 
 
@@ -299,3 +299,5 @@ class ReferenciaForm(forms.ModelForm):
             if sufijo.isdigit():
                 ultimo = max(ultimo, int(sufijo))
         return ultimo + 1
+
+

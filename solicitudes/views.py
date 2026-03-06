@@ -130,6 +130,10 @@ def _extraer_consecutivo(texto):
     return int(match.group(1)) if match else 0
 
 
+def _normalizar_consecutivo(texto):
+    return re.sub(r"[^A-Za-z0-9]", "", str(texto or "").upper())
+
+
 def _buscar_indice(headers, aliases, default=None):
     encabezados = [_normalizar_texto(h) for h in headers]
     aliases_norm = [_normalizar_texto(alias) for alias in aliases]
@@ -252,7 +256,7 @@ def _importar_solicitudes_desde_filas(filas):
 
     for row in data_rows:
         try:
-            sg = _valor_columna(row, sg_idx)
+            sg = _normalizar_consecutivo(_valor_columna(row, sg_idx))
             if not sg or "indicar" in _normalizar_texto(sg):
                 omitidos += 1
                 continue
@@ -320,7 +324,7 @@ def _importar_cotizaciones_desde_filas(filas):
 
     for row in data_rows:
         try:
-            consecutivo = _valor_columna(row, consecutivo_idx)
+            consecutivo = _normalizar_consecutivo(_valor_columna(row, consecutivo_idx))
             if not consecutivo:
                 omitidos += 1
                 continue
