@@ -196,6 +196,27 @@ class SeguridadPermisosTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Referencia.objects.filter(pk=referencia.pk).exists())
 
+    def test_eliminar_todas_referencias_solo_admin(self):
+        Referencia.objects.create(
+            referencia="REF-002",
+            ejecutivo=self.ejecutivo,
+            cliente="Cliente Ref 2",
+            servicio="Servicio Ref",
+            agencia_aduanal="Agencia Ref",
+            fecha=date(2026, 1, 15),
+        )
+        self.assertEqual(Referencia.objects.count(), 2)
+
+        self.client.login(username="ejec", password="ejec123")
+        response = self.client.post(reverse("eliminar_todas_referencias"))
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Referencia.objects.count(), 2)
+
+        self.client.login(username="admin", password="admin123")
+        response = self.client.post(reverse("eliminar_todas_referencias"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Referencia.objects.count(), 0)
+
     def test_descarga_excel_requiere_login_y_devuelve_archivo(self):
         export_urls = [
             reverse("exportar_solicitudes_excel") + "?anio=2026",

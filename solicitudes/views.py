@@ -971,3 +971,12 @@ def eliminar_referencia(request, pk):
     referencia = get_object_or_404(Referencia, pk=pk)
     referencia.delete()
     return redirect("lista_referencias")
+
+
+@login_required
+@require_POST
+def eliminar_todas_referencias(request):
+    _requiere_admin(request.user)
+    total_eliminadas, _ = Referencia.objects.all().delete()
+    messages.success(request, f"Se eliminaron {total_eliminadas} referencias.")
+    return redirect("lista_referencias")
