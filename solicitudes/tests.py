@@ -280,6 +280,51 @@ class CotizacionFormTests(TestCase):
         cotizacion_2 = form_2.save()
         self.assertEqual(cotizacion_2.consecutivo, "C26002")
 
+    def test_ignora_consecutivos_invalidos_al_generar_nuevo(self):
+        Cotizacion.objects.create(
+            anio=2026,
+            consecutivo="C26262014",
+            cliente="Dato invalido",
+            fecha_solicitud=date(2026, 1, 10),
+            tipo="Importación aérea",
+            ejecutivo=self.ejecutivo,
+            tiempo_entrega="",
+            aerea="",
+            maritima="",
+            terrestre="",
+        )
+        Cotizacion.objects.create(
+            anio=2026,
+            consecutivo="C26014",
+            cliente="Dato valido",
+            fecha_solicitud=date(2026, 1, 11),
+            tipo="Importación aérea",
+            ejecutivo=self.ejecutivo,
+            tiempo_entrega="",
+            aerea="",
+            maritima="",
+            terrestre="",
+        )
+
+        form = CotizacionForm(
+            data={
+                "anio": 2026,
+                "consecutivo": "",
+                "cliente": "Prospecto nuevo",
+                "fecha_solicitud": "2026-02-03",
+                "fecha_envio": "",
+                "tipo": "Exportación aérea",
+                "ejecutivo": self.ejecutivo.pk,
+                "tiempo_entrega": "",
+                "aerea": "",
+                "maritima": "",
+                "terrestre": "",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        cotizacion = form.save()
+        self.assertEqual(cotizacion.consecutivo, "C26015")
+
     def test_tipo_debe_ser_una_opcion_valida(self):
         form = CotizacionForm(
             data={

@@ -211,8 +211,9 @@ class CotizacionForm(forms.ModelForm):
             flat=True,
         )
         ultimo = 0
+        patron = re.compile(rf"^{re.escape(prefijo)}(\d{{3}})$")
         for consecutivo in consecutivos:
-            match = re.search(r"(\d+)$", str(consecutivo))
+            match = patron.match(str(consecutivo).strip().upper())
             if match:
                 ultimo = max(ultimo, int(match.group(1)))
         return f"{prefijo}{ultimo + 1:03d}"
