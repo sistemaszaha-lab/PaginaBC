@@ -22,11 +22,13 @@ urlpatterns = [
     path("cotizaciones/nueva/", views.crear_cotizacion, name="crear_cotizacion"),
     path("cotizaciones/editar/<int:pk>/", views.editar_cotizacion, name="editar_cotizacion"),
     path("cotizaciones/eliminar/<int:pk>/", views.eliminar_cotizacion, name="eliminar_cotizacion"),
+    path("cotizaciones/cambiar-ejecutivo/<int:pk>/", views.cambiar_ejecutivo_cotizacion, name="cambiar_ejecutivo_cotizacion"),
     path("referencias/", views.lista_referencias, name="lista_referencias"),
     path("referencias/importar-csv/", views.importar_referencias_csv, name="importar_referencias_csv"),
     path("referencias/exportar-excel/", views.exportar_referencias_excel, name="exportar_referencias_excel"),
     path("referencias/nueva/", views.crear_referencia, name="crear_referencia"),
     path("referencias/editar/<int:pk>/", views.editar_referencia, name="editar_referencia"),
     path("referencias/eliminar/<int:pk>/", views.eliminar_referencia, name="eliminar_referencia"),
+    path("referencias/cambiar-ejecutivo/<int:pk>/", views.cambiar_ejecutivo_referencia, name="cambiar_ejecutivo_referencia"),
 ]
 

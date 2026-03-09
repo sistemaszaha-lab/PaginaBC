@@ -766,6 +766,7 @@ def lista_cotizaciones(request):
             "cotizaciones": cotizaciones,
             "anios": anios,
             "anio_seleccionado": anio,
+            "usuarios": User.objects.all().order_by("username"),
         },
     )
 
@@ -880,10 +881,32 @@ def eliminar_cotizacion(request, pk):
 
 
 @login_required
+@require_POST
+def cambiar_ejecutivo_cotizacion(request, pk):
+    _requiere_admin(request.user)
+    cotizacion = get_object_or_404(Cotizacion, pk=pk)
+    user_id = request.POST.get("ejecutivo")
+    cotizacion.ejecutivo = get_object_or_404(User, id=user_id) if user_id else None
+    cotizacion.save()
+
+    anio = request.POST.get("anio")
+    if anio and anio.isdigit():
+        return redirect(f"{reverse('lista_cotizaciones')}?anio={anio}")
+    return redirect("lista_cotizaciones")
+
+
+@login_required
 def lista_referencias(request):
     referencias = list(Referencia.objects.all())
     referencias.sort(key=lambda r: (r.referencia[:6], _extraer_consecutivo(r.referencia), r.referencia))
-    return render(request, "referencias/lista_referencias.html", {"referencias": referencias})
+    return render(
+        request,
+        "referencias/lista_referencias.html",
+        {
+            "referencias": referencias,
+            "usuarios": User.objects.all().order_by("username"),
+        },
+    )
 
 
 @login_required
@@ -970,4 +993,15 @@ def eliminar_referencia(request, pk):
     _requiere_admin(request.user)
     referencia = get_object_or_404(Referencia, pk=pk)
     referencia.delete()
+    return redirect("lista_referencias")
+
+
+@login_required
+@require_POST
+def cambiar_ejecutivo_referencia(request, pk):
+    _requiere_admin(request.user)
+    referencia = get_object_or_404(Referencia, pk=pk)
+    user_id = request.POST.get("ejecutivo")
+    referencia.ejecutivo = get_object_or_404(User, id=user_id) if user_id else None
+    referencia.save()
     return redirect("lista_referencias")

@@ -54,7 +54,22 @@
             <td>{{ c.fecha_solicitud }}</td>
             <td>{{ c.fecha_envio|default:"-" }}</td>
             <td>{{ c.tipo }}</td>
-            <td>{{ c.ejecutivo }}</td>
+            {% if request.user.is_superuser %}
+            <td>
+                <form method="post" action="{% url 'cambiar_ejecutivo_cotizacion' c.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="anio" value="{{ anio_seleccionado|default:'' }}">
+                    <select name="ejecutivo" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">-- Sin asignar --</option>
+                        {% for u in usuarios %}
+                            <option value="{{ u.id }}" {% if c.ejecutivo and c.ejecutivo.id == u.id %}selected{% endif %}>{{ u.username }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </td>
+            {% else %}
+            <td>{{ c.ejecutivo|default:"-" }}</td>
+            {% endif %}
             <td>{{ c.tiempo_entrega }}</td>
             <td>{{ c.aerea }}</td>
             <td>{{ c.maritima }}</td>

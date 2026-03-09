@@ -124,6 +124,27 @@ class SeguridadPermisosTests(TestCase):
         self.solicitud.refresh_from_db()
         self.assertEqual(self.solicitud.ejecutivo_id, self.otro.pk)
 
+    def test_cambiar_ejecutivo_cotizacion_y_referencia_solo_admin(self):
+        url_cot = reverse("cambiar_ejecutivo_cotizacion", args=[self.cotizacion.pk])
+        url_ref = reverse("cambiar_ejecutivo_referencia", args=[self.referencia.pk])
+
+        self.client.login(username="ejec", password="ejec123")
+        response = self.client.post(url_cot, {"ejecutivo": self.otro.pk})
+        self.assertEqual(response.status_code, 403)
+        response = self.client.post(url_ref, {"ejecutivo": self.otro.pk})
+        self.assertEqual(response.status_code, 403)
+
+        self.client.login(username="admin", password="admin123")
+        response = self.client.post(url_cot, {"ejecutivo": self.otro.pk})
+        self.assertEqual(response.status_code, 302)
+        response = self.client.post(url_ref, {"ejecutivo": self.otro.pk})
+        self.assertEqual(response.status_code, 302)
+
+        self.cotizacion.refresh_from_db()
+        self.referencia.refresh_from_db()
+        self.assertEqual(self.cotizacion.ejecutivo_id, self.otro.pk)
+        self.assertEqual(self.referencia.ejecutivo_id, self.otro.pk)
+
     def test_no_permite_crear_mas_de_cuatro_administradores(self):
         User.objects.create_user(
             username="admin2", password="admin123", is_superuser=True, is_staff=True

@@ -40,7 +40,21 @@
         {% for r in referencias %}
         <tr>
             <td>{{ r.referencia }}</td>
-            <td>{{ r.ejecutivo }}</td>
+            {% if request.user.is_superuser %}
+            <td>
+                <form method="post" action="{% url 'cambiar_ejecutivo_referencia' r.id %}">
+                    {% csrf_token %}
+                    <select name="ejecutivo" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">-- Sin asignar --</option>
+                        {% for u in usuarios %}
+                            <option value="{{ u.id }}" {% if r.ejecutivo and r.ejecutivo.id == u.id %}selected{% endif %}>{{ u.username }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </td>
+            {% else %}
+            <td>{{ r.ejecutivo|default:"-" }}</td>
+            {% endif %}
             <td>{{ r.cliente }}</td>
             <td>{{ r.servicio_legible }}</td>
             <td>{{ r.agencia_aduanal }}</td>
