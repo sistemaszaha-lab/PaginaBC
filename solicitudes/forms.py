@@ -63,11 +63,22 @@ class SolicitudForm(forms.ModelForm):
         return solicitud
 
     def _generar_sg(self, anio):
+        """
+        Genera SG con formato: SG + 2 dígitos año + 3 dígitos consecutivo
+        Ej: SG26001, SG26002, SG26003...
+        Solo cuenta registros con formato válido: SG{YY}{###}
+        Ignora datos históricos con formatos diferentes (ej: SG26-001)
+        """
         prefijo = f"SG{str(anio)[-2:]}"
         consecutivos = Solicitud.objects.filter(sg__startswith=prefijo).values_list("sg", flat=True)
         ultimo = 0
+        # Patrón específico: SG + 2 dígitos año + exactamente 3 dígitos consecutivo
+        # Formato: SG26001, SG26002, etc.
+        patron = re.compile(rf"^{re.escape(prefijo)}(\d{{3}})$")
         for sg in consecutivos:
-            match = re.search(r"(\d+)$", str(sg))
+            # Sanitizar eliminando guiones para compatibilidad con datos antiguos
+            sg_limpio = str(sg).strip().replace("-", "")
+            match = patron.match(sg_limpio)
             if match:
                 ultimo = max(ultimo, int(match.group(1)))
         return f"{prefijo}{ultimo + 1:03d}"
