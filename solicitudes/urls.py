@@ -28,6 +28,5 @@ urlpatterns = [
     path("referencias/nueva/", views.crear_referencia, name="crear_referencia"),
     path("referencias/editar/<int:pk>/", views.editar_referencia, name="editar_referencia"),
     path("referencias/eliminar/<int:pk>/", views.eliminar_referencia, name="eliminar_referencia"),
-    path("referencias/eliminar-todas/", views.eliminar_todas_referencias, name="eliminar_todas_referencias"),
 ]
 

@@ -19,16 +19,6 @@
 {% if request.user.is_superuser %}
 <div class="mb-3 d-flex gap-2 flex-wrap">
     <a href="{% url 'crear_referencia' %}" class="btn btn-success">+ Nueva Referencia</a>
-    <form method="post" action="{% url 'eliminar_todas_referencias' %}" class="d-inline">
-        {% csrf_token %}
-        <button
-            type="submit"
-            class="btn btn-outline-danger"
-            onclick="return confirm('Se eliminaran todas las referencias. Deseas continuar?');"
-        >
-            Eliminar todas
-        </button>
-    </form>
 </div>
 {% endif %}
 
