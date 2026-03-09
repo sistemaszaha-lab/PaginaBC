@@ -242,6 +242,13 @@ def _servicio_formulario_desde_csv(valor):
     return "importacion"
 
 
+def _servicio_referencia_normalizado(valor):
+    servicio = _normalizar_servicio(valor)
+    if servicio in ReferenciaForm.CODIGOS_OPERACION:
+        return servicio
+    return _servicio_formulario_desde_csv(valor)
+
+
 def _generar_referencia(fecha, servicio):
     codigo = ReferenciaForm.CODIGOS_OPERACION.get(servicio)
     if not codigo:
@@ -405,17 +412,21 @@ def _importar_referencias_desde_filas(filas):
 
     for row in data_rows:
         try:
+            if not any(str(celda or "").strip() for celda in row):
+                continue
             fecha = _parse_fecha(_valor_columna(row, fecha_idx)) or date.today()
-            servicio = _servicio_formulario_desde_csv(_valor_columna(row, servicio_idx))
+            servicio = _servicio_referencia_normalizado(_valor_columna(row, servicio_idx))
             ejecutivo = _resolver_usuario(_valor_columna(row, ejecutivo_idx))
+            cliente = _valor_columna(row, cliente_idx) or "Sin cliente"
+            agencia = _valor_columna(row, agencia_idx) or "Sin agencia"
 
             # Reutiliza exactamente la lógica del formulario para generar referencia consecutiva.
             form = ReferenciaForm(
                 data={
                     "ejecutivo": ejecutivo.id if ejecutivo else "",
-                    "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
+                    "cliente": cliente,
                     "servicio": servicio,
-                    "agencia_aduanal": _valor_columna(row, agencia_idx) or "Sin agencia",
+                    "agencia_aduanal": agencia,
                     "fecha": fecha.strftime("%Y-%m-%d"),
                 }
             )
@@ -423,7 +434,16 @@ def _importar_referencias_desde_filas(filas):
                 form.save()
                 creados += 1
             else:
-                omitidos += 1
+                referencia = _generar_referencia(fecha, servicio) or _generar_referencia(fecha, "importacion")
+                Referencia.objects.create(
+                    referencia=referencia,
+                    ejecutivo=ejecutivo,
+                    cliente=cliente,
+                    servicio=servicio if servicio in ReferenciaForm.CODIGOS_OPERACION else "importacion",
+                    agencia_aduanal=agencia,
+                    fecha=fecha,
+                )
+                creados += 1
         except Exception:
             omitidos += 1
 

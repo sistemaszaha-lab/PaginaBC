@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from .forms import CotizacionForm, SolicitudForm
 from .models import Cotizacion, Referencia, Solicitud
+from .views import _importar_referencias_desde_filas
 
 
 class SeguridadPermisosTests(TestCase):
@@ -343,6 +344,25 @@ class CotizacionFormTests(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn("tipo", form.errors)
+
+    def test_importar_referencias_normaliza_al_formato_de_pagina(self):
+        filas = [
+            ["Referencia", "Ejecutivo", "Cliente", "Servicio", "Agencia", "Fecha"],
+            ["ABC-1", "ejec_form", "Cliente 1", "Servicio y transporte", "Agencia 1", "15/01/2026"],
+            ["ABC-2", "", "Cliente 2", "Comercializadora exportación", "Agencia 2", "2026-01-16"],
+        ]
+
+        creados, actualizados, omitidos = _importar_referencias_desde_filas(filas)
+        self.assertEqual((creados, actualizados, omitidos), (2, 0, 0))
+
+        referencias = list(
+            Referencia.objects.filter(cliente__in=["Cliente 1", "Cliente 2"]).order_by("cliente")
+        )
+        self.assertEqual(len(referencias), 2)
+        self.assertRegex(referencias[0].referencia, r"^BC26[1-6]\d{3}$")
+        self.assertRegex(referencias[1].referencia, r"^BC26[1-6]\d{3}$")
+        self.assertEqual(referencias[0].servicio, "servicios_transporte")
+        self.assertEqual(referencias[1].servicio, "comercializador_exportacion")
 
 
 class SolicitudFormTests(TestCase):
