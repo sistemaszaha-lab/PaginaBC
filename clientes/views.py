@@ -1,6 +1,8 @@
 from urllib.parse import urlencode
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.utils import OperationalError, ProgrammingError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -22,16 +24,23 @@ def _next_url_valida(next_url):
 @login_required
 def cliente_lista(request):
     query = request.GET.get("q", "").strip()
-    clientes = Cliente.objects.all()
-    if query:
-        clientes = clientes.filter(
-            Q(nombre__icontains=query)
-            | Q(empresa__icontains=query)
-            | Q(telefono__icontains=query)
-            | Q(correo__icontains=query)
-            | Q(direccion__icontains=query)
-            | Q(rfc__icontains=query)
+    try:
+        clientes = Cliente.objects.all()
+        if query:
+            clientes = clientes.filter(
+                Q(nombre__icontains=query)
+                | Q(empresa__icontains=query)
+                | Q(telefono__icontains=query)
+                | Q(correo__icontains=query)
+                | Q(direccion__icontains=query)
+                | Q(rfc__icontains=query)
+            )
+    except (OperationalError, ProgrammingError):
+        messages.error(
+            request,
+            "No se pudo cargar el directorio de clientes. Revisa que las migraciones esten aplicadas.",
         )
+        clientes = []
     context = {
         "clientes": clientes,
         "query": query,
