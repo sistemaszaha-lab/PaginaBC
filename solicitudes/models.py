@@ -161,10 +161,10 @@ class Referencia(models.Model):
         null=True,
         blank=True
     )
-    cliente = models.CharField(max_length=200)
-    servicio = models.CharField(max_length=200)
-    agencia_aduanal = models.CharField(max_length=200)
-    fecha = models.DateField()
+    cliente = models.CharField(max_length=200, blank=True, null=True)
+    servicio = models.CharField(max_length=200, blank=True, null=True)
+    agencia_aduanal = models.CharField(max_length=200, blank=True, null=True)
+    fecha = models.DateField(blank=True, null=True)
 
     SERVICIOS_LABELS = {
         "importacion": "Importacion",

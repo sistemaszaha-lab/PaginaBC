@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Clientes{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Clientes</h2>
+
+<div class="d-flex gap-2 flex-wrap align-items-center mb-3">
+    <form method="get" class="d-flex gap-2 flex-wrap align-items-center">
+        <input type="text" name="q" class="form-control" style="max-width: 360px;"
+               placeholder="Buscar por nombre, empresa, telefono, correo, direccion o RFC"
+               value="{{ query }}">
+        <button class="btn btn-outline-primary" type="submit">Buscar</button>
+    </form>
+    <a class="btn btn-success" href="{% url 'cliente_crear' %}">+ Nuevo cliente</a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-bordered table-striped align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>Nombre / Empresa</th>
+                <th>Telefono</th>
+                <th>Correo</th>
+                <th>Direccion</th>
+                <th>RFC</th>
+                <th>Estado</th>
+                <th>Fecha de alta</th>
+                <th>Notas</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cliente in clientes %}
+            <tr>
+                <td>
+                    <strong>{{ cliente.nombre }}</strong>
+                    {% if cliente.empresa %}
+                        <br>{{ cliente.empresa }}
+                    {% endif %}
+                </td>
+                <td>{{ cliente.telefono }}</td>
+                <td>{{ cliente.correo|default:"-" }}</td>
+                <td>{{ cliente.direccion|default:"-" }}</td>
+                <td>{{ cliente.rfc|default:"-" }}</td>
+                <td>{{ cliente.get_estado_display }}</td>
+                <td>{{ cliente.fecha_alta|date:"Y-m-d" }}</td>
+                <td>{{ cliente.notas|default:"-" }}</td>
+                <td class="d-flex gap-2">
+                    <a class="btn btn-sm btn-primary" href="{% url 'cliente_editar' cliente.pk %}">Editar</a>
+                    <a class="btn btn-sm btn-danger" href="{% url 'cliente_eliminar' cliente.pk %}">Eliminar</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="9" class="text-center">No hay clientes registrados.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

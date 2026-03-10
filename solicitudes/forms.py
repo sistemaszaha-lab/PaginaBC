@@ -6,6 +6,14 @@ from django.contrib.auth.models import User
 
 from .models import Cotizacion, Referencia, Solicitud
 
+CLIENTE_NUEVO_LABEL = "Registrar cliente nuevo"
+
+
+def _validar_cliente(valor):
+    if (valor or "").strip().lower() == CLIENTE_NUEVO_LABEL.lower():
+        raise forms.ValidationError("Selecciona un cliente valido o registra uno nuevo.")
+    return valor
+
 
 class SolicitudForm(forms.ModelForm):
     TIPOS_SOLICITUD = (
@@ -38,6 +46,9 @@ class SolicitudForm(forms.ModelForm):
             "anio": forms.NumberInput(attrs={"readonly": "readonly", "class": "form-control"}),
             "fecha_recepcion": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "fecha_entrega": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "cliente": forms.TextInput(
+                attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -61,6 +72,9 @@ class SolicitudForm(forms.ModelForm):
         if commit:
             solicitud.save()
         return solicitud
+
+    def clean_cliente(self):
+        return _validar_cliente(self.cleaned_data.get("cliente"))
 
     def _generar_sg(self, anio):
         """
@@ -197,6 +211,9 @@ class CotizacionForm(forms.ModelForm):
             "consecutivo": forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"}),
             "fecha_solicitud": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "fecha_envio": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "cliente": forms.TextInput(
+                attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -214,6 +231,9 @@ class CotizacionForm(forms.ModelForm):
         if commit:
             cotizacion.save()
         return cotizacion
+
+    def clean_cliente(self):
+        return _validar_cliente(self.cleaned_data.get("cliente"))
 
     def _generar_consecutivo(self, anio):
         prefijo = f"C{str(anio)[-2:]}"
@@ -264,6 +284,9 @@ class ReferenciaForm(forms.ModelForm):
         fields = ["ejecutivo", "cliente", "servicio", "agencia_aduanal", "fecha"]
         widgets = {
             "fecha": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "cliente": forms.TextInput(
+                attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -290,6 +313,9 @@ class ReferenciaForm(forms.ModelForm):
         if commit:
             referencia.save()
         return referencia
+
+    def clean_cliente(self):
+        return _validar_cliente(self.cleaned_data.get("cliente"))
 
     def _generar_referencia(self, fecha, operacion, excluir_pk=None):
         codigo_operacion = self.CODIGOS_OPERACION[operacion]

@@ -16,6 +16,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook
 from openpyxl.styles import Font
+from urllib.parse import urlencode
+from clientes.models import Cliente
 from .forms import CotizacionForm, CrearUsuarioForm, EditarUsuarioForm, ReferenciaForm, SolicitudForm
 from .models import Cotizacion, Referencia, Solicitud
 
@@ -81,6 +83,12 @@ def _respuesta_excel(nombre_archivo, headers, rows):
     )
     response["Content-Disposition"] = f'attachment; filename="{nombre_archivo}_{timestamp}.xlsx"'
     return response
+
+
+def _contexto_clientes(request):
+    clientes = Cliente.objects.order_by("nombre", "empresa")
+    cliente_nuevo_url = f"{reverse('cliente_crear')}?{urlencode({'next': request.path})}"
+    return {"clientes": clientes, "cliente_nuevo_url": cliente_nuevo_url}
 def _normalizar_texto(valor):
     texto = normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode("ascii")
     return " ".join(texto.strip().lower().split())
@@ -603,8 +611,13 @@ def crear_solicitud(request):
             return redirect("lista_solicitudes")
     else:
         form = SolicitudForm()
+        cliente_param = request.GET.get("cliente")
+        if cliente_param:
+            form.fields["cliente"].initial = cliente_param
 
-    return render(request, "solicitudes/crear_solicitud.html", {"form": form})
+    context = {"form": form}
+    context.update(_contexto_clientes(request))
+    return render(request, "solicitudes/crear_solicitud.html", context)
 
 
 @login_required
@@ -619,13 +632,15 @@ def editar_solicitud(request, pk):
             solicitud.save()
             return redirect("lista_solicitudes")
     else:
-        form = SolicitudForm(instance=solicitud)
+        cliente_param = request.GET.get("cliente")
+        if cliente_param:
+            form = SolicitudForm(instance=solicitud, initial={"cliente": cliente_param})
+        else:
+            form = SolicitudForm(instance=solicitud)
 
-    return render(
-        request,
-        "solicitudes/crear_solicitud.html",
-        {"form": form, "modo_edicion": True},
-    )
+    context = {"form": form, "modo_edicion": True}
+    context.update(_contexto_clientes(request))
+    return render(request, "solicitudes/crear_solicitud.html", context)
 
 
 @login_required
@@ -872,8 +887,13 @@ def crear_cotizacion(request):
             return redirect("lista_cotizaciones")
     else:
         form = CotizacionForm()
+        cliente_param = request.GET.get("cliente")
+        if cliente_param:
+            form.fields["cliente"].initial = cliente_param
 
-    return render(request, "cotizaciones/crear_cotizacion.html", {"form": form})
+    context = {"form": form}
+    context.update(_contexto_clientes(request))
+    return render(request, "cotizaciones/crear_cotizacion.html", context)
 
 
 @login_required
@@ -886,9 +906,15 @@ def editar_cotizacion(request, pk):
             form.save()
             return redirect("lista_cotizaciones")
     else:
-        form = CotizacionForm(instance=cotizacion)
+        cliente_param = request.GET.get("cliente")
+        if cliente_param:
+            form = CotizacionForm(instance=cotizacion, initial={"cliente": cliente_param})
+        else:
+            form = CotizacionForm(instance=cotizacion)
 
-    return render(request, "cotizaciones/crear_cotizacion.html", {"form": form})
+    context = {"form": form}
+    context.update(_contexto_clientes(request))
+    return render(request, "cotizaciones/crear_cotizacion.html", context)
 
 
 @login_required
@@ -987,8 +1013,13 @@ def crear_referencia(request):
             return redirect("lista_referencias")
     else:
         form = ReferenciaForm()
+        cliente_param = request.GET.get("cliente")
+        if cliente_param:
+            form.fields["cliente"].initial = cliente_param
 
-    return render(request, "referencias/crear_referencia.html", {"form": form})
+    context = {"form": form}
+    context.update(_contexto_clientes(request))
+    return render(request, "referencias/crear_referencia.html", context)
 
 
 @login_required
@@ -1002,9 +1033,15 @@ def editar_referencia(request, pk):
             form.save()
             return redirect("lista_referencias")
     else:
-        form = ReferenciaForm(instance=referencia)
+        cliente_param = request.GET.get("cliente")
+        if cliente_param:
+            form = ReferenciaForm(instance=referencia, initial={"cliente": cliente_param})
+        else:
+            form = ReferenciaForm(instance=referencia)
 
-    return render(request, "referencias/crear_referencia.html", {"form": form})
+    context = {"form": form}
+    context.update(_contexto_clientes(request))
+    return render(request, "referencias/crear_referencia.html", context)
 
 
 @login_required
