@@ -16,7 +16,7 @@ class Cliente(models.Model):
     contacto = models.CharField(max_length=150, blank=True, default="")
     telefono = models.CharField(max_length=20)
     celular = models.CharField(max_length=20, blank=True, default="")
-    correo = models.EmailField(blank=True)
+    correo = models.CharField(max_length=255, blank=True, default="")
     direccion = models.CharField(max_length=255, blank=True)
     rfc = models.CharField(max_length=20, blank=True)
     estado = models.CharField(
