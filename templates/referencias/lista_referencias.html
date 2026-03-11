@@ -22,61 +22,8 @@
 </div>
 {% endif %}
 
-<form id="filtros-referencias" method="get" class="mb-3">
-    <div class="d-flex gap-2 flex-wrap align-items-end">
-        <div>
-            <label class="form-label mb-1">Búsqueda</label>
-            <input type="text" name="q" value="{{ filtros.q }}" class="form-control" style="min-width: 220px;" placeholder="Referencia, cliente, agencia...">
-        </div>
-        <div>
-            <label class="form-label mb-1">Cliente</label>
-            <select name="cliente" class="form-select" style="min-width: 200px;">
-                <option value="">Todos</option>
-                {% for c in clientes %}
-                    <option value="{{ c }}" {% if filtros.cliente == c %}selected{% endif %}>{{ c }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label class="form-label mb-1">Tipo de servicio</label>
-            <select name="servicio" class="form-select" style="min-width: 200px;">
-                <option value="">Todos</option>
-                {% for s in servicios %}
-                    <option value="{{ s }}" {% if filtros.servicio == s %}selected{% endif %}>{{ s }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label class="form-label mb-1">Ejecutivo</label>
-            <select name="ejecutivo" class="form-select" style="min-width: 180px;">
-                <option value="">Todos</option>
-                {% for u in usuarios %}
-                    <option value="{{ u.id }}" {% if filtros.ejecutivo|default:'' == u.id|stringformat:"s" %}selected{% endif %}>{{ u.username }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label class="form-label mb-1">Agencia aduanal</label>
-            <select name="agencia" class="form-select" style="min-width: 200px;">
-                <option value="">Todas</option>
-                {% for a in agencias %}
-                    <option value="{{ a }}" {% if filtros.agencia == a %}selected{% endif %}>{{ a }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label class="form-label mb-1">Desde</label>
-            <input type="date" name="desde" value="{{ filtros.desde }}" class="form-control">
-        </div>
-        <div>
-            <label class="form-label mb-1">Hasta</label>
-            <input type="date" name="hasta" value="{{ filtros.hasta }}" class="form-control">
-        </div>
-        <div class="d-flex gap-2">
-            <button class="btn btn-primary" type="submit">Buscar</button>
-            <a class="btn btn-outline-secondary" href="{% url 'lista_referencias' %}">Limpiar filtros</a>
-        </div>
-    </div>
+<form id="buscador-referencias" method="get" class="mb-3">
+    <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio...">
 </form>
 
 <div class="table-responsive">
@@ -101,9 +48,10 @@
 
 <script>
     (function () {
-        const form = document.getElementById("filtros-referencias");
+        const form = document.getElementById("buscador-referencias");
         const body = document.getElementById("referencias-body");
         if (!form || !body) return;
+        let debounceId = null;
 
         function fetchRows() {
             const params = new URLSearchParams(new FormData(form));
@@ -122,15 +70,9 @@
                 .catch(() => {});
         }
 
-        form.addEventListener("submit", function (e) {
-            e.preventDefault();
-            fetchRows();
-        });
-
-        form.addEventListener("change", function (e) {
-            if (e.target.matches("select, input[type='date']")) {
-                fetchRows();
-            }
+        form.addEventListener("input", function () {
+            clearTimeout(debounceId);
+            debounceId = setTimeout(fetchRows, 250);
         });
     })();
 </script>
