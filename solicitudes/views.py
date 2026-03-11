@@ -152,13 +152,6 @@ def _normalizar_consecutivo(texto):
     return re.sub(r"[^A-Za-z0-9]", "", str(texto or "").upper())
 
 
-def _normalizar_referencia_csv(texto):
-    referencia = str(texto or "").strip().upper()
-    if not referencia:
-        return ""
-    return re.sub(r"\s+", "", referencia)
-
-
 def _buscar_indice(headers, aliases, default=None):
     encabezados = [_normalizar_texto(h) for h in headers]
     aliases_norm = [_normalizar_texto(alias) for alias in aliases]
@@ -420,7 +413,6 @@ def _importar_referencias_desde_filas(filas):
         filas,
         ["referencia", "ejecutivo", "cliente", "servicio", "agencia", "fecha"],
     )
-    referencia_idx = _buscar_indice(headers, ["referencia", "ref"])
     ejecutivo_idx = _buscar_indice(headers, ["ejecutivo", "usuario"], default=1)
     cliente_idx = _buscar_indice(headers, ["cliente"], default=2)
     servicio_idx = _buscar_indice(headers, ["servicio", "tipo operacion", "tipo operación"], default=3)
@@ -431,47 +423,13 @@ def _importar_referencias_desde_filas(filas):
     actualizados = 0
     omitidos = 0
 
-    filas_con_referencia = []
     filas_sin_referencia = []
 
     for row in data_rows:
         try:
             if not any(str(celda or "").strip() for celda in row):
                 continue
-            referencia_csv = (
-                _normalizar_referencia_csv(_valor_columna(row, referencia_idx))
-                if referencia_idx is not None
-                else ""
-            )
-            if referencia_csv:
-                filas_con_referencia.append((row, _normalizar_consecutivo(referencia_csv)))
-            else:
-                filas_sin_referencia.append(row)
-        except Exception:
-            omitidos += 1
-
-    for row, referencia_csv in filas_con_referencia:
-        try:
-            fecha = _parse_fecha(_valor_columna(row, fecha_idx)) or date.today()
-            servicio = _servicio_referencia_normalizado(_valor_columna(row, servicio_idx))
-            ejecutivo = _resolver_usuario(_valor_columna(row, ejecutivo_idx))
-            cliente = _valor_columna(row, cliente_idx) or "Sin cliente"
-            agencia = _valor_columna(row, agencia_idx) or "Sin agencia"
-
-            _, creado = Referencia.objects.update_or_create(
-                referencia=referencia_csv,
-                defaults={
-                    "ejecutivo": ejecutivo,
-                    "cliente": cliente,
-                    "servicio": servicio,
-                    "agencia_aduanal": agencia,
-                    "fecha": fecha,
-                },
-            )
-            if creado:
-                creados += 1
-            else:
-                actualizados += 1
+            filas_sin_referencia.append(row)
         except Exception:
             omitidos += 1
 
