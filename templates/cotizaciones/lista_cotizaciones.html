@@ -19,13 +19,60 @@
     {% endif %}
 </div>
 
-<form method="get" class="mb-3">
-    <label><strong>Año:</strong></label>
-    <select name="anio" onchange="this.form.submit()" class="form-select w-auto d-inline">
-        {% for a in anios %}
-            <option value="{{ a }}" {% if a == anio_seleccionado %}selected{% endif %}>{{ a }}</option>
-        {% endfor %}
-    </select>
+<form id="filtros-cotizaciones" method="get" class="mb-3">
+    <div class="d-flex gap-2 flex-wrap align-items-end">
+        <div>
+            <label class="form-label mb-1">Búsqueda</label>
+            <input type="text" name="q" value="{{ filtros.q }}" class="form-control" style="min-width: 220px;" placeholder="Consecutivo, cliente, tipo...">
+        </div>
+        <div>
+            <label class="form-label mb-1">Cliente</label>
+            <select name="cliente" class="form-select" style="min-width: 200px;">
+                <option value="">Todos</option>
+                {% for c in clientes %}
+                    <option value="{{ c }}" {% if filtros.cliente == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label mb-1">Tipo de servicio</label>
+            <select name="tipo" class="form-select" style="min-width: 200px;">
+                <option value="">Todos</option>
+                {% for t in tipos %}
+                    <option value="{{ t }}" {% if filtros.tipo == t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label mb-1">Ejecutivo</label>
+            <select name="ejecutivo" class="form-select" style="min-width: 180px;">
+                <option value="">Todos</option>
+                {% for u in usuarios %}
+                    <option value="{{ u.id }}" {% if filtros.ejecutivo|default:'' == u.id|stringformat:"s" %}selected{% endif %}>{{ u.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label mb-1">Desde</label>
+            <input type="date" name="desde" value="{{ filtros.desde }}" class="form-control">
+        </div>
+        <div>
+            <label class="form-label mb-1">Hasta</label>
+            <input type="date" name="hasta" value="{{ filtros.hasta }}" class="form-control">
+        </div>
+        <div>
+            <label class="form-label mb-1">Año</label>
+            <select name="anio" class="form-select">
+                {% for a in anios %}
+                    <option value="{{ a }}" {% if a == anio_seleccionado %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Buscar</button>
+            <a class="btn btn-outline-secondary" href="{% url 'lista_cotizaciones' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}">Limpiar filtros</a>
+        </div>
+    </div>
 </form>
 
 <div class="table-responsive">
@@ -46,52 +93,47 @@
         </tr>
     </thead>
 
-    <tbody>
-        {% for c in cotizaciones %}
-        <tr>
-            <td>{{ c.consecutivo }}</td>
-            <td>{{ c.cliente }}</td>
-            <td>{{ c.fecha_solicitud }}</td>
-            <td>{{ c.fecha_envio|default:"-" }}</td>
-            <td>{{ c.tipo }}</td>
-            {% if request.user.is_superuser %}
-            <td>
-                <form method="post" action="{% url 'cambiar_ejecutivo_cotizacion' c.id %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="anio" value="{{ anio_seleccionado|default:'' }}">
-                    <select name="ejecutivo" class="form-select form-select-sm" onchange="this.form.submit()">
-                        <option value="">-- Sin asignar --</option>
-                        {% for u in usuarios %}
-                            <option value="{{ u.id }}" {% if c.ejecutivo and c.ejecutivo.id == u.id %}selected{% endif %}>{{ u.username }}</option>
-                        {% endfor %}
-                    </select>
-                </form>
-            </td>
-            {% else %}
-            <td>{{ c.ejecutivo|default:"-" }}</td>
-            {% endif %}
-            <td>{{ c.tiempo_entrega }}</td>
-            <td>{{ c.aerea }}</td>
-            <td>{{ c.maritima }}</td>
-            <td>{{ c.terrestre }}</td>
-            <td>
-                <a href="{% url 'editar_cotizacion' c.id %}" class="btn btn-sm btn-primary">Editar</a>
-                {% if request.user.is_superuser %}
-                    <form method="post" action="{% url 'eliminar_cotizacion' c.id %}" class="d-inline">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
-                    </form>
-                {% endif %}
-            </td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="11" class="text-center">No hay cotizaciones registradas.</td>
-        </tr>
-        {% endfor %}
+    <tbody id="cotizaciones-body">
+        {% include "cotizaciones/_cotizaciones_rows.html" %}
     </tbody>
 </table>
 </div>
+
+<script>
+    (function () {
+        const form = document.getElementById("filtros-cotizaciones");
+        const body = document.getElementById("cotizaciones-body");
+        if (!form || !body) return;
+
+        function fetchRows() {
+            const params = new URLSearchParams(new FormData(form));
+            params.set("partial", "1");
+            const url = `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`;
+            fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+                .then((res) => res.text())
+                .then((html) => {
+                    body.innerHTML = html;
+                    params.delete("partial");
+                    const cleanUrl = params.toString()
+                        ? `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`
+                        : (form.getAttribute("action") || window.location.pathname);
+                    history.replaceState(null, "", cleanUrl);
+                })
+                .catch(() => {});
+        }
+
+        form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            fetchRows();
+        });
+
+        form.addEventListener("change", function (e) {
+            if (e.target.matches("select, input[type='date']")) {
+                fetchRows();
+            }
+        });
+    })();
+</script>
 {% endblock %}
 
 

@@ -4,7 +4,6 @@ from django import forms
 from django.db import IntegrityError, transaction
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
-
 from .models import Cotizacion, Referencia, Solicitud
 
 CLIENTE_NUEVO_LABEL = "Registrar cliente nuevo"

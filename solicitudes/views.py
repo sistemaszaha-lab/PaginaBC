@@ -524,8 +524,61 @@ def lista_solicitudes(request):
         if anio_param and anio_param.isdigit()
         else (anios[-1] if anios else None)
     )
-    solicitudes = list(Solicitud.objects.filter(anio=anio)) if anio else []
+    solicitudes_qs = Solicitud.objects.filter(anio=anio) if anio else Solicitud.objects.none()
+    q = request.GET.get("q", "").strip()
+    cliente_filtro = request.GET.get("cliente", "").strip()
+    tipo_filtro = request.GET.get("tipo", "").strip()
+    ejecutivo_filtro = request.GET.get("ejecutivo", "").strip()
+    fecha_desde = _parse_fecha(request.GET.get("desde"))
+    fecha_hasta = _parse_fecha(request.GET.get("hasta"))
+
+    if q:
+        solicitudes_qs = solicitudes_qs.filter(
+            Q(sg__icontains=q)
+            | Q(cliente__icontains=q)
+            | Q(tipo__icontains=q)
+            | Q(ejecutivo__username__icontains=q)
+            | Q(ejecutivo__first_name__icontains=q)
+            | Q(ejecutivo__last_name__icontains=q)
+        )
+    if cliente_filtro:
+        solicitudes_qs = solicitudes_qs.filter(cliente=cliente_filtro)
+    if tipo_filtro:
+        solicitudes_qs = solicitudes_qs.filter(tipo=tipo_filtro)
+    if ejecutivo_filtro and ejecutivo_filtro.isdigit():
+        solicitudes_qs = solicitudes_qs.filter(ejecutivo_id=int(ejecutivo_filtro))
+    if fecha_desde:
+        solicitudes_qs = solicitudes_qs.filter(fecha_recepcion__gte=fecha_desde)
+    if fecha_hasta:
+        solicitudes_qs = solicitudes_qs.filter(fecha_recepcion__lte=fecha_hasta)
+
+    solicitudes = list(solicitudes_qs)
     solicitudes.sort(key=lambda s: (_extraer_consecutivo(s.sg), s.sg))
+
+    clientes = (
+        Solicitud.objects.filter(anio=anio)
+        .values_list("cliente", flat=True)
+        .distinct()
+        .order_by("cliente")
+        if anio
+        else []
+    )
+    tipos = (
+        Solicitud.objects.filter(anio=anio)
+        .values_list("tipo", flat=True)
+        .distinct()
+        .order_by("tipo")
+        if anio
+        else []
+    )
+    ejecutivos = User.objects.all().order_by("username")
+
+    if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return render(
+            request,
+            "solicitudes/_solicitudes_rows.html",
+            {"solicitudes": solicitudes, "usuarios": ejecutivos},
+        )
 
     return render(
         request,
@@ -534,7 +587,17 @@ def lista_solicitudes(request):
             "solicitudes": solicitudes,
             "anios": anios,
             "anio_seleccionado": anio,
-            "usuarios": User.objects.all().order_by("username"),
+            "usuarios": ejecutivos,
+            "clientes": clientes,
+            "tipos": tipos,
+            "filtros": {
+                "q": q,
+                "cliente": cliente_filtro,
+                "tipo": tipo_filtro,
+                "ejecutivo": ejecutivo_filtro,
+                "desde": request.GET.get("desde", ""),
+                "hasta": request.GET.get("hasta", ""),
+            },
         },
     )
 
@@ -811,8 +874,65 @@ def lista_cotizaciones(request):
         if anio_param and anio_param.isdigit()
         else (anios[-1] if anios else None)
     )
-    cotizaciones = list(Cotizacion.objects.filter(anio=anio)) if anio else []
+    cotizaciones_qs = Cotizacion.objects.filter(anio=anio) if anio else Cotizacion.objects.none()
+    q = request.GET.get("q", "").strip()
+    cliente_filtro = request.GET.get("cliente", "").strip()
+    tipo_filtro = request.GET.get("tipo", "").strip()
+    ejecutivo_filtro = request.GET.get("ejecutivo", "").strip()
+    fecha_desde = _parse_fecha(request.GET.get("desde"))
+    fecha_hasta = _parse_fecha(request.GET.get("hasta"))
+
+    if q:
+        cotizaciones_qs = cotizaciones_qs.filter(
+            Q(consecutivo__icontains=q)
+            | Q(cliente__icontains=q)
+            | Q(tipo__icontains=q)
+            | Q(ejecutivo__username__icontains=q)
+            | Q(ejecutivo__first_name__icontains=q)
+            | Q(ejecutivo__last_name__icontains=q)
+        )
+    if cliente_filtro:
+        cotizaciones_qs = cotizaciones_qs.filter(cliente=cliente_filtro)
+    if tipo_filtro:
+        cotizaciones_qs = cotizaciones_qs.filter(tipo=tipo_filtro)
+    if ejecutivo_filtro and ejecutivo_filtro.isdigit():
+        cotizaciones_qs = cotizaciones_qs.filter(ejecutivo_id=int(ejecutivo_filtro))
+    if fecha_desde:
+        cotizaciones_qs = cotizaciones_qs.filter(fecha_solicitud__gte=fecha_desde)
+    if fecha_hasta:
+        cotizaciones_qs = cotizaciones_qs.filter(fecha_solicitud__lte=fecha_hasta)
+
+    cotizaciones = list(cotizaciones_qs)
     cotizaciones.sort(key=lambda c: (_extraer_consecutivo(c.consecutivo), c.consecutivo))
+
+    clientes = (
+        Cotizacion.objects.filter(anio=anio)
+        .values_list("cliente", flat=True)
+        .distinct()
+        .order_by("cliente")
+        if anio
+        else []
+    )
+    tipos = (
+        Cotizacion.objects.filter(anio=anio)
+        .values_list("tipo", flat=True)
+        .distinct()
+        .order_by("tipo")
+        if anio
+        else []
+    )
+    ejecutivos = User.objects.all().order_by("username")
+
+    if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return render(
+            request,
+            "cotizaciones/_cotizaciones_rows.html",
+            {
+                "cotizaciones": cotizaciones,
+                "usuarios": ejecutivos,
+                "anio_seleccionado": anio,
+            },
+        )
 
     return render(
         request,
@@ -821,7 +941,17 @@ def lista_cotizaciones(request):
             "cotizaciones": cotizaciones,
             "anios": anios,
             "anio_seleccionado": anio,
-            "usuarios": User.objects.all().order_by("username"),
+            "usuarios": ejecutivos,
+            "clientes": clientes,
+            "tipos": tipos,
+            "filtros": {
+                "q": q,
+                "cliente": cliente_filtro,
+                "tipo": tipo_filtro,
+                "ejecutivo": ejecutivo_filtro,
+                "desde": request.GET.get("desde", ""),
+                "hasta": request.GET.get("hasta", ""),
+            },
         },
     )
 
@@ -967,15 +1097,88 @@ def lista_referencias(request):
         Substr("referencia", Length("referencia") - 2, 3),
         IntegerField(),
     )
-    referencias = Referencia.objects.annotate(
+    referencias_qs = Referencia.objects.annotate(
         consecutivo_orden=consecutivo_expr
-    ).order_by("consecutivo_orden", "referencia")
+    )
+    q = request.GET.get("q", "").strip()
+    cliente_filtro = request.GET.get("cliente", "").strip()
+    servicio_filtro = request.GET.get("servicio", "").strip()
+    ejecutivo_filtro = request.GET.get("ejecutivo", "").strip()
+    agencia_filtro = request.GET.get("agencia", "").strip()
+    fecha_desde = _parse_fecha(request.GET.get("desde"))
+    fecha_hasta = _parse_fecha(request.GET.get("hasta"))
+
+    if q:
+        referencias_qs = referencias_qs.filter(
+            Q(referencia__icontains=q)
+            | Q(cliente__icontains=q)
+            | Q(servicio__icontains=q)
+            | Q(agencia_aduanal__icontains=q)
+            | Q(ejecutivo__username__icontains=q)
+            | Q(ejecutivo__first_name__icontains=q)
+            | Q(ejecutivo__last_name__icontains=q)
+        )
+    if cliente_filtro:
+        referencias_qs = referencias_qs.filter(cliente=cliente_filtro)
+    if servicio_filtro:
+        referencias_qs = referencias_qs.filter(servicio=servicio_filtro)
+    if ejecutivo_filtro and ejecutivo_filtro.isdigit():
+        referencias_qs = referencias_qs.filter(ejecutivo_id=int(ejecutivo_filtro))
+    if agencia_filtro:
+        referencias_qs = referencias_qs.filter(agencia_aduanal=agencia_filtro)
+    if fecha_desde:
+        referencias_qs = referencias_qs.filter(fecha__gte=fecha_desde)
+    if fecha_hasta:
+        referencias_qs = referencias_qs.filter(fecha__lte=fecha_hasta)
+
+    referencias = referencias_qs.order_by("consecutivo_orden", "referencia")
+    clientes = (
+        Referencia.objects.exclude(cliente__isnull=True)
+        .exclude(cliente="")
+        .values_list("cliente", flat=True)
+        .distinct()
+        .order_by("cliente")
+    )
+    servicios = (
+        Referencia.objects.exclude(servicio__isnull=True)
+        .exclude(servicio="")
+        .values_list("servicio", flat=True)
+        .distinct()
+        .order_by("servicio")
+    )
+    agencias = (
+        Referencia.objects.exclude(agencia_aduanal__isnull=True)
+        .exclude(agencia_aduanal="")
+        .values_list("agencia_aduanal", flat=True)
+        .distinct()
+        .order_by("agencia_aduanal")
+    )
+    ejecutivos = User.objects.all().order_by("username")
+
+    if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return render(
+            request,
+            "referencias/_referencias_rows.html",
+            {"referencias": referencias, "usuarios": ejecutivos},
+        )
     return render(
         request,
         "referencias/lista_referencias.html",
         {
             "referencias": referencias,
-            "usuarios": User.objects.all().order_by("username"),
+            "usuarios": ejecutivos,
+            "clientes": clientes,
+            "servicios": servicios,
+            "agencias": agencias,
+            "filtros": {
+                "q": q,
+                "cliente": cliente_filtro,
+                "servicio": servicio_filtro,
+                "ejecutivo": ejecutivo_filtro,
+                "agencia": agencia_filtro,
+                "desde": request.GET.get("desde", ""),
+                "hasta": request.GET.get("hasta", ""),
+            },
         },
     )
 

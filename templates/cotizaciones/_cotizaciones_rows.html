@@ -1,0 +1,42 @@
+{% for c in cotizaciones %}
+<tr>
+    <td>{{ c.consecutivo }}</td>
+    <td>{{ c.cliente }}</td>
+    <td>{{ c.fecha_solicitud }}</td>
+    <td>{{ c.fecha_envio|default:"-" }}</td>
+    <td>{{ c.tipo }}</td>
+    {% if request.user.is_superuser %}
+    <td>
+        <form method="post" action="{% url 'cambiar_ejecutivo_cotizacion' c.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="anio" value="{{ anio_seleccionado|default:'' }}">
+            <select name="ejecutivo" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">-- Sin asignar --</option>
+                {% for u in usuarios %}
+                    <option value="{{ u.id }}" {% if c.ejecutivo and c.ejecutivo.id == u.id %}selected{% endif %}>{{ u.username }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </td>
+    {% else %}
+    <td>{{ c.ejecutivo|default:"-" }}</td>
+    {% endif %}
+    <td>{{ c.tiempo_entrega }}</td>
+    <td>{{ c.aerea }}</td>
+    <td>{{ c.maritima }}</td>
+    <td>{{ c.terrestre }}</td>
+    <td>
+        <a href="{% url 'editar_cotizacion' c.id %}" class="btn btn-sm btn-primary">Editar</a>
+        {% if request.user.is_superuser %}
+            <form method="post" action="{% url 'eliminar_cotizacion' c.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+            </form>
+        {% endif %}
+    </td>
+</tr>
+{% empty %}
+<tr>
+    <td colspan="11" class="text-center">No hay cotizaciones registradas.</td>
+</tr>
+{% endfor %}
