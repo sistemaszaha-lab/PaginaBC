@@ -8,6 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
+from django.db import IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -268,13 +269,16 @@ def _generar_referencia(fecha, servicio):
     codigo = ReferenciaForm.CODIGOS_OPERACION.get(servicio)
     if not codigo:
         return None
-    prefijo = f"{ReferenciaForm.PREFIJO_EMPRESA}{fecha.strftime('%y')}{codigo}"
-    referencias = Referencia.objects.filter(referencia__startswith=prefijo).values_list("referencia", flat=True)
+    anio_corto = fecha.strftime("%y")
+    prefijo_anio = f"{ReferenciaForm.PREFIJO_EMPRESA}{anio_corto}"
+    prefijo = f"{prefijo_anio}{codigo}"
+    referencias = Referencia.objects.filter(referencia__startswith=prefijo_anio).values_list("referencia", flat=True)
     ultimo = 0
+    patron = re.compile(rf"^{re.escape(prefijo_anio)}\d(\d{{3}})$")
     for referencia in referencias:
-        sufijo = referencia[len(prefijo):]
-        if sufijo.isdigit():
-            ultimo = max(ultimo, int(sufijo))
+        match = patron.match(str(referencia).strip().upper())
+        if match:
+            ultimo = max(ultimo, int(match.group(1)))
     return f"{prefijo}{ultimo + 1:03d}"
 
 
@@ -486,16 +490,29 @@ def _importar_referencias_desde_filas(filas):
             cliente = _valor_columna(row, cliente_idx) or "Sin cliente"
             agencia = _valor_columna(row, agencia_idx) or "Sin agencia"
 
-            referencia = _generar_referencia(fecha, servicio) or _generar_referencia(fecha, "importacion")
-            Referencia.objects.create(
-                referencia=referencia,
-                ejecutivo=ejecutivo,
-                cliente=cliente,
-                servicio=servicio if servicio in ReferenciaForm.CODIGOS_OPERACION else "importacion",
-                agencia_aduanal=agencia,
-                fecha=fecha,
-            )
-            creados += 1
+            servicio_final = servicio if servicio in ReferenciaForm.CODIGOS_OPERACION else "importacion"
+            creado = False
+            for _ in range(3):
+                referencia = _generar_referencia(fecha, servicio_final)
+                if not referencia:
+                    break
+                try:
+                    Referencia.objects.create(
+                        referencia=referencia,
+                        ejecutivo=ejecutivo,
+                        cliente=cliente,
+                        servicio=servicio_final,
+                        agencia_aduanal=agencia,
+                        fecha=fecha,
+                    )
+                    creado = True
+                    break
+                except IntegrityError:
+                    continue
+            if creado:
+                creados += 1
+            else:
+                omitidos += 1
         except Exception:
             omitidos += 1
 

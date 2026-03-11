@@ -4,17 +4,18 @@ from django.utils import timezone
 
 class Cliente(models.Model):
     ESTADO_ACTIVO = "activo"
-    ESTADO_POTENCIAL = "potencial"
     ESTADO_INACTIVO = "inactivo"
     ESTADO_CHOICES = [
         (ESTADO_ACTIVO, "Activo"),
-        (ESTADO_POTENCIAL, "Potencial"),
         (ESTADO_INACTIVO, "Inactivo"),
     ]
 
     nombre = models.CharField(max_length=150)
     empresa = models.CharField(max_length=150, blank=True)
+    representante_legal = models.CharField(max_length=150, blank=True, default="")
+    contacto = models.CharField(max_length=150, blank=True, default="")
     telefono = models.CharField(max_length=20)
+    celular = models.CharField(max_length=20, blank=True, default="")
     correo = models.EmailField(blank=True)
     direccion = models.CharField(max_length=255, blank=True)
     rfc = models.CharField(max_length=20, blank=True)

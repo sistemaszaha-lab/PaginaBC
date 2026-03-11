@@ -6,6 +6,7 @@ from django.db.utils import OperationalError, ProgrammingError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from .forms import ClienteForm
 from .models import Cliente
@@ -30,10 +31,11 @@ def cliente_lista(request):
             clientes = clientes.filter(
                 Q(nombre__icontains=query)
                 | Q(empresa__icontains=query)
+                | Q(representante_legal__icontains=query)
+                | Q(contacto__icontains=query)
                 | Q(telefono__icontains=query)
+                | Q(celular__icontains=query)
                 | Q(correo__icontains=query)
-                | Q(direccion__icontains=query)
-                | Q(rfc__icontains=query)
             )
     except (OperationalError, ProgrammingError):
         messages.error(
@@ -96,3 +98,16 @@ def cliente_eliminar(request, pk):
         cliente.delete()
         return redirect("cliente_lista")
     return render(request, "clientes/cliente_confirm_delete.html", {"cliente": cliente})
+
+
+@login_required
+@require_POST
+def cliente_cambiar_estado(request, pk):
+    cliente = get_object_or_404(Cliente, pk=pk)
+    cliente.estado = (
+        Cliente.ESTADO_INACTIVO
+        if cliente.estado == Cliente.ESTADO_ACTIVO
+        else Cliente.ESTADO_ACTIVO
+    )
+    cliente.save(update_fields=["estado"])
+    return redirect("cliente_lista")

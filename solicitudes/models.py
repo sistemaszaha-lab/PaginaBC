@@ -154,7 +154,7 @@ class Cotizacion(models.Model):
 
 class Referencia(models.Model):
 
-    referencia = models.CharField(max_length=50)
+    referencia = models.CharField(max_length=50, unique=True)
     ejecutivo = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

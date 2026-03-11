@@ -1,6 +1,7 @@
 ﻿from datetime import date
 import re
 from django import forms
+from django.db import IntegrityError, transaction
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
@@ -304,14 +305,22 @@ class ReferenciaForm(forms.ModelForm):
         debe_regenerar = (not referencia.pk) or any(
             campo in self.changed_data for campo in ("servicio", "fecha")
         )
-        if debe_regenerar and referencia.servicio in self.CODIGOS_OPERACION:
-            referencia.referencia = self._generar_referencia(
-                fecha=referencia.fecha,
-                operacion=referencia.servicio,
-                excluir_pk=referencia.pk,
-            )
         if commit:
-            referencia.save()
+            intentos = 3
+            for intento in range(intentos):
+                try:
+                    with transaction.atomic():
+                        if debe_regenerar and referencia.servicio in self.CODIGOS_OPERACION:
+                            referencia.referencia = self._generar_referencia(
+                                fecha=referencia.fecha,
+                                operacion=referencia.servicio,
+                                excluir_pk=referencia.pk,
+                            )
+                        referencia.save()
+                    break
+                except IntegrityError:
+                    if not debe_regenerar or intento == intentos - 1:
+                        raise
         return referencia
 
     def clean_cliente(self):
@@ -321,21 +330,23 @@ class ReferenciaForm(forms.ModelForm):
         codigo_operacion = self.CODIGOS_OPERACION[operacion]
         anio_corto = fecha.strftime("%y")
         prefijo = f"{self.PREFIJO_EMPRESA}{anio_corto}{codigo_operacion}"
-        consecutivo = self._siguiente_consecutivo(prefijo, excluir_pk=excluir_pk)
+        consecutivo = self._siguiente_consecutivo_anio(anio_corto, excluir_pk=excluir_pk)
         return f"{prefijo}{consecutivo:03d}"
 
-    def _siguiente_consecutivo(self, prefijo, excluir_pk=None):
+    def _siguiente_consecutivo_anio(self, anio_corto, excluir_pk=None):
+        prefijo_anio = f"{self.PREFIJO_EMPRESA}{anio_corto}"
         referencias_existentes = Referencia.objects.filter(
-            referencia__startswith=prefijo
+            referencia__startswith=prefijo_anio
         )
         if excluir_pk:
             referencias_existentes = referencias_existentes.exclude(pk=excluir_pk)
         referencias_existentes = referencias_existentes.values_list("referencia", flat=True)
         ultimo = 0
+        patron = re.compile(rf"^{re.escape(prefijo_anio)}\d(\d{{3}})$")
         for referencia in referencias_existentes:
-            sufijo = referencia[len(prefijo):]
-            if sufijo.isdigit():
-                ultimo = max(ultimo, int(sufijo))
+            match = patron.match(str(referencia).strip().upper())
+            if match:
+                ultimo = max(ultimo, int(match.group(1)))
         return ultimo + 1
 
 
