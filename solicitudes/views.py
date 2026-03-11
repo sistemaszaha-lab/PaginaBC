@@ -9,7 +9,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError
-from django.db.models import Q
+from django.db.models import IntegerField, Q
+from django.db.models.functions import Cast, Length, Substr
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -1004,8 +1005,13 @@ def cambiar_ejecutivo_cotizacion(request, pk):
 
 @login_required
 def lista_referencias(request):
-    referencias = list(Referencia.objects.all())
-    referencias.sort(key=lambda r: (r.referencia[:6], _extraer_consecutivo(r.referencia), r.referencia))
+    consecutivo_expr = Cast(
+        Substr("referencia", Length("referencia") - 2, 3),
+        IntegerField(),
+    )
+    referencias = Referencia.objects.annotate(
+        consecutivo_orden=consecutivo_expr
+    ).order_by("consecutivo_orden", "referencia")
     return render(
         request,
         "referencias/lista_referencias.html",
