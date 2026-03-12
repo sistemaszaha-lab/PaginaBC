@@ -68,7 +68,7 @@
             return;
         }
         const dias = Math.round((fin - inicio) / 86400000);
-        tiempoEntrega.value = Number.isFinite(dias) ? String(dias) : "";
+        tiempoEntrega.value = Number.isFinite(dias) ? `${dias} días` : "";
     };
 
     fechaSolicitud.addEventListener("change", recalcular);
