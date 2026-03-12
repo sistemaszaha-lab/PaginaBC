@@ -21,10 +21,10 @@
     {% else %}
     <td>{{ c.ejecutivo|default:"-" }}</td>
     {% endif %}
-    <td>{{ c.tiempo_entrega }}</td>
-    <td>{{ c.aerea }}</td>
-    <td>{{ c.maritima }}</td>
-    <td>{{ c.terrestre }}</td>
+    <td>{% if c.tiempo_entrega %}{{ c.tiempo_entrega }} días{% else %}-{% endif %}</td>
+    <td>{% if c.aerea %}✓{% endif %}</td>
+    <td>{% if c.maritima %}✓{% endif %}</td>
+    <td>{% if c.terrestre %}✓{% endif %}</td>
     <td>
         <a href="{% url 'editar_cotizacion' c.id %}" class="btn btn-sm btn-primary">Editar</a>
         {% if request.user.is_superuser %}
