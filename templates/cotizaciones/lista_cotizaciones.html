@@ -19,8 +19,12 @@
     {% endif %}
 </div>
 
-<form id="buscador-cotizaciones" method="get" class="mb-3 d-flex gap-2">
+<form id="buscador-cotizaciones" method="get" class="mb-3 d-flex gap-2 flex-wrap">
     <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio...">
+    <select name="orden" class="form-select" style="max-width: 260px;">
+        <option value="desc" {% if orden == "desc" %}selected{% endif %}>Consecutivo: mayor a menor</option>
+        <option value="asc" {% if orden == "asc" %}selected{% endif %}>Consecutivo: menor a mayor</option>
+    </select>
     <a class="btn btn-outline-secondary" href="{% url 'lista_cotizaciones' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}">Limpiar</a>
 </form>
 
@@ -72,10 +76,13 @@
                 .catch(() => {});
         }
 
-        form.addEventListener("input", function () {
+        function handleChange() {
             clearTimeout(debounceId);
             debounceId = setTimeout(fetchRows, 250);
-        });
+        }
+
+        form.addEventListener("input", handleChange);
+        form.addEventListener("change", handleChange);
     })();
 </script>
 {% endblock %}

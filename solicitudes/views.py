@@ -526,6 +526,9 @@ def lista_solicitudes(request):
     )
     solicitudes_qs = Solicitud.objects.filter(anio=anio) if anio else Solicitud.objects.none()
     q = request.GET.get("q", "").strip()
+    orden = request.GET.get("orden", "desc").lower()
+    if orden not in {"asc", "desc"}:
+        orden = "desc"
 
     if q:
         solicitudes_qs = solicitudes_qs.filter(
@@ -540,14 +543,17 @@ def lista_solicitudes(request):
         )
 
     solicitudes = list(solicitudes_qs)
-    solicitudes.sort(key=lambda s: (_extraer_consecutivo(s.sg), s.sg))
+    solicitudes.sort(
+        key=lambda s: (_extraer_consecutivo(s.sg), s.sg),
+        reverse=orden == "desc",
+    )
     ejecutivos = User.objects.all().order_by("username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(
             request,
             "solicitudes/_solicitudes_rows.html",
-            {"solicitudes": solicitudes, "usuarios": ejecutivos},
+            {"solicitudes": solicitudes, "usuarios": ejecutivos, "orden": orden},
         )
 
     return render(
@@ -559,6 +565,7 @@ def lista_solicitudes(request):
             "anio_seleccionado": anio,
             "usuarios": ejecutivos,
             "q": q,
+            "orden": orden,
         },
     )
 
@@ -837,6 +844,9 @@ def lista_cotizaciones(request):
     )
     cotizaciones_qs = Cotizacion.objects.filter(anio=anio) if anio else Cotizacion.objects.none()
     q = request.GET.get("q", "").strip()
+    orden = request.GET.get("orden", "desc").lower()
+    if orden not in {"asc", "desc"}:
+        orden = "desc"
 
     if q:
         cotizaciones_qs = cotizaciones_qs.filter(
@@ -851,7 +861,10 @@ def lista_cotizaciones(request):
         )
 
     cotizaciones = list(cotizaciones_qs)
-    cotizaciones.sort(key=lambda c: (_extraer_consecutivo(c.consecutivo), c.consecutivo))
+    cotizaciones.sort(
+        key=lambda c: (_extraer_consecutivo(c.consecutivo), c.consecutivo),
+        reverse=orden == "desc",
+    )
     ejecutivos = User.objects.all().order_by("username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -862,6 +875,7 @@ def lista_cotizaciones(request):
                 "cotizaciones": cotizaciones,
                 "usuarios": ejecutivos,
                 "anio_seleccionado": anio,
+                "orden": orden,
             },
         )
 
@@ -874,6 +888,7 @@ def lista_cotizaciones(request):
             "anio_seleccionado": anio,
             "usuarios": ejecutivos,
             "q": q,
+            "orden": orden,
         },
     )
 
@@ -1023,6 +1038,9 @@ def lista_referencias(request):
         consecutivo_orden=consecutivo_expr
     )
     q = request.GET.get("q", "").strip()
+    orden = request.GET.get("orden", "desc").lower()
+    if orden not in {"asc", "desc"}:
+        orden = "desc"
 
     if q:
         referencias_qs = referencias_qs.filter(
@@ -1036,14 +1054,17 @@ def lista_referencias(request):
             | Q(ejecutivo__last_name__icontains=q)
         )
 
-    referencias = referencias_qs.order_by("consecutivo_orden", "referencia")
+    if orden == "desc":
+        referencias = referencias_qs.order_by("-consecutivo_orden", "-referencia")
+    else:
+        referencias = referencias_qs.order_by("consecutivo_orden", "referencia")
     ejecutivos = User.objects.all().order_by("username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(
             request,
             "referencias/_referencias_rows.html",
-            {"referencias": referencias, "usuarios": ejecutivos},
+            {"referencias": referencias, "usuarios": ejecutivos, "orden": orden},
         )
     return render(
         request,
@@ -1052,6 +1073,7 @@ def lista_referencias(request):
             "referencias": referencias,
             "usuarios": ejecutivos,
             "q": q,
+            "orden": orden,
         },
     )
 
