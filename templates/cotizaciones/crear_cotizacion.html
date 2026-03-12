@@ -46,4 +46,34 @@
     }
 })();
 </script>
+<script>
+(() => {
+    const fechaSolicitud = document.getElementById("id_fecha_solicitud");
+    const fechaEnvio = document.getElementById("id_fecha_envio");
+    const tiempoEntrega = document.getElementById("id_tiempo_entrega");
+    if (!fechaSolicitud || !fechaEnvio || !tiempoEntrega) return;
+
+    const toUtcTime = (value) => {
+        if (!value) return null;
+        const parts = value.split("-").map(Number);
+        if (parts.length !== 3) return null;
+        return Date.UTC(parts[0], parts[1] - 1, parts[2]);
+    };
+
+    const recalcular = () => {
+        const inicio = toUtcTime(fechaSolicitud.value);
+        const fin = toUtcTime(fechaEnvio.value);
+        if (inicio === null || fin === null) {
+            tiempoEntrega.value = "";
+            return;
+        }
+        const dias = Math.round((fin - inicio) / 86400000);
+        tiempoEntrega.value = Number.isFinite(dias) ? String(dias) : "";
+    };
+
+    fechaSolicitud.addEventListener("change", recalcular);
+    fechaEnvio.addEventListener("change", recalcular);
+    recalcular();
+})();
+</script>
 {% endblock %}

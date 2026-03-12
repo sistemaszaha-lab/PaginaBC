@@ -198,6 +198,21 @@ class CotizacionForm(forms.ModelForm):
         label="Tipo",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
+    aerea = forms.BooleanField(
+        required=False,
+        label="Aérea",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    maritima = forms.BooleanField(
+        required=False,
+        label="Marítima",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    terrestre = forms.BooleanField(
+        required=False,
+        label="Terrestre",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
 
     class Meta:
         model = Cotizacion
@@ -211,6 +226,7 @@ class CotizacionForm(forms.ModelForm):
             "consecutivo": forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"}),
             "fecha_solicitud": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "fecha_envio": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "tiempo_entrega": forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"}),
             "cliente": forms.TextInput(
                 attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
             ),
@@ -219,15 +235,55 @@ class CotizacionForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["consecutivo"].required = False
+        self.fields["tiempo_entrega"].required = False
+        self.fields["aerea"].initial = bool(self.instance.aerea)
+        self.fields["maritima"].initial = bool(self.instance.maritima)
+        self.fields["terrestre"].initial = bool(self.instance.terrestre)
         if not self.instance.pk:
             anio_actual = date.today().year
             self.fields["anio"].initial = anio_actual
             self.fields["consecutivo"].initial = self._generar_consecutivo(anio_actual)
 
+    def clean(self):
+        cleaned_data = super().clean()
+        seleccionados = [
+            nombre
+            for nombre in ("aerea", "maritima", "terrestre")
+            if cleaned_data.get(nombre)
+        ]
+        if len(seleccionados) > 1:
+            self.add_error(None, "Selecciona solo un tipo de transporte.")
+        elif len(seleccionados) == 0:
+            self.add_error(None, "Selecciona un tipo de transporte.")
+
+        fecha_solicitud = cleaned_data.get("fecha_solicitud")
+        fecha_envio = cleaned_data.get("fecha_envio")
+        if fecha_solicitud and fecha_envio:
+            cleaned_data["tiempo_entrega"] = str((fecha_envio - fecha_solicitud).days)
+        elif not fecha_envio:
+            cleaned_data["tiempo_entrega"] = ""
+        return cleaned_data
+
     def save(self, commit=True):
         cotizacion = super().save(commit=False)
         if not cotizacion.pk:
             cotizacion.consecutivo = self._generar_consecutivo(cotizacion.anio)
+        if self.cleaned_data.get("aerea"):
+            cotizacion.aerea = "Aérea"
+            cotizacion.maritima = ""
+            cotizacion.terrestre = ""
+        elif self.cleaned_data.get("maritima"):
+            cotizacion.aerea = ""
+            cotizacion.maritima = "Marítima"
+            cotizacion.terrestre = ""
+        elif self.cleaned_data.get("terrestre"):
+            cotizacion.aerea = ""
+            cotizacion.maritima = ""
+            cotizacion.terrestre = "Terrestre"
+        else:
+            cotizacion.aerea = ""
+            cotizacion.maritima = ""
+            cotizacion.terrestre = ""
         if commit:
             cotizacion.save()
         return cotizacion
