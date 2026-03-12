@@ -1,0 +1,62 @@
+<div class="table-responsive">
+<table class="table table-bordered">
+    <thead class="table-info text-center">
+        <tr>
+            <th>Cotización</th>
+            <th>Prospecto</th>
+            <th>Fecha solicitud</th>
+            <th>Fecha envío</th>
+            <th>Tipo</th>
+            <th>Ejecutivo</th>
+            <th>Tiempo entrega</th>
+            <th>Aérea</th>
+            <th>Marítima</th>
+            <th>Terrestre</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+
+    <tbody id="cotizaciones-body">
+        {% include "cotizaciones/_cotizaciones_rows.html" %}
+    </tbody>
+</table>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+    <div>
+        {% if paginator.num_pages > 0 %}
+            Página {{ page_obj.number }} de {{ paginator.num_pages }}
+        {% else %}
+            Página 1 de 1
+        {% endif %}
+    </div>
+    {% if paginator.num_pages > 1 %}
+    <nav aria-label="Paginación cotizaciones">
+        <ul class="pagination mb-0">
+            <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+                {% if page_obj.has_previous %}
+                <a class="page-link" href="?{% if anio_seleccionado %}anio={{ anio_seleccionado }}&{% endif %}{% if q %}q={{ q|urlencode }}&{% endif %}{% if orden %}orden={{ orden }}&{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>
+                {% else %}
+                <span class="page-link">Anterior</span>
+                {% endif %}
+            </li>
+            {% for page_number in paginator.page_range %}
+            <li class="page-item {% if page_number == page_obj.number %}active{% endif %}">
+                {% if page_number == page_obj.number %}
+                <span class="page-link">{{ page_number }}</span>
+                {% else %}
+                <a class="page-link" href="?{% if anio_seleccionado %}anio={{ anio_seleccionado }}&{% endif %}{% if q %}q={{ q|urlencode }}&{% endif %}{% if orden %}orden={{ orden }}&{% endif %}page={{ page_number }}">{{ page_number }}</a>
+                {% endif %}
+            </li>
+            {% endfor %}
+            <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+                {% if page_obj.has_next %}
+                <a class="page-link" href="?{% if anio_seleccionado %}anio={{ anio_seleccionado }}&{% endif %}{% if q %}q={{ q|urlencode }}&{% endif %}{% if orden %}orden={{ orden }}&{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>
+                {% else %}
+                <span class="page-link">Siguiente</span>
+                {% endif %}
+            </li>
+        </ul>
+    </nav>
+    {% endif %}
+</div>

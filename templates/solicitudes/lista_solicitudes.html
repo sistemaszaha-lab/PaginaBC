@@ -34,6 +34,9 @@
 </div>
 
 <form id="buscador-solicitudes" method="get" class="mb-3 d-flex gap-2 flex-wrap">
+    {% if anio_seleccionado %}
+    <input type="hidden" name="anio" value="{{ anio_seleccionado }}">
+    {% endif %}
     <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio...">
     <select name="orden" class="form-select" style="max-width: 260px;">
         <option value="desc" {% if orden == "desc" %}selected{% endif %}>Consecutivo: mayor a menor</option>
@@ -42,44 +45,15 @@
     <a class="btn btn-outline-secondary" href="{% url 'lista_solicitudes' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}">Limpiar</a>
 </form>
 
-<div class="table-responsive">
-<table class="table table-bordered table-striped">
-    <thead>
-        <tr class="header-main">
-            <th rowspan="2">SG</th>
-            <th rowspan="2">Cliente</th>
-            <th rowspan="2">Fecha registro</th>
-            <th rowspan="2">Fecha entrega</th>
-            <th rowspan="2">Días</th>
-            <th rowspan="2">Tipo</th>
-            <th rowspan="2">Ejecutivo</th>
-            <th colspan="2">Aérea</th>
-            <th colspan="2">Marítima</th>
-            <th colspan="2">Terrestre</th>
-            <th rowspan="2">Acciones</th>
-        </tr>
-
-        <tr class="header-sub">
-            <th>Tiempo</th>
-            <th>Estatus</th>
-            <th>Tiempo</th>
-            <th>Estatus</th>
-            <th>Tiempo</th>
-            <th>Estatus</th>
-        </tr>
-    </thead>
-
-    <tbody id="solicitudes-body">
-        {% include "solicitudes/_solicitudes_rows.html" %}
-    </tbody>
-</table>
+<div id="solicitudes-listado">
+    {% include "solicitudes/_solicitudes_listado.html" %}
 </div>
 
 <script>
     (function () {
         const form = document.getElementById("buscador-solicitudes");
-        const body = document.getElementById("solicitudes-body");
-        if (!form || !body) return;
+        const listado = document.getElementById("solicitudes-listado");
+        if (!form || !listado) return;
         let debounceId = null;
 
         function fetchRows() {
@@ -89,7 +63,7 @@
             fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
                 .then((res) => res.text())
                 .then((html) => {
-                    body.innerHTML = html;
+                    listado.innerHTML = html;
                     params.delete("partial");
                     const cleanUrl = params.toString()
                         ? `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`
@@ -101,6 +75,14 @@
 
         function handleChange() {
             clearTimeout(debounceId);
+            const params = new URLSearchParams(new FormData(form));
+            if (params.has("page")) {
+                params.delete("page");
+                const cleanUrl = params.toString()
+                    ? `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`
+                    : (form.getAttribute("action") || window.location.pathname);
+                history.replaceState(null, "", cleanUrl);
+            }
             debounceId = setTimeout(fetchRows, 250);
         }
 

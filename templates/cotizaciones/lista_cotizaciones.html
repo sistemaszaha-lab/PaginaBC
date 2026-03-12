@@ -20,6 +20,9 @@
 </div>
 
 <form id="buscador-cotizaciones" method="get" class="mb-3 d-flex gap-2 flex-wrap">
+    {% if anio_seleccionado %}
+    <input type="hidden" name="anio" value="{{ anio_seleccionado }}">
+    {% endif %}
     <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio...">
     <select name="orden" class="form-select" style="max-width: 260px;">
         <option value="desc" {% if orden == "desc" %}selected{% endif %}>Consecutivo: mayor a menor</option>
@@ -28,35 +31,15 @@
     <a class="btn btn-outline-secondary" href="{% url 'lista_cotizaciones' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}">Limpiar</a>
 </form>
 
-<div class="table-responsive">
-<table class="table table-bordered">
-    <thead class="table-info text-center">
-        <tr>
-            <th>Cotización</th>
-            <th>Prospecto</th>
-            <th>Fecha solicitud</th>
-            <th>Fecha envío</th>
-            <th>Tipo</th>
-            <th>Ejecutivo</th>
-            <th>Tiempo entrega</th>
-            <th>Aérea</th>
-            <th>Marítima</th>
-            <th>Terrestre</th>
-            <th>Acciones</th>
-        </tr>
-    </thead>
-
-    <tbody id="cotizaciones-body">
-        {% include "cotizaciones/_cotizaciones_rows.html" %}
-    </tbody>
-</table>
+<div id="cotizaciones-listado">
+    {% include "cotizaciones/_cotizaciones_listado.html" %}
 </div>
 
 <script>
     (function () {
         const form = document.getElementById("buscador-cotizaciones");
-        const body = document.getElementById("cotizaciones-body");
-        if (!form || !body) return;
+        const listado = document.getElementById("cotizaciones-listado");
+        if (!form || !listado) return;
         let debounceId = null;
 
         function fetchRows() {
@@ -66,7 +49,7 @@
             fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
                 .then((res) => res.text())
                 .then((html) => {
-                    body.innerHTML = html;
+                    listado.innerHTML = html;
                     params.delete("partial");
                     const cleanUrl = params.toString()
                         ? `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`
@@ -78,6 +61,14 @@
 
         function handleChange() {
             clearTimeout(debounceId);
+            const params = new URLSearchParams(new FormData(form));
+            if (params.has("page")) {
+                params.delete("page");
+                const cleanUrl = params.toString()
+                    ? `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`
+                    : (form.getAttribute("action") || window.location.pathname);
+                history.replaceState(null, "", cleanUrl);
+            }
             debounceId = setTimeout(fetchRows, 250);
         }
 

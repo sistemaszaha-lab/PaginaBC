@@ -31,31 +31,15 @@
     <a class="btn btn-outline-secondary" href="{% url 'lista_referencias' %}">Limpiar</a>
 </form>
 
-<div class="table-responsive">
-<table class="table table-bordered table-striped">
-    <thead class="table-dark">
-        <tr>
-            <th>Referencia</th>
-            <th>Ejecutivo</th>
-            <th>Cliente</th>
-            <th>Servicio</th>
-            <th>Agencia aduanal</th>
-            <th>Fecha</th>
-            <th>Acciones</th>
-        </tr>
-    </thead>
-
-    <tbody id="referencias-body">
-        {% include "referencias/_referencias_rows.html" %}
-    </tbody>
-</table>
+<div id="referencias-listado">
+    {% include "referencias/_referencias_listado.html" %}
 </div>
 
 <script>
     (function () {
         const form = document.getElementById("buscador-referencias");
-        const body = document.getElementById("referencias-body");
-        if (!form || !body) return;
+        const listado = document.getElementById("referencias-listado");
+        if (!form || !listado) return;
         let debounceId = null;
 
         function fetchRows() {
@@ -65,7 +49,7 @@
             fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
                 .then((res) => res.text())
                 .then((html) => {
-                    body.innerHTML = html;
+                    listado.innerHTML = html;
                     params.delete("partial");
                     const cleanUrl = params.toString()
                         ? `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`
@@ -77,6 +61,14 @@
 
         function handleChange() {
             clearTimeout(debounceId);
+            const params = new URLSearchParams(new FormData(form));
+            if (params.has("page")) {
+                params.delete("page");
+                const cleanUrl = params.toString()
+                    ? `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`
+                    : (form.getAttribute("action") || window.location.pathname);
+                history.replaceState(null, "", cleanUrl);
+            }
             debounceId = setTimeout(fetchRows, 250);
         }
 

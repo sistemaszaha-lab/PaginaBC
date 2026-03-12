@@ -8,6 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import IntegerField, Q
 from django.db.models.functions import Cast, Length, Substr
@@ -547,13 +548,24 @@ def lista_solicitudes(request):
         key=lambda s: (_extraer_consecutivo(s.sg), s.sg),
         reverse=orden == "desc",
     )
+    paginator = Paginator(solicitudes, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    solicitudes = page_obj.object_list
     ejecutivos = User.objects.all().order_by("username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(
             request,
-            "solicitudes/_solicitudes_rows.html",
-            {"solicitudes": solicitudes, "usuarios": ejecutivos, "orden": orden},
+            "solicitudes/_solicitudes_listado.html",
+            {
+                "solicitudes": solicitudes,
+                "usuarios": ejecutivos,
+                "orden": orden,
+                "page_obj": page_obj,
+                "paginator": paginator,
+                "anio_seleccionado": anio,
+                "q": q,
+            },
         )
 
     return render(
@@ -566,6 +578,8 @@ def lista_solicitudes(request):
             "usuarios": ejecutivos,
             "q": q,
             "orden": orden,
+            "page_obj": page_obj,
+            "paginator": paginator,
         },
     )
 
@@ -865,17 +879,23 @@ def lista_cotizaciones(request):
         key=lambda c: (_extraer_consecutivo(c.consecutivo), c.consecutivo),
         reverse=orden == "desc",
     )
+    paginator = Paginator(cotizaciones, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    cotizaciones = page_obj.object_list
     ejecutivos = User.objects.all().order_by("username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(
             request,
-            "cotizaciones/_cotizaciones_rows.html",
+            "cotizaciones/_cotizaciones_listado.html",
             {
                 "cotizaciones": cotizaciones,
                 "usuarios": ejecutivos,
                 "anio_seleccionado": anio,
                 "orden": orden,
+                "page_obj": page_obj,
+                "paginator": paginator,
+                "q": q,
             },
         )
 
@@ -889,6 +909,8 @@ def lista_cotizaciones(request):
             "usuarios": ejecutivos,
             "q": q,
             "orden": orden,
+            "page_obj": page_obj,
+            "paginator": paginator,
         },
     )
 
@@ -1055,16 +1077,26 @@ def lista_referencias(request):
         )
 
     if orden == "desc":
-        referencias = referencias_qs.order_by("-consecutivo_orden", "-referencia")
+        referencias_qs = referencias_qs.order_by("-consecutivo_orden", "-referencia")
     else:
-        referencias = referencias_qs.order_by("consecutivo_orden", "referencia")
+        referencias_qs = referencias_qs.order_by("consecutivo_orden", "referencia")
+    paginator = Paginator(referencias_qs, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    referencias = page_obj.object_list
     ejecutivos = User.objects.all().order_by("username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(
             request,
-            "referencias/_referencias_rows.html",
-            {"referencias": referencias, "usuarios": ejecutivos, "orden": orden},
+            "referencias/_referencias_listado.html",
+            {
+                "referencias": referencias,
+                "usuarios": ejecutivos,
+                "orden": orden,
+                "page_obj": page_obj,
+                "paginator": paginator,
+                "q": q,
+            },
         )
     return render(
         request,
@@ -1074,6 +1106,8 @@ def lista_referencias(request):
             "usuarios": ejecutivos,
             "q": q,
             "orden": orden,
+            "page_obj": page_obj,
+            "paginator": paginator,
         },
     )
 
