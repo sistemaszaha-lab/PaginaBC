@@ -773,7 +773,7 @@ def cambiar_ejecutivo(request, pk):
 @login_required
 def lista_usuarios(request):
     _requiere_admin(request.user)
-    usuarios = User.objects.all().order_by("first_name", "username")
+    usuarios = User.objects.select_related("perfil").all().order_by("first_name", "username")
     return render(request, "usuarios/lista_usuarios.html", {"usuarios": usuarios})
 
 

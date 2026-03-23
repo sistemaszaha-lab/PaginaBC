@@ -1,4 +1,5 @@
 from django import template
+from django.core.exceptions import ObjectDoesNotExist
 
 register = template.Library()
 
@@ -14,6 +15,19 @@ def primer_nombre(user):
 
 
 @register.filter
+def segundo_nombre(user):
+    if not user:
+        return ""
+    try:
+        perfil = user.perfil
+    except ObjectDoesNotExist:
+        perfil = None
+    except Exception:
+        perfil = None
+    return (getattr(perfil, "segundo_nombre", "") or "").strip() if perfil else ""
+
+
+@register.filter
 def nombre_completo(user):
     if not user:
         return ""
@@ -22,7 +36,12 @@ def nombre_completo(user):
     if primer:
         partes.append(primer)
 
-    perfil = getattr(user, "perfil", None)
+    try:
+        perfil = user.perfil
+    except ObjectDoesNotExist:
+        perfil = None
+    except Exception:
+        perfil = None
     if perfil:
         segundo = (getattr(perfil, "segundo_nombre", "") or "").strip()
         if segundo:
@@ -35,4 +54,3 @@ def nombre_completo(user):
     if partes:
         return " ".join(partes)
     return (getattr(user, "username", "") or "").strip()
-

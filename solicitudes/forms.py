@@ -4,6 +4,7 @@ from django import forms
 from django.db import IntegrityError, transaction
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
+from django.core.exceptions import ObjectDoesNotExist
 from .models import Cotizacion, Referencia, Solicitud, UserProfile
 
 CLIENTE_NUEVO_LABEL = "Registrar cliente nuevo"
@@ -279,7 +280,12 @@ class EditarUsuarioForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             self.fields["primer_nombre"].initial = self.instance.first_name
             self.fields["apellidos"].initial = self.instance.last_name
-            perfil = getattr(self.instance, "perfil", None)
+            try:
+                perfil = self.instance.perfil
+            except ObjectDoesNotExist:
+                perfil = None
+            except Exception:
+                perfil = None
             if perfil:
                 self.fields["segundo_nombre"].initial = getattr(perfil, "segundo_nombre", "")
 
