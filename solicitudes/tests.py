@@ -226,6 +226,24 @@ class SeguridadPermisosTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Referencia.objects.filter(pk=referencia.pk).exists())
 
+    def test_lista_referencias_ordena_por_ultimos_tres_digitos(self):
+        self.client.login(username="admin", password="admin123")
+        Referencia.objects.create(referencia="BC261001", ejecutivo=self.ejecutivo)
+        Referencia.objects.create(referencia="BC261002", ejecutivo=self.ejecutivo)
+        Referencia.objects.create(referencia="BC261010", ejecutivo=self.ejecutivo)
+
+        response = self.client.get(reverse("lista_referencias"))
+        self.assertEqual(response.status_code, 200)
+        contenido = response.content.decode("utf-8")
+        self.assertLess(contenido.find("BC261010"), contenido.find("BC261002"))
+        self.assertLess(contenido.find("BC261002"), contenido.find("BC261001"))
+
+        response = self.client.get(reverse("lista_referencias"), {"orden": "asc"})
+        self.assertEqual(response.status_code, 200)
+        contenido = response.content.decode("utf-8")
+        self.assertLess(contenido.find("BC261001"), contenido.find("BC261002"))
+        self.assertLess(contenido.find("BC261002"), contenido.find("BC261010"))
+
     def test_descarga_excel_requiere_login_y_devuelve_archivo(self):
         export_urls = [
             reverse("exportar_solicitudes_excel") + "?anio=2026",
