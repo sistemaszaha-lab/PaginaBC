@@ -1040,6 +1040,7 @@ def cambiar_ejecutivo_cotizacion(request, pk):
 def lista_referencias(request):
     referencias_qs = Referencia.objects.all()
     q = request.GET.get("q", "").strip()
+    orden = (request.GET.get("orden") or "").strip().lower()
 
     if q:
         referencias_qs = referencias_qs.filter(
@@ -1053,7 +1054,10 @@ def lista_referencias(request):
             | Q(ejecutivo__last_name__icontains=q)
         )
 
-    referencias_qs = referencias_qs.order_by("id")
+    if orden == "asc":
+        referencias_qs = referencias_qs.order_by("id")
+    elif orden == "desc":
+        referencias_qs = referencias_qs.order_by("-id")
     paginator = Paginator(referencias_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     referencias = page_obj.object_list
@@ -1066,6 +1070,7 @@ def lista_referencias(request):
             {
                 "referencias": referencias,
                 "usuarios": ejecutivos,
+                "orden": orden,
                 "page_obj": page_obj,
                 "paginator": paginator,
                 "q": q,
@@ -1078,6 +1083,7 @@ def lista_referencias(request):
             "referencias": referencias,
             "usuarios": ejecutivos,
             "q": q,
+            "orden": orden,
             "page_obj": page_obj,
             "paginator": paginator,
         },
