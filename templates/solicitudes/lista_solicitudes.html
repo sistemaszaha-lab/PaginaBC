@@ -39,8 +39,8 @@
     {% endif %}
     <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio...">
     <select name="orden" class="form-select" style="max-width: 260px;">
-        <option value="desc" {% if orden == "desc" %}selected{% endif %}>Consecutivo: mayor a menor</option>
-        <option value="asc" {% if orden == "asc" %}selected{% endif %}>Consecutivo: menor a mayor</option>
+        <option value="asc" {% if orden == "asc" %}selected{% endif %}>⬆️ Mostrar: Ascendente</option>
+        <option value="desc" {% if orden == "desc" %}selected{% endif %}>⬇️ Mostrar: Descendente</option>
     </select>
     <a class="btn btn-outline-secondary" href="{% url 'lista_solicitudes' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}">Limpiar</a>
 </form>

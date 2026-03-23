@@ -25,8 +25,8 @@
 <form id="buscador-referencias" method="get" class="mb-3 d-flex gap-2 flex-wrap">
     <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio...">
     <select name="orden" class="form-select" style="max-width: 260px;">
-        <option value="asc" {% if orden == "asc" %}selected{% endif %}>Ascendente</option>
-        <option value="desc" {% if orden == "desc" %}selected{% endif %}>Descendente</option>
+        <option value="asc" {% if orden == "asc" %}selected{% endif %}>⬆️ Mostrar: Ascendente</option>
+        <option value="desc" {% if orden == "desc" %}selected{% endif %}>⬇️ Mostrar: Descendente</option>
     </select>
     <a class="btn btn-outline-secondary" href="{% url 'lista_referencias' %}">Limpiar</a>
 </form>
