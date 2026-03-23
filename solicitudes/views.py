@@ -1062,17 +1062,8 @@ def cambiar_ejecutivo_cotizacion(request, pk):
 
 @login_required
 def lista_referencias(request):
-    consecutivo_expr = Cast(
-        Substr("referencia", Length("referencia") - 2, 3),
-        IntegerField(),
-    )
-    referencias_qs = Referencia.objects.annotate(
-        consecutivo_orden=consecutivo_expr
-    )
+    referencias_qs = Referencia.objects.all()
     q = request.GET.get("q", "").strip()
-    orden = request.GET.get("orden", "desc").lower()
-    if orden not in {"asc", "desc"}:
-        orden = "desc"
 
     if q:
         referencias_qs = referencias_qs.filter(
@@ -1086,10 +1077,7 @@ def lista_referencias(request):
             | Q(ejecutivo__last_name__icontains=q)
         )
 
-    if orden == "desc":
-        referencias_qs = referencias_qs.order_by("-consecutivo_orden", "-referencia")
-    else:
-        referencias_qs = referencias_qs.order_by("consecutivo_orden", "referencia")
+    referencias_qs = referencias_qs.order_by("id")
     paginator = Paginator(referencias_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     referencias = page_obj.object_list
@@ -1102,7 +1090,6 @@ def lista_referencias(request):
             {
                 "referencias": referencias,
                 "usuarios": ejecutivos,
-                "orden": orden,
                 "page_obj": page_obj,
                 "paginator": paginator,
                 "q": q,
@@ -1115,7 +1102,6 @@ def lista_referencias(request):
             "referencias": referencias,
             "usuarios": ejecutivos,
             "q": q,
-            "orden": orden,
             "page_obj": page_obj,
             "paginator": paginator,
         },
@@ -1146,7 +1132,7 @@ def importar_referencias_csv(request):
 
 @login_required
 def exportar_referencias_excel(request):
-    referencias = Referencia.objects.select_related("ejecutivo").order_by("-fecha")
+    referencias = Referencia.objects.select_related("ejecutivo").order_by("id")
     headers = [
         "Referencia",
         "Ejecutivo",
