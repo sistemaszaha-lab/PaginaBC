@@ -433,26 +433,10 @@ def _importar_referencias_desde_filas(filas):
     actualizados = 0
     omitidos = 0
 
-    filas_sin_referencia = []
-
     for row in data_rows:
         try:
             if not any(str(celda or "").strip() for celda in row):
                 continue
-            filas_sin_referencia.append(row)
-        except Exception:
-            omitidos += 1
-
-    filas_sin_referencia.sort(
-        key=lambda row: (
-            _parse_fecha(_valor_columna(row, fecha_idx)) or date.today(),
-            _servicio_referencia_normalizado(_valor_columna(row, servicio_idx)),
-            _valor_columna(row, cliente_idx),
-        )
-    )
-
-    for row in filas_sin_referencia:
-        try:
             fecha = _parse_fecha(_valor_columna(row, fecha_idx)) or date.today()
             servicio = _servicio_referencia_normalizado(_valor_columna(row, servicio_idx))
             ejecutivo = _resolver_usuario(_valor_columna(row, ejecutivo_idx))
@@ -460,25 +444,17 @@ def _importar_referencias_desde_filas(filas):
             agencia = _valor_columna(row, agencia_idx) or "Sin agencia"
 
             servicio_final = servicio if servicio in ReferenciaForm.CODIGOS_OPERACION else "importacion"
-            creado = False
-            for _ in range(3):
-                referencia = _generar_referencia(fecha, servicio_final)
-                if not referencia:
-                    break
-                try:
-                    Referencia.objects.create(
-                        referencia=referencia,
-                        ejecutivo=ejecutivo,
-                        cliente=cliente,
-                        servicio=servicio_final,
-                        agencia_aduanal=agencia,
-                        fecha=fecha,
-                    )
-                    creado = True
-                    break
-                except IntegrityError:
-                    continue
-            if creado:
+            form = ReferenciaForm(
+                data={
+                    "ejecutivo": ejecutivo.pk if ejecutivo else "",
+                    "cliente": cliente,
+                    "servicio": servicio_final,
+                    "agencia_aduanal": agencia,
+                    "fecha": fecha.isoformat(),
+                }
+            )
+            if form.is_valid():
+                form.save()
                 creados += 1
             else:
                 omitidos += 1
@@ -1062,15 +1038,8 @@ def cambiar_ejecutivo_cotizacion(request, pk):
 
 @login_required
 def lista_referencias(request):
-    consecutivo_expr = Cast(
-        Substr("referencia", Length("referencia") - 2, 3),
-        IntegerField(),
-    )
-    referencias_qs = Referencia.objects.annotate(consecutivo_orden=consecutivo_expr)
+    referencias_qs = Referencia.objects.all()
     q = request.GET.get("q", "").strip()
-    orden = request.GET.get("orden", "asc").strip().lower()
-    if orden not in {"asc", "desc"}:
-        orden = "asc"
 
     if q:
         referencias_qs = referencias_qs.filter(
@@ -1084,10 +1053,7 @@ def lista_referencias(request):
             | Q(ejecutivo__last_name__icontains=q)
         )
 
-    if orden == "desc":
-        referencias_qs = referencias_qs.order_by("-consecutivo_orden", "id")
-    else:
-        referencias_qs = referencias_qs.order_by("consecutivo_orden", "id")
+    referencias_qs = referencias_qs.order_by("id")
     paginator = Paginator(referencias_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     referencias = page_obj.object_list
@@ -1100,7 +1066,6 @@ def lista_referencias(request):
             {
                 "referencias": referencias,
                 "usuarios": ejecutivos,
-                "orden": orden,
                 "page_obj": page_obj,
                 "paginator": paginator,
                 "q": q,
@@ -1113,7 +1078,6 @@ def lista_referencias(request):
             "referencias": referencias,
             "usuarios": ejecutivos,
             "q": q,
-            "orden": orden,
             "page_obj": page_obj,
             "paginator": paginator,
         },
@@ -1144,15 +1108,7 @@ def importar_referencias_csv(request):
 
 @login_required
 def exportar_referencias_excel(request):
-    consecutivo_expr = Cast(
-        Substr("referencia", Length("referencia") - 2, 3),
-        IntegerField(),
-    )
-    referencias = (
-        Referencia.objects.select_related("ejecutivo")
-        .annotate(consecutivo_orden=consecutivo_expr)
-        .order_by("consecutivo_orden", "id")
-    )
+    referencias = Referencia.objects.select_related("ejecutivo").order_by("id")
     headers = [
         "Referencia",
         "Ejecutivo",
