@@ -14,9 +14,7 @@
     <thead class="table-dark">
         <tr>
             <th>Usuario</th>
-            <th>Primer nombre</th>
-            <th>Segundo nombre</th>
-            <th>Apellidos</th>
+            <th>Nombre</th>
             <th>Correo</th>
             <th>Rol</th>
             <th>Ultimo acceso</th>
@@ -28,9 +26,7 @@
         {% for u in usuarios %}
         <tr>
             <td>{{ u.username }}</td>
-            <td>{{ u.first_name }}</td>
-            <td>{{ u|segundo_nombre }}</td>
-            <td>{{ u.last_name }}</td>
+            <td>{{ u|nombre_completo }}</td>
             <td>{{ u.email }}</td>
             <td>
                 {% if u.is_superuser %}
