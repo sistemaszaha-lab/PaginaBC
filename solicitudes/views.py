@@ -512,9 +512,8 @@ def lista_solicitudes(request):
     )
     solicitudes_qs = Solicitud.objects.filter(anio=anio) if anio else Solicitud.objects.none()
     q = request.GET.get("q", "").strip()
-    orden = request.GET.get("orden", "desc").lower()
-    if orden not in {"asc", "desc"}:
-        orden = "desc"
+    orden = (request.GET.get("orden") or "").strip().lower()
+    orden = "asc" if orden == "asc" else "desc"
 
     if q:
         solicitudes_qs = solicitudes_qs.filter(
@@ -528,12 +527,12 @@ def lista_solicitudes(request):
             | Q(ejecutivo__last_name__icontains=q)
         )
 
-    solicitudes = list(solicitudes_qs)
-    solicitudes.sort(
-        key=lambda s: (_extraer_consecutivo(s.sg), s.sg),
-        reverse=orden == "desc",
-    )
-    paginator = Paginator(solicitudes, 25)
+    if orden == "asc":
+        solicitudes_qs = solicitudes_qs.order_by("id")
+    else:
+        solicitudes_qs = solicitudes_qs.order_by("-id")
+
+    paginator = Paginator(solicitudes_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     solicitudes = page_obj.object_list
     ejecutivos = User.objects.all().order_by("first_name", "username")
@@ -844,9 +843,8 @@ def lista_cotizaciones(request):
     )
     cotizaciones_qs = Cotizacion.objects.filter(anio=anio) if anio else Cotizacion.objects.none()
     q = request.GET.get("q", "").strip()
-    orden = request.GET.get("orden", "desc").lower()
-    if orden not in {"asc", "desc"}:
-        orden = "desc"
+    orden = (request.GET.get("orden") or "").strip().lower()
+    orden = "asc" if orden == "asc" else "desc"
 
     if q:
         cotizaciones_qs = cotizaciones_qs.filter(
@@ -860,12 +858,12 @@ def lista_cotizaciones(request):
             | Q(ejecutivo__last_name__icontains=q)
         )
 
-    cotizaciones = list(cotizaciones_qs)
-    cotizaciones.sort(
-        key=lambda c: (_extraer_consecutivo(c.consecutivo), c.consecutivo),
-        reverse=orden == "desc",
-    )
-    paginator = Paginator(cotizaciones, 25)
+    if orden == "asc":
+        cotizaciones_qs = cotizaciones_qs.order_by("id")
+    else:
+        cotizaciones_qs = cotizaciones_qs.order_by("-id")
+
+    paginator = Paginator(cotizaciones_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     cotizaciones = page_obj.object_list
     ejecutivos = User.objects.all().order_by("first_name", "username")
@@ -1041,6 +1039,7 @@ def lista_referencias(request):
     referencias_qs = Referencia.objects.all()
     q = request.GET.get("q", "").strip()
     orden = (request.GET.get("orden") or "").strip().lower()
+    orden = "asc" if orden == "asc" else "desc"
 
     if q:
         referencias_qs = referencias_qs.filter(
@@ -1056,7 +1055,7 @@ def lista_referencias(request):
 
     if orden == "asc":
         referencias_qs = referencias_qs.order_by("id")
-    elif orden == "desc":
+    else:
         referencias_qs = referencias_qs.order_by("-id")
     paginator = Paginator(referencias_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))

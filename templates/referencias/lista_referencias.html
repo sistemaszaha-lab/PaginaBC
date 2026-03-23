@@ -26,7 +26,7 @@
     <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio...">
     <select name="orden" class="form-select" style="max-width: 260px;">
         <option value="asc" {% if orden == "asc" %}selected{% endif %}>⬆️ Mostrar: Ascendente</option>
-        <option value="desc" {% if orden == "desc" %}selected{% endif %}>⬇️ Mostrar: Descendente</option>
+        <option value="desc" {% if orden != "asc" %}selected{% endif %}>⬇️ Mostrar: Descendente</option>
     </select>
     <a class="btn btn-outline-secondary" href="{% url 'lista_referencias' %}">Limpiar</a>
 </form>
@@ -41,13 +41,6 @@
         const listado = document.getElementById("referencias-listado");
         if (!form || !listado) return;
         let debounceId = null;
-        const ordenSelect = form.querySelector('select[name="orden"]');
-        const currentParams = new URLSearchParams(window.location.search);
-        if (ordenSelect && !currentParams.has("orden")) {
-            ordenSelect.removeAttribute("name");
-            ordenSelect.selectedIndex = -1;
-        }
-
         function fetchRows() {
             const params = new URLSearchParams(new FormData(form));
             params.set("partial", "1");
@@ -76,14 +69,6 @@
                 history.replaceState(null, "", cleanUrl);
             }
             debounceId = setTimeout(fetchRows, 250);
-        }
-
-        if (ordenSelect) {
-            ordenSelect.addEventListener("change", () => {
-                if (!ordenSelect.getAttribute("name")) {
-                    ordenSelect.setAttribute("name", "orden");
-                }
-            });
         }
 
         form.addEventListener("input", handleChange);
