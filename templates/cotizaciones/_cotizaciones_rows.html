@@ -1,3 +1,4 @@
+{% load usuario_tags %}
 {% for c in cotizaciones %}
 <tr>
     <td>{{ c.consecutivo }}</td>
@@ -13,13 +14,13 @@
             <select name="ejecutivo" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">-- Sin asignar --</option>
                 {% for u in usuarios %}
-                    <option value="{{ u.id }}" {% if c.ejecutivo and c.ejecutivo.id == u.id %}selected{% endif %}>{{ u.username }}</option>
+                    <option value="{{ u.id }}" {% if c.ejecutivo and c.ejecutivo.id == u.id %}selected{% endif %}>{{ u|primer_nombre }}</option>
                 {% endfor %}
             </select>
         </form>
     </td>
     {% else %}
-    <td>{{ c.ejecutivo|default:"-" }}</td>
+    <td>{{ c.ejecutivo|primer_nombre|default:"-" }}</td>
     {% endif %}
     <td>{% if c.tiempo_entrega %}{{ c.tiempo_entrega }} días{% else %}-{% endif %}</td>
     <td>{% if c.aerea %}✓{% endif %}</td>

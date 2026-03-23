@@ -58,6 +58,15 @@ def _valor_excel(value):
     return str(value)
 
 
+def _primer_nombre_ejecutivo(user):
+    if not user:
+        return ""
+    first_name = (user.first_name or "").strip()
+    if first_name:
+        return first_name.split()[0]
+    return (user.username or "").strip()
+
+
 def _respuesta_excel(nombre_archivo, headers, rows):
     timestamp = timezone.now().strftime("%Y%m%d_%H%M")
 
@@ -551,7 +560,7 @@ def lista_solicitudes(request):
     paginator = Paginator(solicitudes, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     solicitudes = page_obj.object_list
-    ejecutivos = User.objects.all().order_by("username")
+    ejecutivos = User.objects.all().order_by("first_name", "username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(
@@ -651,7 +660,7 @@ def exportar_solicitudes_excel(request):
             s.fecha_recepcion,
             s.fecha_entrega,
             s.tipo,
-            s.ejecutivo.username if s.ejecutivo else "",
+            _primer_nombre_ejecutivo(s.ejecutivo),
             s.aerea,
             s.estado_aereo,
             s.maritima,
@@ -764,7 +773,7 @@ def cambiar_ejecutivo(request, pk):
 @login_required
 def lista_usuarios(request):
     _requiere_admin(request.user)
-    usuarios = User.objects.all().order_by("username")
+    usuarios = User.objects.all().order_by("first_name", "username")
     return render(request, "usuarios/lista_usuarios.html", {"usuarios": usuarios})
 
 
@@ -785,6 +794,7 @@ def crear_usuario(request):
                 user.is_superuser = rol == "admin"
                 user.is_staff = rol == "admin"
                 user.save()
+                form.save_profile(user)
                 return redirect("lista_usuarios")
     else:
         form = CrearUsuarioForm()
@@ -882,7 +892,7 @@ def lista_cotizaciones(request):
     paginator = Paginator(cotizaciones, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     cotizaciones = page_obj.object_list
-    ejecutivos = User.objects.all().order_by("username")
+    ejecutivos = User.objects.all().order_by("first_name", "username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(
@@ -976,7 +986,7 @@ def exportar_cotizaciones_excel(request):
             c.fecha_solicitud,
             c.fecha_envio,
             c.tipo,
-            c.ejecutivo.username if c.ejecutivo else "",
+            _primer_nombre_ejecutivo(c.ejecutivo),
             c.tiempo_entrega,
             c.aerea,
             c.maritima,
@@ -1083,7 +1093,7 @@ def lista_referencias(request):
     paginator = Paginator(referencias_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     referencias = page_obj.object_list
-    ejecutivos = User.objects.all().order_by("username")
+    ejecutivos = User.objects.all().order_by("first_name", "username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(
@@ -1148,7 +1158,7 @@ def exportar_referencias_excel(request):
     rows = [
         [
             r.referencia,
-            r.ejecutivo.username if r.ejecutivo else "",
+            _primer_nombre_ejecutivo(r.ejecutivo),
             r.cliente,
             r.servicio,
             r.agencia_aduanal,

@@ -4,7 +4,7 @@ from django import forms
 from django.db import IntegrityError, transaction
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
-from .models import Cotizacion, Referencia, Solicitud
+from .models import Cotizacion, Referencia, Solicitud, UserProfile
 
 CLIENTE_NUEVO_LABEL = "Registrar cliente nuevo"
 
@@ -13,6 +13,29 @@ def _validar_cliente(valor):
     if (valor or "").strip().lower() == CLIENTE_NUEVO_LABEL.lower():
         raise forms.ValidationError("Selecciona un cliente valido o registra uno nuevo.")
     return valor
+
+
+def _primer_nombre_display(user):
+    if not user:
+        return ""
+    first_name = (getattr(user, "first_name", "") or "").strip()
+    if first_name:
+        return first_name.split()[0]
+    return (getattr(user, "username", "") or "").strip()
+
+
+def _label_ejecutivo(user):
+    return _primer_nombre_display(user)
+
+
+def _configurar_ejecutivo_field(field):
+    if not field:
+        return
+    field.queryset = User.objects.all().order_by("first_name", "username")
+    if hasattr(field, "label_from_instance"):
+        field.label_from_instance = _label_ejecutivo
+    if getattr(field, "widget", None):
+        field.widget.attrs.setdefault("class", "form-select")
 
 
 class SolicitudForm(forms.ModelForm):
@@ -55,6 +78,7 @@ class SolicitudForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["sg"].required = False
         self.fields["sg"].disabled = True
+        _configurar_ejecutivo_field(self.fields.get("ejecutivo"))
         if self.instance.pk and self.instance.tipo and self.instance.tipo not in dict(self.TIPOS_SOLICITUD):
             self.fields["tipo"].choices = [(self.instance.tipo, self.instance.tipo)] + list(
                 self.TIPOS_SOLICITUD
@@ -99,8 +123,23 @@ class SolicitudForm(forms.ModelForm):
 
 
 class CrearUsuarioForm(UserCreationForm):
-    first_name = forms.CharField(label="Nombre")
-    email = forms.EmailField(label="Correo electrónico")
+    primer_nombre = forms.CharField(
+        label="Primer nombre",
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    segundo_nombre = forms.CharField(
+        label="Segundo nombre",
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    apellidos = forms.CharField(
+        label="Apellidos",
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    email = forms.EmailField(
+        label="Correo electrónico",
+        widget=forms.EmailInput(attrs={"class": "form-control"}),
+    )
 
     ROLES = (
         ("admin", "Administrador"),
@@ -115,10 +154,79 @@ class CrearUsuarioForm(UserCreationForm):
 
     class Meta:
         model = User
-        fields = ("username", "first_name", "email", "password1", "password2", "rol")
+        fields = (
+            "username",
+            "primer_nombre",
+            "segundo_nombre",
+            "apellidos",
+            "email",
+            "password1",
+            "password2",
+            "rol",
+        )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.order_fields(
+            [
+                "username",
+                "primer_nombre",
+                "segundo_nombre",
+                "apellidos",
+                "email",
+                "password1",
+                "password2",
+                "rol",
+            ]
+        )
+        if "username" in self.fields:
+            self.fields["username"].widget.attrs.setdefault("class", "form-control")
+        for password_field in ("password1", "password2"):
+            if password_field in self.fields:
+                self.fields[password_field].widget.attrs.setdefault("class", "form-control")
+
+    def clean_primer_nombre(self):
+        return (self.cleaned_data.get("primer_nombre") or "").strip()
+
+    def clean_segundo_nombre(self):
+        return (self.cleaned_data.get("segundo_nombre") or "").strip()
+
+    def clean_apellidos(self):
+        return (self.cleaned_data.get("apellidos") or "").strip()
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.first_name = self.cleaned_data["primer_nombre"]
+        user.last_name = self.cleaned_data["apellidos"]
+        user.email = self.cleaned_data.get("email", "")
+        if commit:
+            user.save()
+            self.save_profile(user)
+        return user
+
+    def save_profile(self, user):
+        segundo_nombre = (self.cleaned_data.get("segundo_nombre") or "").strip()
+        UserProfile.objects.update_or_create(
+            user=user,
+            defaults={"segundo_nombre": segundo_nombre},
+        )
 
 
 class EditarUsuarioForm(forms.ModelForm):
+    primer_nombre = forms.CharField(
+        label="Primer nombre",
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    segundo_nombre = forms.CharField(
+        label="Segundo nombre",
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    apellidos = forms.CharField(
+        label="Apellidos",
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+
     ROLES = (
         ("admin", "Administrador"),
         ("usuario", "Ejecutivo"),
@@ -142,15 +250,38 @@ class EditarUsuarioForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ("username", "first_name", "email", "rol")
+        fields = ("username", "email", "rol")
 
     def __init__(self, *args, **kwargs):
         self.can_edit_role = kwargs.pop("can_edit_role", True)
         super().__init__(*args, **kwargs)
+        self.order_fields(
+            [
+                "username",
+                "primer_nombre",
+                "segundo_nombre",
+                "apellidos",
+                "email",
+                "rol",
+                "password1",
+                "password2",
+            ]
+        )
+        if "username" in self.fields:
+            self.fields["username"].widget.attrs.setdefault("class", "form-control")
+        if "email" in self.fields:
+            self.fields["email"].widget.attrs.setdefault("class", "form-control")
         if self.can_edit_role:
             self.fields["rol"].initial = "admin" if self.instance.is_superuser else "usuario"
         else:
             self.fields.pop("rol")
+
+        if self.instance and self.instance.pk:
+            self.fields["primer_nombre"].initial = self.instance.first_name
+            self.fields["apellidos"].initial = self.instance.last_name
+            perfil = getattr(self.instance, "perfil", None)
+            if perfil:
+                self.fields["segundo_nombre"].initial = getattr(perfil, "segundo_nombre", "")
 
     def clean(self):
         cleaned_data = super().clean()
@@ -164,6 +295,15 @@ class EditarUsuarioForm(forms.ModelForm):
                 self.add_error("password1", "La contraseña debe tener al menos 8 caracteres.")
         return cleaned_data
 
+    def clean_primer_nombre(self):
+        return (self.cleaned_data.get("primer_nombre") or "").strip()
+
+    def clean_segundo_nombre(self):
+        return (self.cleaned_data.get("segundo_nombre") or "").strip()
+
+    def clean_apellidos(self):
+        return (self.cleaned_data.get("apellidos") or "").strip()
+
     def save(self, commit=True):
         user = super().save(commit=False)
         if self.can_edit_role:
@@ -171,13 +311,24 @@ class EditarUsuarioForm(forms.ModelForm):
             user.is_superuser = rol == "admin"
             user.is_staff = rol == "admin"
 
+        user.first_name = self.cleaned_data["primer_nombre"]
+        user.last_name = self.cleaned_data["apellidos"]
+
         password1 = self.cleaned_data.get("password1")
         if password1:
             user.set_password(password1)
 
         if commit:
             user.save()
+            self.save_profile(user)
         return user
+
+    def save_profile(self, user):
+        segundo_nombre = (self.cleaned_data.get("segundo_nombre") or "").strip()
+        UserProfile.objects.update_or_create(
+            user=user,
+            defaults={"segundo_nombre": segundo_nombre},
+        )
 
 
 class CotizacionForm(forms.ModelForm):
@@ -234,6 +385,7 @@ class CotizacionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        _configurar_ejecutivo_field(self.fields.get("ejecutivo"))
         self.fields["consecutivo"].required = False
         self.fields["tiempo_entrega"].required = False
         self.fields["aerea"].initial = bool(self.instance.aerea)
@@ -347,6 +499,7 @@ class ReferenciaForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        _configurar_ejecutivo_field(self.fields.get("ejecutivo"))
         if not self.instance.pk:
             self.fields["fecha"].initial = date.today()
         elif self.instance.servicio and self.instance.servicio not in self.CODIGOS_OPERACION:

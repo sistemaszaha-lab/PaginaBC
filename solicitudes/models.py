@@ -184,3 +184,11 @@ class Referencia(models.Model):
 
     def __str__(self):
         return self.referencia
+
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="perfil")
+    segundo_nombre = models.CharField(max_length=150, blank=True, default="")
+
+    def __str__(self):
+        return f"Perfil de {self.user.username}"

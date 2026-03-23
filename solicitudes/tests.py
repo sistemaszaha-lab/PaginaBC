@@ -71,7 +71,9 @@ class SeguridadPermisosTests(TestCase):
             reverse("editar_usuario", args=[self.ejecutivo.pk]),
             {
                 "username": "ejec",
-                "first_name": "Ejecutivo Editado",
+                "primer_nombre": "Ejecutivo",
+                "segundo_nombre": "",
+                "apellidos": "Editado",
                 "email": "ejec_editado@example.com",
                 "password1": "",
                 "password2": "",
@@ -79,7 +81,8 @@ class SeguridadPermisosTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.ejecutivo.refresh_from_db()
-        self.assertEqual(self.ejecutivo.first_name, "Ejecutivo Editado")
+        self.assertEqual(self.ejecutivo.first_name, "Ejecutivo")
+        self.assertEqual(self.ejecutivo.last_name, "Editado")
         self.assertEqual(self.ejecutivo.email, "ejec_editado@example.com")
 
         self.client.login(username="admin", password="admin123")
@@ -87,7 +90,9 @@ class SeguridadPermisosTests(TestCase):
             reverse("editar_usuario", args=[self.otro.pk]),
             {
                 "username": "otro",
-                "first_name": "Otro Editado",
+                "primer_nombre": "Otro",
+                "segundo_nombre": "",
+                "apellidos": "Editado",
                 "email": "otro_editado@example.com",
                 "rol": "usuario",
                 "password1": "",
@@ -96,7 +101,8 @@ class SeguridadPermisosTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.otro.refresh_from_db()
-        self.assertEqual(self.otro.first_name, "Otro Editado")
+        self.assertEqual(self.otro.first_name, "Otro")
+        self.assertEqual(self.otro.last_name, "Editado")
         self.assertEqual(self.otro.email, "otro_editado@example.com")
 
     def test_cambiar_estado_permisos(self):
@@ -162,7 +168,9 @@ class SeguridadPermisosTests(TestCase):
             reverse("crear_usuario"),
             {
                 "username": "admin5",
-                "first_name": "Admin 5",
+                "primer_nombre": "Admin",
+                "segundo_nombre": "",
+                "apellidos": "Cinco",
                 "email": "admin5@example.com",
                 "password1": "Admin12345!!",
                 "password2": "Admin12345!!",
@@ -317,7 +325,7 @@ class CotizacionFormTests(TestCase):
                 "tipo": "Exportación aérea",
                 "ejecutivo": self.ejecutivo.pk,
                 "tiempo_entrega": "",
-                "aerea": "",
+                "aerea": "on",
                 "maritima": "",
                 "terrestre": "",
             }
@@ -377,7 +385,7 @@ class SolicitudFormTests(TestCase):
                 "cliente": "Cliente 1",
                 "fecha_recepcion": "2026-01-10",
                 "fecha_entrega": "",
-                "tipo": "Operacion",
+                "tipo": "Importación aérea",
                 "ejecutivo": self.ejecutivo.pk,
                 "aerea": True,
                 "maritima": False,
@@ -395,7 +403,7 @@ class SolicitudFormTests(TestCase):
                 "cliente": "Cliente 2",
                 "fecha_recepcion": "2026-01-11",
                 "fecha_entrega": "",
-                "tipo": "Operacion",
+                "tipo": "Importación aérea",
                 "ejecutivo": self.ejecutivo.pk,
                 "aerea": False,
                 "maritima": True,

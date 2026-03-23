@@ -1,3 +1,4 @@
+{% load usuario_tags %}
 {% for r in referencias %}
 <tr>
     <td>{{ r.referencia }}</td>
@@ -8,13 +9,13 @@
             <select name="ejecutivo" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">-- Sin asignar --</option>
                 {% for u in usuarios %}
-                    <option value="{{ u.id }}" {% if r.ejecutivo and r.ejecutivo.id == u.id %}selected{% endif %}>{{ u.username }}</option>
+                    <option value="{{ u.id }}" {% if r.ejecutivo and r.ejecutivo.id == u.id %}selected{% endif %}>{{ u|primer_nombre }}</option>
                 {% endfor %}
             </select>
         </form>
     </td>
     {% else %}
-    <td>{{ r.ejecutivo|default:"-" }}</td>
+    <td>{{ r.ejecutivo|primer_nombre|default:"-" }}</td>
     {% endif %}
     <td>{{ r.cliente }}</td>
     <td>{{ r.servicio_legible }}</td>

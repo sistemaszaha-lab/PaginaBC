@@ -1,3 +1,4 @@
+{% load usuario_tags %}
 {% for s in solicitudes %}
 <tr>
     <td>{{ s.sg }}</td>
@@ -26,13 +27,13 @@
             <select name="ejecutivo" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">-- Sin asignar --</option>
                 {% for u in usuarios %}
-                    <option value="{{ u.id }}" {% if s.ejecutivo and s.ejecutivo.id == u.id %}selected{% endif %}>{{ u.username }}</option>
+                    <option value="{{ u.id }}" {% if s.ejecutivo and s.ejecutivo.id == u.id %}selected{% endif %}>{{ u|primer_nombre }}</option>
                 {% endfor %}
             </select>
         </form>
     </td>
     {% else %}
-        <td>{{ s.ejecutivo|default:"-" }}</td>
+        <td>{{ s.ejecutivo|primer_nombre|default:"-" }}</td>
     {% endif %}
 
     <td>
