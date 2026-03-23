@@ -1068,9 +1068,9 @@ def lista_referencias(request):
     )
     referencias_qs = Referencia.objects.annotate(consecutivo_orden=consecutivo_expr)
     q = request.GET.get("q", "").strip()
-    orden = request.GET.get("orden", "desc").strip().lower()
+    orden = request.GET.get("orden", "asc").strip().lower()
     if orden not in {"asc", "desc"}:
-        orden = "desc"
+        orden = "asc"
 
     if q:
         referencias_qs = referencias_qs.filter(
@@ -1084,10 +1084,10 @@ def lista_referencias(request):
             | Q(ejecutivo__last_name__icontains=q)
         )
 
-    if orden == "asc":
-        referencias_qs = referencias_qs.order_by("consecutivo_orden", "id")
-    else:
+    if orden == "desc":
         referencias_qs = referencias_qs.order_by("-consecutivo_orden", "id")
+    else:
+        referencias_qs = referencias_qs.order_by("consecutivo_orden", "id")
     paginator = Paginator(referencias_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     referencias = page_obj.object_list
@@ -1151,7 +1151,7 @@ def exportar_referencias_excel(request):
     referencias = (
         Referencia.objects.select_related("ejecutivo")
         .annotate(consecutivo_orden=consecutivo_expr)
-        .order_by("-consecutivo_orden", "id")
+        .order_by("consecutivo_orden", "id")
     )
     headers = [
         "Referencia",

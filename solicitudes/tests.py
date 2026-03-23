@@ -235,14 +235,20 @@ class SeguridadPermisosTests(TestCase):
         response = self.client.get(reverse("lista_referencias"))
         self.assertEqual(response.status_code, 200)
         contenido = response.content.decode("utf-8")
-        self.assertLess(contenido.find("BC261010"), contenido.find("BC261002"))
-        self.assertLess(contenido.find("BC261002"), contenido.find("BC261001"))
+        self.assertLess(contenido.find("BC261001"), contenido.find("BC261002"))
+        self.assertLess(contenido.find("BC261002"), contenido.find("BC261010"))
 
         response = self.client.get(reverse("lista_referencias"), {"orden": "asc"})
         self.assertEqual(response.status_code, 200)
         contenido = response.content.decode("utf-8")
         self.assertLess(contenido.find("BC261001"), contenido.find("BC261002"))
         self.assertLess(contenido.find("BC261002"), contenido.find("BC261010"))
+
+        response = self.client.get(reverse("lista_referencias"), {"orden": "desc"})
+        self.assertEqual(response.status_code, 200)
+        contenido = response.content.decode("utf-8")
+        self.assertLess(contenido.find("BC261010"), contenido.find("BC261002"))
+        self.assertLess(contenido.find("BC261002"), contenido.find("BC261001"))
 
     def test_descarga_excel_requiere_login_y_devuelve_archivo(self):
         export_urls = [
