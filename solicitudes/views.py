@@ -44,6 +44,23 @@ def _requiere_admin(user):
         raise PermissionDenied("No tienes permisos para esta acción.")
 
 
+def _rol_usuario(user):
+    if not user or not user.is_authenticated:
+        return ""
+    return "admin" if user.is_superuser else "ejecutivo"
+
+
+def puede_crear(user):
+    if not user or not user.is_authenticated:
+        return False
+    rol = _rol_usuario(user)
+    if rol:
+        setattr(user, "rol", rol)
+    if user.has_perm("solicitudes.add_referencia"):
+        return True
+    return rol in {"admin", "ejecutivo"}
+
+
 def _asignar_estados_por_transporte(solicitud):
     solicitud.estado_aereo = "Pendiente" if solicitud.aerea else None
     solicitud.estado_maritimo = "Pendiente" if solicitud.maritima else None
@@ -102,6 +119,8 @@ def _contexto_clientes(request):
     clientes = Cliente.objects.all().order_by("nombre", "empresa")
     cliente_nuevo_url = f"{reverse('cliente_crear')}?{urlencode({'next': request.path})}"
     return {"clientes": clientes, "cliente_nuevo_url": cliente_nuevo_url}
+
+
 def _normalizar_texto(valor):
     texto = normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode("ascii")
     return " ".join(texto.strip().lower().split())
@@ -1082,6 +1101,7 @@ def lista_referencias(request):
             "orden": orden,
             "page_obj": page_obj,
             "paginator": paginator,
+            "puede_crear_referencia": puede_crear(request.user),
         },
     )
 
@@ -1135,7 +1155,8 @@ def exportar_referencias_excel(request):
 
 @login_required
 def crear_referencia(request):
-    _requiere_admin(request.user)
+    if not puede_crear(request.user):
+        raise PermissionDenied("No tienes permisos para crear referencias.")
 
     if request.method == "POST":
         form = ReferenciaForm(request.POST)
@@ -1155,7 +1176,8 @@ def crear_referencia(request):
 
 @login_required
 def editar_referencia(request, pk):
-    _requiere_admin(request.user)
+    if not puede_crear(request.user):
+        raise PermissionDenied("No tienes permisos para editar referencias.")
     referencia = get_object_or_404(Referencia, pk=pk)
     form = ReferenciaForm(request.POST or None, instance=referencia)
 

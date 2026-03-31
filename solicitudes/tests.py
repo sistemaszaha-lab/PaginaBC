@@ -244,7 +244,21 @@ class SeguridadPermisosTests(TestCase):
     def test_crud_referencias_solo_admin_en_escritura(self):
         self.client.login(username="ejec", password="ejec123")
         response = self.client.get(reverse("crear_referencia"))
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(
+            reverse("crear_referencia"),
+            {
+                "ejecutivo": self.ejecutivo.pk,
+                "cliente": "Cliente R Ejec",
+                "servicio": "importacion",
+                "agencia_aduanal": "Agencia R",
+                "fecha": "2026-01-15",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        referencia_ejec = Referencia.objects.get(cliente="Cliente R Ejec")
+        self.assertEqual(referencia_ejec.referencia, "BC261001")
 
         self.client.login(username="admin", password="admin123")
         response = self.client.post(
@@ -260,7 +274,7 @@ class SeguridadPermisosTests(TestCase):
         self.assertEqual(response.status_code, 302)
 
         referencia = Referencia.objects.get(cliente="Cliente R")
-        self.assertEqual(referencia.referencia, "BC261001")
+        self.assertEqual(referencia.referencia, "BC261002")
 
         response = self.client.post(
             reverse("editar_referencia", args=[referencia.pk]),

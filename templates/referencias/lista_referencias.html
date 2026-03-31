@@ -16,10 +16,12 @@
     {% endif %}
 </div>
 
-{% if request.user.is_superuser %}
-<div class="mb-3 d-flex gap-2 flex-wrap">
-    <a href="{% url 'crear_referencia' %}" class="btn btn-success">+ Nueva Referencia</a>
-</div>
+{% if puede_crear_referencia %}
+    {% if user.rol == "admin" or user.rol == "ejecutivo" %}
+    <div class="mb-3 d-flex gap-2 flex-wrap">
+        <a href="{% url 'crear_referencia' %}" class="btn btn-success">+ Nueva Referencia</a>
+    </div>
+    {% endif %}
 {% endif %}
 
 <form id="buscador-referencias" method="get" class="mb-3 d-flex gap-2 flex-wrap">
@@ -76,6 +78,4 @@
     })();
 </script>
 {% endblock %}
-
-
 

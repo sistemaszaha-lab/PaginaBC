@@ -29,7 +29,13 @@
                 <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
             </form>
         {% else %}
-            <span class="text-muted">Solo lectura</span>
+            {% if user.rol == "ejecutivo" %}
+                <a href="{% url 'editar_referencia' r.id %}" class="btn btn-sm btn-primary">
+                    Editar
+                </a>
+            {% else %}
+                <span class="text-muted">Solo lectura</span>
+            {% endif %}
         {% endif %}
     </td>
 </tr>
