@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
+from clientes.models import Cliente
 from .forms import CotizacionForm, SolicitudForm
 from .models import Cotizacion, Referencia, Solicitud
 from .views import _importar_referencias_desde_filas
@@ -61,6 +62,64 @@ class SeguridadPermisosTests(TestCase):
         self.client.login(username="admin", password="admin123")
         response = self.client.get(reverse("lista_usuarios"))
         self.assertEqual(response.status_code, 200)
+
+    def test_crear_solicitud_incluye_todos_los_clientes(self):
+        Cliente.objects.create(nombre="Cliente Uno", telefono="111111111")
+        Cliente.objects.create(nombre="Cliente Dos", telefono="222222222", estado=Cliente.ESTADO_INACTIVO)
+
+        self.client.login(username="admin", password="admin123")
+        response = self.client.get(reverse("crear_solicitud"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Cliente Uno")
+        self.assertContains(response, "Cliente Dos")
+
+    def test_editar_formulario_muestra_fechas_actuales(self):
+        self.client.login(username="admin", password="admin123")
+
+        solicitud = Solicitud.objects.create(
+            anio=2026,
+            sg="SG26010",
+            cliente="Cliente Fecha",
+            fecha_recepcion=date(2026, 3, 1),
+            fecha_entrega=date(2026, 3, 10),
+            tipo="Importación aérea",
+            ejecutivo=self.ejecutivo,
+            aerea=True,
+            estado_aereo="Pendiente",
+        )
+        response = self.client.get(reverse("editar_solicitud", args=[solicitud.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="2026-03-01"')
+        self.assertContains(response, 'value="2026-03-10"')
+
+        cotizacion = Cotizacion.objects.create(
+            anio=2026,
+            consecutivo="C26010",
+            cliente="Cliente Fecha",
+            fecha_solicitud=date(2026, 3, 2),
+            fecha_envio=date(2026, 3, 12),
+            tipo="Importación aérea",
+            ejecutivo=self.ejecutivo,
+            tiempo_entrega="10",
+            aerea="Aérea",
+        )
+        response = self.client.get(reverse("editar_cotizacion", args=[cotizacion.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="2026-03-02"')
+        self.assertContains(response, 'value="2026-03-12"')
+
+        referencia = Referencia.objects.create(
+            referencia="BC26010",
+            ejecutivo=self.ejecutivo,
+            cliente="Cliente Fecha",
+            servicio="importacion",
+            agencia_aduanal="Agencia Fecha",
+            fecha=date(2026, 3, 3),
+        )
+        response = self.client.get(reverse("editar_referencia", args=[referencia.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="2026-03-03"')
 
     def test_editar_usuario_permisos(self):
         self.client.login(username="ejec", password="ejec123")

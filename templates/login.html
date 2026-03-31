@@ -1,52 +1,102 @@
-﻿<!DOCTYPE html>
-<html>
+﻿<!doctype html>
+<html lang="es">
 <head>
-    <meta charset="UTF-8">
+    {% load static %}
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Iniciar Sesion</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Iniciar sesión</title>
+    <link rel="stylesheet" href="{% static 'css/auth.css' %}">
 </head>
 
-<body class="bg-dark d-flex align-items-center justify-content-center" style="height:100vh;">
+<body class="auth">
+<main class="auth-shell">
+    <div class="auth-bg" aria-hidden="true"></div>
 
-<div class="card shadow-lg p-4" style="width: 350px;">
-    <h3 class="text-center mb-4">Iniciar Sesion</h3>
+    <section class="auth-card" aria-label="Inicio de sesión">
+        <header class="auth-card__header">
+            <div class="auth-brand">
+                <div class="auth-brand__text">
+                    <div class="auth-brand__title">Inicio</div>
+                    <div class="auth-brand__subtitle">Accede con tu cuenta</div>
+                </div>
+            </div>
+        </header>
 
-    <form method="post">
-        {% csrf_token %}
+        <div class="auth-card__content">
+            {% if form.non_field_errors %}
+                <div class="auth-alert" role="alert">
+                    {{ form.non_field_errors }}
+                </div>
+            {% elif form.errors %}
+                <div class="auth-alert" role="alert">
+                    Usuario o contraseña incorrectos.
+                </div>
+            {% endif %}
 
-        <div class="mb-3">
-            <label class="form-label">User</label>
-            {{ form.username }}
+            <form method="post" class="auth-form">
+                {% csrf_token %}
+
+                {% with field=form.username field_label="Usuario" autocomplete_value="username" %}
+                    <div class="auth-field">
+                        <label class="auth-label" for="{{ field.id_for_label }}">{{ field_label }}</label>
+                        <input
+                            class="auth-input{% if field.errors %} auth-input--error{% endif %}"
+                            id="{{ field.id_for_label }}"
+                            name="{{ field.html_name }}"
+                            type="text"
+                            autocomplete="{{ autocomplete_value }}"
+                            placeholder="Tu usuario"
+                            value="{{ field.value|default_if_none:'' }}"
+                            autofocus
+                            aria-invalid="{% if field.errors %}true{% else %}false{% endif %}"
+                        >
+                        {% if field.errors %}
+                            <div class="auth-error">{{ field.errors }}</div>
+                        {% endif %}
+                    </div>
+                {% endwith %}
+
+                {% with field=form.password %}
+                    <div class="auth-field">
+                        <label class="auth-label" for="{{ field.id_for_label }}">Contraseña</label>
+                        <div class="auth-inputwrap">
+                            <input
+                                class="auth-input auth-input--withbutton{% if field.errors %} auth-input--error{% endif %}"
+                                id="{{ field.id_for_label }}"
+                                name="{{ field.html_name }}"
+                                type="password"
+                                autocomplete="current-password"
+                                placeholder="Tu contraseña"
+                                aria-invalid="{% if field.errors %}true{% else %}false{% endif %}"
+                            >
+                            <button id="toggleLoginPassword" class="auth-ghostbtn" type="button" aria-label="Mostrar u ocultar contraseña">
+                                Mostrar
+                            </button>
+                        </div>
+                        {% if field.errors %}
+                            <div class="auth-error">{{ field.errors }}</div>
+                        {% endif %}
+                    </div>
+                {% endwith %}
+
+                <button class="auth-btn" type="submit">Entrar</button>
+            </form>
         </div>
-
-        <div class="mb-3">
-            <label class="form-label">Password</label>
-            {{ form.password }}
-        </div>
-
-        <div class="form-check mb-3">
-            <input class="form-check-input" type="checkbox" id="toggleLoginPassword">
-            <label class="form-check-label" for="toggleLoginPassword">Mostrar contraseña</label>
-        </div>
-
-        <button type="submit" class="btn btn-primary w-100">Entrar</button>
-    </form>
-
-    {% if form.errors %}
-        <div class="alert alert-danger mt-3">Usuario o contrasena incorrectos.</div>
-    {% endif %}
-</div>
+    </section>
+</main>
 
 <script>
     const loginPassword = document.getElementById("id_password");
     const toggleLoginPassword = document.getElementById("toggleLoginPassword");
+
     if (loginPassword && toggleLoginPassword) {
-        toggleLoginPassword.addEventListener("change", function () {
-            loginPassword.type = this.checked ? "text" : "password";
+        toggleLoginPassword.addEventListener("click", function () {
+            const showing = loginPassword.type === "text";
+            loginPassword.type = showing ? "password" : "text";
+            toggleLoginPassword.textContent = showing ? "Mostrar" : "Ocultar";
+            toggleLoginPassword.setAttribute("aria-pressed", (!showing).toString());
         });
     }
 </script>
-
 </body>
 </html>

@@ -30,9 +30,15 @@ class ClienteForm(forms.ModelForm):
             "empresa": forms.TextInput(attrs={"class": "form-control"}),
             "representante_legal": forms.TextInput(attrs={"class": "form-control"}),
             "contacto": forms.TextInput(attrs={"class": "form-control"}),
-            "correo": forms.TextInput(attrs={"class": "form-control"}),
-            "telefono": forms.TextInput(attrs={"class": "form-control"}),
-            "celular": forms.TextInput(attrs={"class": "form-control"}),
+            "correo": forms.EmailInput(
+                attrs={"class": "form-control", "autocomplete": "email"}
+            ),
+            "telefono": forms.TextInput(
+                attrs={"class": "form-control", "inputmode": "tel", "autocomplete": "tel"}
+            ),
+            "celular": forms.TextInput(
+                attrs={"class": "form-control", "inputmode": "tel", "autocomplete": "tel"}
+            ),
             "estado": forms.Select(attrs={"class": "form-select"}),
         }
 
@@ -40,6 +46,8 @@ class ClienteForm(forms.ModelForm):
         cleaned_data = super().clean()
         nombre = (cleaned_data.get("nombre") or "").strip()
         empresa = (cleaned_data.get("empresa") or "").strip()
+        cleaned_data["nombre"] = nombre
+        cleaned_data["empresa"] = empresa
         if nombre:
             duplicado = Cliente.objects.filter(nombre__iexact=nombre, empresa__iexact=empresa)
             if self.instance.pk:

@@ -68,8 +68,8 @@ class SolicitudForm(forms.ModelForm):
         widgets = {
             "sg": forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"}),
             "anio": forms.NumberInput(attrs={"readonly": "readonly", "class": "form-control"}),
-            "fecha_recepcion": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
-            "fecha_entrega": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "fecha_recepcion": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
+            "fecha_entrega": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
             "cliente": forms.TextInput(
                 attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
             ),
@@ -381,8 +381,8 @@ class CotizacionForm(forms.ModelForm):
         widgets = {
             "anio": forms.NumberInput(attrs={"readonly": "readonly", "class": "form-control"}),
             "consecutivo": forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"}),
-            "fecha_solicitud": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
-            "fecha_envio": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "fecha_solicitud": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
+            "fecha_envio": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
             "tiempo_entrega": forms.TextInput(attrs={"readonly": "readonly", "class": "form-control"}),
             "cliente": forms.TextInput(
                 attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
@@ -497,7 +497,7 @@ class ReferenciaForm(forms.ModelForm):
         model = Referencia
         fields = ["ejecutivo", "cliente", "servicio", "agencia_aduanal", "fecha"]
         widgets = {
-            "fecha": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "fecha": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
             "cliente": forms.TextInput(
                 attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
             ),

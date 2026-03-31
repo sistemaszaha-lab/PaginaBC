@@ -98,7 +98,8 @@ def _respuesta_excel(nombre_archivo, headers, rows):
 
 
 def _contexto_clientes(request):
-    clientes = Cliente.objects.order_by("nombre", "empresa")
+    # Cargar todos los clientes sin filtros adicionales para el selector.
+    clientes = Cliente.objects.all().order_by("nombre", "empresa")
     cliente_nuevo_url = f"{reverse('cliente_crear')}?{urlencode({'next': request.path})}"
     return {"clientes": clientes, "cliente_nuevo_url": cliente_nuevo_url}
 def _normalizar_texto(valor):
@@ -672,9 +673,9 @@ def crear_solicitud(request):
 @login_required
 def editar_solicitud(request, pk):
     solicitud = get_object_or_404(Solicitud, pk=pk)
+    form = SolicitudForm(request.POST or None, instance=solicitud)
 
     if request.method == "POST":
-        form = SolicitudForm(request.POST, instance=solicitud)
         if form.is_valid():
             solicitud = form.save(commit=False)
             _asignar_estados_por_transporte(solicitud)
@@ -683,9 +684,7 @@ def editar_solicitud(request, pk):
     else:
         cliente_param = request.GET.get("cliente")
         if cliente_param:
-            form = SolicitudForm(instance=solicitud, initial={"cliente": cliente_param})
-        else:
-            form = SolicitudForm(instance=solicitud)
+            form.fields["cliente"].initial = cliente_param
 
     context = {"form": form, "modo_edicion": True}
     context.update(_contexto_clientes(request))
@@ -992,18 +991,16 @@ def crear_cotizacion(request):
 @login_required
 def editar_cotizacion(request, pk):
     cotizacion = get_object_or_404(Cotizacion, pk=pk)
+    form = CotizacionForm(request.POST or None, instance=cotizacion)
 
     if request.method == "POST":
-        form = CotizacionForm(request.POST, instance=cotizacion)
         if form.is_valid():
             form.save()
             return redirect("lista_cotizaciones")
     else:
         cliente_param = request.GET.get("cliente")
         if cliente_param:
-            form = CotizacionForm(instance=cotizacion, initial={"cliente": cliente_param})
-        else:
-            form = CotizacionForm(instance=cotizacion)
+            form.fields["cliente"].initial = cliente_param
 
     context = {"form": form}
     context.update(_contexto_clientes(request))
@@ -1160,18 +1157,16 @@ def crear_referencia(request):
 def editar_referencia(request, pk):
     _requiere_admin(request.user)
     referencia = get_object_or_404(Referencia, pk=pk)
+    form = ReferenciaForm(request.POST or None, instance=referencia)
 
     if request.method == "POST":
-        form = ReferenciaForm(request.POST, instance=referencia)
         if form.is_valid():
             form.save()
             return redirect("lista_referencias")
     else:
         cliente_param = request.GET.get("cliente")
         if cliente_param:
-            form = ReferenciaForm(instance=referencia, initial={"cliente": cliente_param})
-        else:
-            form = ReferenciaForm(instance=referencia)
+            form.fields["cliente"].initial = cliente_param
 
     context = {"form": form}
     context.update(_contexto_clientes(request))
