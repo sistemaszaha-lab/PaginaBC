@@ -351,10 +351,19 @@
 
         .table-responsive {
             border-radius: var(--radius-xl);
-            overflow: hidden;
+            overflow-x: auto;
+            overflow-y: hidden;
+            width: 100%;
             background: var(--color-card);
             box-shadow: var(--shadow-sm);
             border: 1px solid var(--color-border);
+            scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .table-responsive > table {
+            width: max-content;
+            min-width: 100%;
         }
 
         .table {
@@ -399,6 +408,7 @@
             box-shadow: var(--shadow-sm);
             border-color: var(--color-border);
         }
+
     </style>
 </head>
 
