@@ -41,6 +41,12 @@
         form.addEventListener("submit", (event) => {
             if (handleNuevo()) {
                 event.preventDefault();
+                return;
+            }
+
+            const btn = form.querySelector("button[type=submit]");
+            if (btn) {
+                btn.disabled = true;
             }
         });
     }

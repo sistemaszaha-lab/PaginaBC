@@ -1,5 +1,6 @@
 ﻿from datetime import date
 import re
+import uuid
 from django import forms
 from django.db import IntegrityError, transaction
 from django.contrib.auth.forms import UserCreationForm
@@ -40,6 +41,8 @@ def _configurar_ejecutivo_field(field):
 
 
 class SolicitudForm(forms.ModelForm):
+    idempotency_key = forms.UUIDField(required=False, widget=forms.HiddenInput)
+
     TIPOS_SOLICITUD = (
         ("Importación aérea", "Importación aérea"),
         ("Importación maritima", "Importación maritima"),
@@ -87,6 +90,7 @@ class SolicitudForm(forms.ModelForm):
         if not self.instance.pk:
             self.fields["anio"].initial = date.today().year
             self.fields["sg"].initial = self._generar_sg(self.fields["anio"].initial)
+            self.fields["idempotency_key"].initial = uuid.uuid4()
 
     def save(self, commit=True):
         solicitud = super().save(commit=False)
@@ -338,6 +342,8 @@ class EditarUsuarioForm(forms.ModelForm):
 
 
 class CotizacionForm(forms.ModelForm):
+    idempotency_key = forms.UUIDField(required=False, widget=forms.HiddenInput)
+
     TIPOS_COTIZACION = (
         ("Importación aérea", "Importación aérea"),
         ("Importación maritima", "Importación maritima"),
@@ -401,6 +407,7 @@ class CotizacionForm(forms.ModelForm):
             anio_actual = date.today().year
             self.fields["anio"].initial = anio_actual
             self.fields["consecutivo"].initial = self._generar_consecutivo(anio_actual)
+            self.fields["idempotency_key"].initial = uuid.uuid4()
 
     def clean(self):
         cleaned_data = super().clean()
@@ -544,23 +551,18 @@ class ReferenciaForm(forms.ModelForm):
         codigo_operacion = self.CODIGOS_OPERACION[operacion]
         anio_corto = fecha.strftime("%y")
         prefijo = f"{self.PREFIJO_EMPRESA}{anio_corto}{codigo_operacion}"
-        consecutivo = self._siguiente_consecutivo_anio(anio_corto, excluir_pk=excluir_pk)
+        consecutivo = self._siguiente_consecutivo_prefijo(prefijo, excluir_pk=excluir_pk)
         return f"{prefijo}{consecutivo:03d}"
 
-    def _siguiente_consecutivo_anio(self, anio_corto, excluir_pk=None):
-        prefijo_anio = f"{self.PREFIJO_EMPRESA}{anio_corto}"
-        referencias_existentes = Referencia.objects.filter(
-            referencia__startswith=prefijo_anio
-        )
+    def _siguiente_consecutivo_prefijo(self, prefijo, excluir_pk=None):
+        referencias_existentes = Referencia.objects.filter(referencia__startswith=prefijo)
         if excluir_pk:
             referencias_existentes = referencias_existentes.exclude(pk=excluir_pk)
         referencias_existentes = referencias_existentes.values_list("referencia", flat=True)
         ultimo = 0
-        patron = re.compile(rf"^{re.escape(prefijo_anio)}\d(\d{{3}})$")
+        patron = re.compile(rf"^{re.escape(prefijo)}(\d{{3}})$")
         for referencia in referencias_existentes:
             match = patron.match(str(referencia).strip().upper())
             if match:
                 ultimo = max(ultimo, int(match.group(1)))
         return ultimo + 1
-
-

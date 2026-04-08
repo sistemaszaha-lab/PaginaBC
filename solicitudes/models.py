@@ -18,7 +18,14 @@ class Solicitud(models.Model):
 
     anio = models.IntegerField()
 
-    sg = models.CharField(max_length=20)
+    sg = models.CharField(max_length=20, unique=True)
+
+    idempotency_key = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
+    )
 
     cliente = models.CharField(max_length=255)
 
@@ -103,7 +110,15 @@ class Cotizacion(models.Model):
 
     consecutivo = models.CharField(
         max_length=20,
-        verbose_name="Consecutivo"
+        verbose_name="Consecutivo",
+        unique=True,
+    )
+
+    idempotency_key = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
     )
 
     cliente = models.CharField(

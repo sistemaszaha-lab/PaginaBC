@@ -1,0 +1,12 @@
+<div class="kpi-card kpi-card--{{ variant|default:'primary' }}">
+    <div class="kpi-card-body">
+        <p class="kpi-card-title">{{ title }}</p>
+        <p class="kpi-card-value">{{ value }}</p>
+        {% if detail_label %}
+            <p class="kpi-card-detail">
+                {{ detail_label }}:
+                <strong>{{ detail|default:"N/A" }}</strong>
+            </p>
+        {% endif %}
+    </div>
+</div>

@@ -1,6 +1,6 @@
 ﻿import csv
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from unicodedata import normalize
 
@@ -9,8 +9,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
-from django.db import IntegrityError
-from django.db.models import IntegerField, Q
+from django.db import IntegrityError, transaction
+from django.db.models import F, IntegerField, Q
 from django.db.models.functions import Cast, Length, Substr
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -33,6 +33,7 @@ ESTADOS_SIGUIENTES = {
 
 TIPOS_TRANSPORTE = {"aereo", "maritimo", "terrestre"}
 MAX_ADMIN_USERS = 4
+RECENT_DUPLICATE_WINDOW_SECONDS = 30
 
 
 def _es_admin(user):
@@ -65,6 +66,43 @@ def _asignar_estados_por_transporte(solicitud):
     solicitud.estado_aereo = "Pendiente" if solicitud.aerea else None
     solicitud.estado_maritimo = "Pendiente" if solicitud.maritima else None
     solicitud.estado_terrestre = "Pendiente" if solicitud.terrestre else None
+
+
+def _solicitud_duplicada_reciente(solicitud):
+    if solicitud.pk:
+        return False
+    limite = timezone.now() - timedelta(seconds=RECENT_DUPLICATE_WINDOW_SECONDS)
+    return Solicitud.objects.filter(
+        anio=solicitud.anio,
+        cliente=solicitud.cliente,
+        fecha_recepcion=solicitud.fecha_recepcion,
+        fecha_entrega=solicitud.fecha_entrega,
+        tipo=solicitud.tipo,
+        ejecutivo_id=solicitud.ejecutivo_id,
+        aerea=solicitud.aerea,
+        maritima=solicitud.maritima,
+        terrestre=solicitud.terrestre,
+        creado__gte=limite,
+    ).exists()
+
+
+def _cotizacion_duplicada_reciente(cotizacion):
+    if cotizacion.pk:
+        return False
+    limite = timezone.now() - timedelta(seconds=RECENT_DUPLICATE_WINDOW_SECONDS)
+    return Cotizacion.objects.filter(
+        anio=cotizacion.anio,
+        cliente=cotizacion.cliente,
+        fecha_solicitud=cotizacion.fecha_solicitud,
+        fecha_envio=cotizacion.fecha_envio,
+        tipo=cotizacion.tipo,
+        ejecutivo_id=cotizacion.ejecutivo_id,
+        tiempo_entrega=cotizacion.tiempo_entrega,
+        aerea=cotizacion.aerea,
+        maritima=cotizacion.maritima,
+        terrestre=cotizacion.terrestre,
+        creado__gte=limite,
+    ).exists()
 
 
 def _valor_excel(value):
@@ -486,35 +524,61 @@ def _importar_referencias_desde_filas(filas):
 
 @login_required
 def inicio(request):
-    anio_actual = datetime.now().year
-    solicitudes_anio = Solicitud.objects.filter(anio=anio_actual)
-
-    total_solicitudes = solicitudes_anio.count()
-    cumplidas = solicitudes_anio.filter(
-        Q(estado_aereo="Cumplido")
-        | Q(estado_maritimo="Cumplido")
-        | Q(estado_terrestre="Cumplido")
-    ).distinct().count()
-    pendientes = solicitudes_anio.filter(
+    pendientes_q = (
         Q(estado_aereo="Pendiente")
         | Q(estado_maritimo="Pendiente")
         | Q(estado_terrestre="Pendiente")
-    ).distinct().count()
-    vencidas = solicitudes_anio.filter(
-        Q(estado_aereo__in=["No cumplido", "Fuera de plazo"])
-        | Q(estado_maritimo__in=["No cumplido", "Fuera de plazo"])
-        | Q(estado_terrestre__in=["No cumplido", "Fuera de plazo"])
-    ).distinct().count()
+    )
+    cumplidas_q = (
+        Q(estado_aereo="Cumplido")
+        | Q(estado_maritimo="Cumplido")
+        | Q(estado_terrestre="Cumplido")
+    )
+
+    pendientes = Solicitud.objects.filter(pendientes_q).distinct().count()
+    cumplidas = Solicitud.objects.filter(cumplidas_q).distinct().count()
+
+    hoy = timezone.localdate()
+    fuera_de_plazo = (
+        Solicitud.objects.filter(fecha_entrega__lt=hoy)
+        .filter(pendientes_q)
+        .distinct()
+        .count()
+    )
+
+    total_solicitudes = Solicitud.objects.count()
+    total_cotizaciones = Cotizacion.objects.count()
+    total_referencias = Referencia.objects.count()
+
+    ultimo_solicitud = (
+        Solicitud.objects.order_by("-id")
+        .values(codigo=F("sg"))
+        .first()
+    )
+    ultimo_consecutivo_cotizacion = (
+        Cotizacion.objects.order_by("-id")
+        .values_list("consecutivo", flat=True)
+        .first()
+    )
+    ultimo_consecutivo_referencia = (
+        Referencia.objects.order_by("-id")
+        .values_list("referencia", flat=True)
+        .first()
+    )
 
     return render(
         request,
         "inicio.html",
         {
-            "anio": anio_actual,
             "total_solicitudes": total_solicitudes,
+            "total_cotizaciones": total_cotizaciones,
+            "total_referencias": total_referencias,
             "cumplidas": cumplidas,
             "pendientes": pendientes,
-            "vencidas": vencidas,
+            "fuera_de_plazo": fuera_de_plazo,
+            "ultimo_solicitud": ultimo_solicitud,
+            "ultimo_consecutivo_cotizacion": ultimo_consecutivo_cotizacion,
+            "ultimo_consecutivo_referencia": ultimo_consecutivo_referencia,
         },
     )
 
@@ -676,8 +740,50 @@ def crear_solicitud(request):
         if form.is_valid():
             solicitud = form.save(commit=False)
             _asignar_estados_por_transporte(solicitud)
-            solicitud.save()
-            return redirect("lista_solicitudes")
+            idempotency_key = getattr(solicitud, "idempotency_key", None)
+
+            for intento in range(3):
+                try:
+                    with transaction.atomic():
+                        if idempotency_key:
+                            existente = Solicitud.objects.filter(
+                                idempotency_key=idempotency_key
+                            ).first()
+                            if existente:
+                                messages.info(
+                                    request,
+                                    f"Esta solicitud ya fue registrada ({existente.sg}).",
+                                )
+                                return redirect("editar_solicitud", pk=existente.pk)
+                        elif _solicitud_duplicada_reciente(solicitud):
+                            messages.warning(
+                                request,
+                                "Se detectó un envío duplicado reciente. No se creó un nuevo registro.",
+                            )
+                            return redirect("lista_solicitudes")
+
+                        if not solicitud.pk:
+                            solicitud.sg = form._generar_sg(solicitud.anio)
+                        solicitud.save()
+
+                    messages.success(request, f"Solicitud {solicitud.sg} registrada.")
+                    return redirect("lista_solicitudes")
+                except IntegrityError:
+                    if idempotency_key:
+                        existente = Solicitud.objects.filter(
+                            idempotency_key=idempotency_key
+                        ).first()
+                        if existente:
+                            messages.info(
+                                request,
+                                f"Esta solicitud ya fue registrada ({existente.sg}).",
+                            )
+                            return redirect("editar_solicitud", pk=existente.pk)
+                    if intento == 2:
+                        messages.error(
+                            request,
+                            "No se pudo registrar la solicitud de forma segura. Intenta nuevamente.",
+                        )
     else:
         form = SolicitudForm()
         cliente_param = request.GET.get("cliente")
@@ -994,8 +1100,54 @@ def crear_cotizacion(request):
     if request.method == "POST":
         form = CotizacionForm(request.POST)
         if form.is_valid():
-            form.save()
-            return redirect("lista_cotizaciones")
+            cotizacion = form.save(commit=False)
+            idempotency_key = getattr(cotizacion, "idempotency_key", None)
+
+            for intento in range(3):
+                try:
+                    with transaction.atomic():
+                        if idempotency_key:
+                            existente = Cotizacion.objects.filter(
+                                idempotency_key=idempotency_key
+                            ).first()
+                            if existente:
+                                messages.info(
+                                    request,
+                                    f"Esta cotización ya fue registrada ({existente.consecutivo}).",
+                                )
+                                return redirect("editar_cotizacion", pk=existente.pk)
+                        elif _cotizacion_duplicada_reciente(cotizacion):
+                            messages.warning(
+                                request,
+                                "Se detectó un envío duplicado reciente. No se creó un nuevo registro.",
+                            )
+                            return redirect("lista_cotizaciones")
+
+                        if not cotizacion.pk:
+                            cotizacion.consecutivo = form._generar_consecutivo(cotizacion.anio)
+                        cotizacion.save()
+
+                    messages.success(
+                        request,
+                        f"Cotización {cotizacion.consecutivo} registrada.",
+                    )
+                    return redirect("lista_cotizaciones")
+                except IntegrityError:
+                    if idempotency_key:
+                        existente = Cotizacion.objects.filter(
+                            idempotency_key=idempotency_key
+                        ).first()
+                        if existente:
+                            messages.info(
+                                request,
+                                f"Esta cotización ya fue registrada ({existente.consecutivo}).",
+                            )
+                            return redirect("editar_cotizacion", pk=existente.pk)
+                    if intento == 2:
+                        messages.error(
+                            request,
+                            "No se pudo registrar la cotización de forma segura. Intenta nuevamente.",
+                        )
     else:
         form = CotizacionForm()
         cliente_param = request.GET.get("cliente")

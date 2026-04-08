@@ -107,7 +107,9 @@
             top: 0;
             background-color: #016b6b;
             color: white;
-            padding-top: 20px;
+            padding: 16px 12px;
+            display: flex;
+            flex-direction: column;
             transition: left 0.25s ease;
             z-index: 1000;
         }
@@ -124,14 +126,8 @@
 
         .sidebar a {
             color: white;
-            display: block;
-            padding: 12px 20px;
             text-decoration: none;
             transition: 0.2s;
-        }
-
-        .sidebar a:hover {
-            background-color: #464747;
         }
 
         .header {
@@ -258,17 +254,192 @@
             transition: left 0.25s ease, background-color var(--transition);
         }
 
-        .sidebar a {
-            border-radius: var(--radius-xl);
-            margin: 0 10px;
-            padding: 10px 16px;
-            font-weight: 500;
-            transition: background-color var(--transition), transform var(--transition);
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 8px 2px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
         }
 
-        .sidebar a:hover {
-            background-color: rgba(255, 255, 255, 0.14);
+        .sidebar-nav {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 1rem;
+            background: rgba(255, 255, 255, 0.10);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: rgba(255, 255, 255, 0.92);
+            font-weight: 600;
+            transition: transform var(--transition), background-color var(--transition), box-shadow var(--transition), border-color var(--transition);
+        }
+
+        .sidebar-link:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.20);
             transform: translateY(-1px);
+        }
+
+        .sidebar-link.is-active {
+            background: rgba(13, 110, 253, 0.95); /* bootstrap primary */
+            border-color: rgba(13, 110, 253, 1);
+            box-shadow: 0 10px 22px rgba(13, 110, 253, 0.22);
+            color: #fff;
+        }
+
+        html.dark .sidebar-link {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        html.dark .sidebar-link:hover {
+            background: rgba(255, 255, 255, 0.13);
+        }
+
+        .sidebar-logout {
+            margin-top: auto;
+            padding-top: 12px;
+        }
+
+        .sidebar-logout-btn {
+            width: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 14px;
+            border-radius: 1rem;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            background: #ef4444;
+            color: #fff;
+            font-weight: 700;
+            box-shadow: 0 10px 22px rgba(239, 68, 68, 0.25);
+            transition: transform var(--transition), filter var(--transition), box-shadow var(--transition);
+        }
+
+        .sidebar-logout-btn:hover {
+            filter: brightness(0.92);
+            transform: translateY(-1px);
+            color: #fff;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+
+        @media (min-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        .stat-card {
+            border-radius: 1rem;
+            border: 1px solid var(--color-border);
+            box-shadow: var(--shadow-md);
+        }
+
+        .stat-card .stat-card-body {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 18px;
+        }
+
+        .stat-card .stat-card-title {
+            margin: 0;
+            font-weight: 700;
+            font-size: 0.95rem;
+            letter-spacing: -0.01em;
+            opacity: 0.9;
+        }
+
+        .stat-card .stat-card-value {
+            margin: 6px 0 0;
+            font-weight: 800;
+            font-size: 2rem;
+            line-height: 1.05;
+        }
+
+        .stat-card .stat-card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 0.9rem;
+            display: grid;
+            place-items: center;
+            background: rgba(62, 159, 162, 0.14);
+            border: 1px solid rgba(62, 159, 162, 0.22);
+            color: var(--color-primary);
+            flex: 0 0 auto;
+        }
+
+        .kpi-card {
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: var(--shadow-md);
+            color: #fff;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .kpi-card-body {
+            padding: 18px;
+        }
+
+        .kpi-card-title {
+            margin: 0;
+            font-weight: 700;
+            font-size: 0.95rem;
+            letter-spacing: -0.01em;
+            opacity: 0.9;
+        }
+
+        .kpi-card-value {
+            margin: 6px 0 0;
+            font-weight: 900;
+            font-size: 2.1rem;
+            line-height: 1.05;
+        }
+
+        .kpi-card-detail {
+            margin: 10px 0 0;
+            font-size: 0.9rem;
+            opacity: 0.92;
+        }
+
+        .kpi-card--warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .kpi-card--danger {
+            background: linear-gradient(135deg, #ef4444, #b91c1c);
+        }
+
+        .kpi-card--success {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+        }
+
+        .kpi-card--primary {
+            background: linear-gradient(135deg, #3e9fa2, #0f766e);
+        }
+
+        .kpi-card--indigo {
+            background: linear-gradient(135deg, #6366f1, #4338ca);
+        }
+
+        .kpi-card--teal {
+            background: linear-gradient(135deg, #14b8a6, #0f766e);
         }
 
         .sidebar-toggle {
@@ -414,22 +585,26 @@
 
 <body>
 <div class="sidebar">
-    <h5 class="text-center mb-4">Zaha OPS</h5>
+    {% with current=request.resolver_match.url_name %}
+        <div class="sidebar-brand">Zaha OPS</div>
 
-    <a href="{% url 'inicio' %}">Inicio</a>
-    <a href="{% url 'lista_solicitudes' %}">Solicitudes</a>
-    <a href="{% url 'lista_cotizaciones' %}">Cotizaciones</a>
-    <a href="{% url 'lista_referencias' %}">Referencias</a>
-    <a href="{% url 'cliente_lista' %}">Clientes</a>
+        <nav class="sidebar-nav" aria-label="Menú principal">
+            <a href="{% url 'inicio' %}" class="sidebar-link {% if current == 'inicio' %}is-active{% endif %}">Inicio</a>
+            <a href="{% url 'lista_solicitudes' %}" class="sidebar-link {% if current == 'lista_solicitudes' or current == 'crear_solicitud' or current == 'editar_solicitud' %}is-active{% endif %}">Solicitudes</a>
+            <a href="{% url 'lista_cotizaciones' %}" class="sidebar-link {% if current == 'lista_cotizaciones' or current == 'crear_cotizacion' or current == 'editar_cotizacion' %}is-active{% endif %}">Cotizaciones</a>
+            <a href="{% url 'lista_referencias' %}" class="sidebar-link {% if current == 'lista_referencias' or current == 'crear_referencia' or current == 'editar_referencia' %}is-active{% endif %}">Referencias</a>
+            <a href="{% url 'cliente_lista' %}" class="sidebar-link {% if current == 'cliente_lista' or current == 'cliente_crear' or current == 'cliente_editar' %}is-active{% endif %}">Clientes</a>
 
-    {% if request.user.is_superuser %}
-        <a href="{% url 'lista_usuarios' %}">Usuarios</a>
-    {% endif %}
+            {% if request.user.is_superuser %}
+                <a href="{% url 'lista_usuarios' %}" class="sidebar-link {% if current == 'lista_usuarios' or current == 'crear_usuario' or current == 'editar_usuario' %}is-active{% endif %}">Usuarios</a>
+            {% endif %}
+        </nav>
 
-    <form method="post" action="{% url 'logout' %}" class="px-3 mt-3">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-danger w-100">Cerrar sesion</button>
-    </form>
+        <form method="post" action="{% url 'logout' %}" class="sidebar-logout">
+            {% csrf_token %}
+            <button type="submit" class="sidebar-logout-btn">Cerrar sesión</button>
+        </form>
+    {% endwith %}
 </div>
 
 <div id="sidebarBackdrop" class="sidebar-backdrop"></div>

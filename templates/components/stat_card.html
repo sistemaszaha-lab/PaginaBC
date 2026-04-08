@@ -1,0 +1,36 @@
+<div class="card stat-card bg-body">
+    <div class="stat-card-body">
+        <div>
+            <p class="stat-card-title">{{ title }}</p>
+            <p class="stat-card-value">{{ value }}</p>
+        </div>
+        <div class="stat-card-icon" aria-hidden="true">
+            {% if icon == "solicitudes" %}
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <path d="M14 2v6h6"/>
+                    <path d="M8 13h8"/>
+                    <path d="M8 17h8"/>
+                </svg>
+            {% elif icon == "cotizaciones" %}
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3h18v6H3z"/>
+                    <path d="M3 9v12h18V9"/>
+                    <path d="M7 13h10"/>
+                    <path d="M7 17h6"/>
+                </svg>
+            {% elif icon == "referencias" %}
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 13a5 5 0 0 1 7 0l1 1a5 5 0 0 1 0 7 5 5 0 0 1-7 0l-1-1"/>
+                    <path d="M14 11a5 5 0 0 0-7 0l-1 1a5 5 0 0 0 0 7 5 5 0 0 0 7 0l1-1"/>
+                </svg>
+            {% else %}
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3v18"/>
+                    <path d="M3 12h18"/>
+                </svg>
+            {% endif %}
+        </div>
+    </div>
+</div>
+

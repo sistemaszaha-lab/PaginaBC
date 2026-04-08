@@ -3,77 +3,24 @@
 {% block title %}Inicio{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Inicio</h2>
-
-<div class="alert alert-primary shadow-sm">
-    Bienvenido <strong>{{ request.user.first_name|default:request.user.username }}</strong>
-    al sistema de gestion de B&C Comercio Inteligente.
+<div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-4">
+    <div>
+        <h2 class="mb-1">Inicio</h2>
+        <div class="text-muted">Resumen de actividad</div>
+    </div>
+    
 </div>
 
-<div class="row g-3 mb-4">
-    <div class="col-12 col-sm-6 col-lg-3">
-        <div class="card text-white bg-warning shadow">
-            <div class="card-body">
-                <h6>Solicitudes pendientes</h6>
-                <h3>{{ pendientes }}</h3>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-sm-6 col-lg-3">
-        <div class="card text-white bg-danger shadow">
-            <div class="card-body">
-                <h6>No cumplidas</h6>
-                <h3>{{ vencidas }}</h3>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-sm-6 col-lg-3">
-        <div class="card text-white bg-success shadow">
-            <div class="card-body">
-                <h6>Cumplidas</h6>
-                <h3>{{ cumplidas }}</h3>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-sm-6 col-lg-3">
-        <div class="card text-white bg-info shadow">
-            <div class="card-body">
-                <h6>Total solicitudes</h6>
-                <h3>{{ total_solicitudes }}</h3>
-            </div>
-        </div>
-    </div>
+<div class="dashboard-grid mb-4">
+    {% include "components/kpi_card.html" with title="Solicitudes pendientes" value=pendientes variant="warning" %}
+    {% include "components/kpi_card.html" with title="Fuera de plazo" value=fuera_de_plazo variant="danger" %}
+    {% include "components/kpi_card.html" with title="Cumplidas" value=cumplidas variant="success" %}
 </div>
 
-<div class="row g-3 mb-4">
-    <div class="col-12 col-md-4">
-        <a href="{% url 'lista_solicitudes' %}" class="text-decoration-none">
-            <div class="card shadow-sm text-center p-4">
-                <h5>Solicitudes</h5>
-                <p class="text-muted">Gestionar solicitudes</p>
-            </div>
-        </a>
-    </div>
-
-    <div class="col-12 col-md-4">
-        <a href="{% url 'lista_cotizaciones' %}" class="text-decoration-none">
-            <div class="card shadow-sm text-center p-4">
-                <h5>Cotizaciones</h5>
-                <p class="text-muted">Ver cotizaciones</p>
-            </div>
-        </a>
-    </div>
-
-    <div class="col-12 col-md-4">
-        <a href="{% url 'lista_referencias' %}" class="text-decoration-none">
-            <div class="card shadow-sm text-center p-4">
-                <h5>Referencias</h5>
-                <p class="text-muted">Administrar referencias</p>
-            </div>
-        </a>
-    </div>
+<div class="dashboard-grid mt-4">
+    {% include "components/kpi_card.html" with title="Total solicitudes" value=total_solicitudes detail_label="Último" detail=ultimo_solicitud.codigo variant="primary" %}
+    {% include "components/kpi_card.html" with title="Cotizaciones" value=total_cotizaciones detail_label="Último consecutivo" detail=ultimo_consecutivo_cotizacion variant="indigo" %}
+    {% include "components/kpi_card.html" with title="Referencias" value=total_referencias detail_label="Último consecutivo" detail=ultimo_consecutivo_referencia variant="teal" %}
 </div>
+
 {% endblock %}
