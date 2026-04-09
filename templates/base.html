@@ -29,26 +29,6 @@
     <style>
         body {
             position: relative;
-            background-color: #f1f5f9;
-        }
-
-        body::before {
-            content: "";
-            position: fixed;
-            inset: 0;
-            z-index: -1;
-            background-image: url("{% static 'img/fondo_app.png' %}");
-            background-size: 55% auto;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            opacity: 0.50;
-        }
-
-        @media (max-width: 768px) {
-            body::before {
-                background-size: 75% auto;
-            }
         }
 
         @media (max-width: 991.98px) {
@@ -182,10 +162,6 @@
             background-color: #121212;
         }
 
-        [data-bs-theme="dark"] body::before {
-            opacity: 0.15;
-        }
-
         [data-bs-theme="dark"] .sidebar {
             background-color: #012f2f;
         }
@@ -230,14 +206,6 @@
             transition: background-color var(--transition), color var(--transition);
         }
 
-        body::before {
-            transition: opacity var(--transition);
-        }
-
-        html.dark body::before {
-            opacity: 0.12;
-        }
-
         .header {
             background-color: var(--color-card);
             border-bottom: 1px solid var(--color-border);
@@ -261,6 +229,25 @@
             padding: 8px 8px 2px;
             font-weight: 700;
             letter-spacing: -0.01em;
+            margin-bottom: 16px;
+        }
+
+        .sidebar-logo {
+            height: 48px;
+            width: auto;
+            max-width: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .sidebar-brand-text {
+            display: none;
+        }
+
+        @media (max-width: 991.98px) {
+            .sidebar-logo {
+                height: 40px;
+            }
         }
 
         .sidebar-nav {
@@ -586,7 +573,10 @@
 <body>
 <div class="sidebar">
     {% with current=request.resolver_match.url_name %}
-        <div class="sidebar-brand">Zaha OPS</div>
+        <div class="sidebar-brand">
+            <img src="{% static 'img/logo.png' %}" class="sidebar-logo" alt="Zaha OPS" decoding="async" loading="eager" onerror="this.remove(); document.getElementById('sidebarBrandText').style.display='block';">
+            <span id="sidebarBrandText" class="sidebar-brand-text">OPS B&C</span>
+        </div>
 
         <nav class="sidebar-nav" aria-label="Menú principal">
             <a href="{% url 'inicio' %}" class="sidebar-link {% if current == 'inicio' %}is-active{% endif %}">Inicio</a>
