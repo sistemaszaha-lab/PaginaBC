@@ -180,7 +180,7 @@
             --color-primary: #016B6B;
             --color-secondary: #3E9FA2;
             --color-text: #464747;
-            --color-bg: #ffffff;
+            --color-bg: #f8fafc;
             --color-card: #ffffff;
             --color-border: rgba(70, 71, 71, 0.16);
             --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
@@ -229,25 +229,6 @@
             padding: 8px 8px 2px;
             font-weight: 700;
             letter-spacing: -0.01em;
-            margin-bottom: 16px;
-        }
-
-        .sidebar-logo {
-            height: 48px;
-            width: auto;
-            max-width: 100%;
-            object-fit: contain;
-            display: block;
-        }
-
-        .sidebar-brand-text {
-            display: none;
-        }
-
-        @media (max-width: 991.98px) {
-            .sidebar-logo {
-                height: 40px;
-            }
         }
 
         .sidebar-nav {
@@ -573,10 +554,7 @@
 <body>
 <div class="sidebar">
     {% with current=request.resolver_match.url_name %}
-        <div class="sidebar-brand">
-            <img src="{% static 'img/logo.png' %}" class="sidebar-logo" alt="Zaha OPS" decoding="async" loading="eager" onerror="this.remove(); document.getElementById('sidebarBrandText').style.display='block';">
-            <span id="sidebarBrandText" class="sidebar-brand-text">OPS B&C</span>
-        </div>
+        <div class="sidebar-brand">OPS B&C</div>
 
         <nav class="sidebar-nav" aria-label="Menú principal">
             <a href="{% url 'inicio' %}" class="sidebar-link {% if current == 'inicio' %}is-active{% endif %}">Inicio</a>
