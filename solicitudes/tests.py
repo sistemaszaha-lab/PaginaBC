@@ -42,6 +42,7 @@ class SeguridadPermisosTests(TestCase):
         )
         self.referencia = Referencia.objects.create(
             referencia="REF-INI",
+            consecutivo=1,
             ejecutivo=self.ejecutivo,
             cliente="Cliente Ref",
             servicio="Servicio Ref",
@@ -111,6 +112,7 @@ class SeguridadPermisosTests(TestCase):
 
         referencia = Referencia.objects.create(
             referencia="BC26010",
+            consecutivo=10,
             ejecutivo=self.ejecutivo,
             cliente="Cliente Fecha",
             servicio="importacion",
@@ -258,7 +260,7 @@ class SeguridadPermisosTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         referencia_ejec = Referencia.objects.get(cliente="Cliente R Ejec")
-        self.assertEqual(referencia_ejec.referencia, "BC261001")
+        self.assertEqual(referencia_ejec.referencia, "BC261002")
 
         self.client.login(username="admin", password="admin123")
         response = self.client.post(
@@ -274,7 +276,7 @@ class SeguridadPermisosTests(TestCase):
         self.assertEqual(response.status_code, 302)
 
         referencia = Referencia.objects.get(cliente="Cliente R")
-        self.assertEqual(referencia.referencia, "BC261002")
+        self.assertEqual(referencia.referencia, "BC261003")
 
         response = self.client.post(
             reverse("editar_referencia", args=[referencia.pk]),
@@ -288,7 +290,7 @@ class SeguridadPermisosTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         referencia.refresh_from_db()
-        self.assertEqual(referencia.referencia, "BC262001")
+        self.assertEqual(referencia.referencia, "BC262003")
 
         self.client.login(username="ejec", password="ejec123")
         response = self.client.post(reverse("eliminar_referencia", args=[referencia.pk]))
@@ -299,29 +301,29 @@ class SeguridadPermisosTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Referencia.objects.filter(pk=referencia.pk).exists())
 
-    def test_lista_referencias_ordenamiento_por_id_segun_parametro(self):
+    def test_lista_referencias_ordenamiento_por_consecutivo_segun_parametro(self):
         self.client.login(username="admin", password="admin123")
-        Referencia.objects.create(referencia="BC261010", ejecutivo=self.ejecutivo)
-        Referencia.objects.create(referencia="BC261001", ejecutivo=self.ejecutivo)
-        Referencia.objects.create(referencia="BC261002", ejecutivo=self.ejecutivo)
+        Referencia.objects.create(referencia="BC261010", consecutivo=10, ejecutivo=self.ejecutivo)
+        Referencia.objects.create(referencia="BC261001", consecutivo=1, ejecutivo=self.ejecutivo)
+        Referencia.objects.create(referencia="BC261002", consecutivo=2, ejecutivo=self.ejecutivo)
 
         response = self.client.get(reverse("lista_referencias"))
         self.assertEqual(response.status_code, 200)
         contenido = response.content.decode("utf-8")
+        self.assertLess(contenido.find("BC261010"), contenido.find("BC261002"))
         self.assertLess(contenido.find("BC261002"), contenido.find("BC261001"))
-        self.assertLess(contenido.find("BC261001"), contenido.find("BC261010"))
 
         response = self.client.get(reverse("lista_referencias"), {"orden": "asc"})
         self.assertEqual(response.status_code, 200)
         contenido = response.content.decode("utf-8")
-        self.assertLess(contenido.find("BC261010"), contenido.find("BC261001"))
         self.assertLess(contenido.find("BC261001"), contenido.find("BC261002"))
+        self.assertLess(contenido.find("BC261002"), contenido.find("BC261010"))
 
         response = self.client.get(reverse("lista_referencias"), {"orden": "desc"})
         self.assertEqual(response.status_code, 200)
         contenido = response.content.decode("utf-8")
+        self.assertLess(contenido.find("BC261010"), contenido.find("BC261002"))
         self.assertLess(contenido.find("BC261002"), contenido.find("BC261001"))
-        self.assertLess(contenido.find("BC261001"), contenido.find("BC261010"))
 
     def test_descarga_excel_requiere_login_y_devuelve_archivo(self):
         export_urls = [

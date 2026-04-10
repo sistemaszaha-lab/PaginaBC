@@ -35,14 +35,20 @@ def cliente_lista(request):
                 | Q(celular__icontains=query)
                 | Q(correo__icontains=query)
             )
+        clientes_existentes = clientes.filter(tipo_cliente=Cliente.TIPO_EXISTENTE)
+        clientes_nuevos = clientes.filter(tipo_cliente=Cliente.TIPO_NUEVO)
     except (OperationalError, ProgrammingError):
         messages.error(
             request,
             "No se pudo cargar el directorio de clientes. Revisa que las migraciones esten aplicadas.",
         )
         clientes = []
+        clientes_existentes = []
+        clientes_nuevos = []
     context = {
         "clientes": clientes,
+        "clientes_existentes": clientes_existentes,
+        "clientes_nuevos": clientes_nuevos,
         "query": query,
     }
     return render(request, "clientes/cliente_lista.html", context)
@@ -108,4 +114,13 @@ def cliente_cambiar_estado(request, pk):
         else Cliente.ESTADO_ACTIVO
     )
     cliente.save(update_fields=["estado"])
+    return redirect("cliente_lista")
+
+
+@login_required
+@require_POST
+def cliente_convertir_existente(request, pk):
+    cliente = get_object_or_404(Cliente, pk=pk)
+    cliente.tipo_cliente = Cliente.TIPO_EXISTENTE
+    cliente.save(update_fields=["tipo_cliente"])
     return redirect("cliente_lista")

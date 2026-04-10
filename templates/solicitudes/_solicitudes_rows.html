@@ -37,65 +37,89 @@
     {% endif %}
 
     <td>
-        {% if s.estado_aereo == "Cumplido" or s.estado_aereo == "Fuera de plazo" %}
-            {{ s.tiempo_real|default:"-" }} Días
-        {% else %}
-            -
+        {% if s.aerea %}
+            {% if s.estado_aereo == "Cumplido" and s.fecha_cumplido %}
+                {{ s.fecha_cumplido|date:"d/m/Y H:i" }}
+            {% else %}
+                -
+            {% endif %}
         {% endif %}
     </td>
 
     <td>
-        {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
-            <form method="post" action="{% url 'cambiar_estado' s.id 'aereo' %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-sm w-100 {% if s.estado_aereo == 'Cumplido' %}btn-success{% elif s.estado_aereo == 'No cumplido' or s.estado_aereo == 'Fuera de plazo' %}btn-danger{% elif s.estado_aereo == 'Pendiente' %}btn-warning{% else %}btn-light{% endif %}">
-                    {{ s.estado_aereo|default:"-" }}
-                </button>
-            </form>
-        {% else %}
-            <span class="badge text-bg-secondary">{{ s.estado_aereo|default:"-" }}</span>
+        {% if s.aerea %}
+            {% if s.estado_aereo == "Cumplido" %}
+                <span class="text-success fw-bold">Cumplido</span>
+            {% else %}
+                {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
+                    <form method="post" action="{% url 'marcar_cumplido' s.id 'aereo' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm w-100 {% if s.fecha_entrega and s.fecha_entrega < today %}btn-danger{% else %}btn-warning{% endif %}">
+                            {% if s.fecha_entrega and s.fecha_entrega < today %}Fuera de plazo{% else %}Pendiente{% endif %}
+                        </button>
+                    </form>
+                {% else %}
+                    <span class="badge text-bg-secondary">{% if s.fecha_entrega and s.fecha_entrega < today %}Fuera de plazo{% else %}Pendiente{% endif %}</span>
+                {% endif %}
+            {% endif %}
         {% endif %}
     </td>
 
     <td>
-        {% if s.estado_maritimo == "Cumplido" or s.estado_maritimo == "Fuera de plazo" %}
-            {{ s.tiempo_real|default:"-" }} Días
-        {% else %}
-            -
+        {% if s.maritima %}
+            {% if s.estado_maritimo == "Cumplido" and s.fecha_cumplido %}
+                {{ s.fecha_cumplido|date:"d/m/Y H:i" }}
+            {% else %}
+                -
+            {% endif %}
         {% endif %}
     </td>
 
     <td>
-        {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
-            <form method="post" action="{% url 'cambiar_estado' s.id 'maritimo' %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-sm w-100 {% if s.estado_maritimo == 'Cumplido' %}btn-success{% elif s.estado_maritimo == 'No cumplido' or s.estado_maritimo == 'Fuera de plazo' %}btn-danger{% elif s.estado_maritimo == 'Pendiente' %}btn-warning{% else %}btn-light{% endif %}">
-                    {{ s.estado_maritimo|default:"-" }}
-                </button>
-            </form>
-        {% else %}
-            <span class="badge text-bg-secondary">{{ s.estado_maritimo|default:"-" }}</span>
+        {% if s.maritima %}
+            {% if s.estado_maritimo == "Cumplido" %}
+                <span class="text-success fw-bold">Cumplido</span>
+            {% else %}
+                {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
+                    <form method="post" action="{% url 'marcar_cumplido' s.id 'maritimo' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm w-100 {% if s.fecha_entrega and s.fecha_entrega < today %}btn-danger{% else %}btn-warning{% endif %}">
+                            {% if s.fecha_entrega and s.fecha_entrega < today %}Fuera de plazo{% else %}Pendiente{% endif %}
+                        </button>
+                    </form>
+                {% else %}
+                    <span class="badge text-bg-secondary">{% if s.fecha_entrega and s.fecha_entrega < today %}Fuera de plazo{% else %}Pendiente{% endif %}</span>
+                {% endif %}
+            {% endif %}
         {% endif %}
     </td>
 
     <td>
-        {% if s.estado_terrestre == "Cumplido" or s.estado_terrestre == "Fuera de plazo" %}
-            {{ s.tiempo_real|default:"-" }} Días
-        {% else %}
-            -
+        {% if s.terrestre %}
+            {% if s.estado_terrestre == "Cumplido" and s.fecha_cumplido %}
+                {{ s.fecha_cumplido|date:"d/m/Y H:i" }}
+            {% else %}
+                -
+            {% endif %}
         {% endif %}
     </td>
 
     <td>
-        {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
-            <form method="post" action="{% url 'cambiar_estado' s.id 'terrestre' %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-sm w-100 {% if s.estado_terrestre == 'Cumplido' %}btn-success{% elif s.estado_terrestre == 'No cumplido' or s.estado_terrestre == 'Fuera de plazo' %}btn-danger{% elif s.estado_terrestre == 'Pendiente' %}btn-warning{% else %}btn-light{% endif %}">
-                    {{ s.estado_terrestre|default:"-" }}
-                </button>
-            </form>
-        {% else %}
-            <span class="badge text-bg-secondary">{{ s.estado_terrestre|default:"-" }}</span>
+        {% if s.terrestre %}
+            {% if s.estado_terrestre == "Cumplido" %}
+                <span class="text-success fw-bold">Cumplido</span>
+            {% else %}
+                {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
+                    <form method="post" action="{% url 'marcar_cumplido' s.id 'terrestre' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm w-100 {% if s.fecha_entrega and s.fecha_entrega < today %}btn-danger{% else %}btn-warning{% endif %}">
+                            {% if s.fecha_entrega and s.fecha_entrega < today %}Fuera de plazo{% else %}Pendiente{% endif %}
+                        </button>
+                    </form>
+                {% else %}
+                    <span class="badge text-bg-secondary">{% if s.fecha_entrega and s.fecha_entrega < today %}Fuera de plazo{% else %}Pendiente{% endif %}</span>
+                {% endif %}
+            {% endif %}
         {% endif %}
     </td>
 

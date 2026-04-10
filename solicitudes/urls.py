@@ -11,6 +11,7 @@ urlpatterns = [
     path("solicitudes/editar/<int:pk>/", views.editar_solicitud, name="editar_solicitud"),
     path("solicitudes/eliminar/<int:pk>/", views.eliminar_solicitud, name="eliminar_solicitud"),
     path("cambiar-estado/<int:pk>/<str:tipo>/", views.cambiar_estado, name="cambiar_estado"),
+    path("solicitudes/marcar-cumplido/<int:pk>/<str:tipo>/", views.marcar_cumplido, name="marcar_cumplido"),
     path("cambiar-ejecutivo/<int:pk>/", views.cambiar_ejecutivo, name="cambiar_ejecutivo"),
     path("usuarios/", views.lista_usuarios, name="lista_usuarios"),
     path("usuarios/nuevo/", views.crear_usuario, name="crear_usuario"),

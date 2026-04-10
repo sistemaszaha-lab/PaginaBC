@@ -53,6 +53,7 @@ class Solicitud(models.Model):
     estado_terrestre = models.CharField(max_length=50, blank=True, null=True)
 
     creado = models.DateTimeField(auto_now_add=True)
+    fecha_cumplido = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.sg} - {self.cliente}"
@@ -162,14 +163,41 @@ class Cotizacion(models.Model):
     def __str__(self):
         return f"{self.consecutivo} - {self.cliente}"
 
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            nombre_o_correo = (self.cliente or "").strip()
+            if nombre_o_correo:
+                from django.db.models import Q
+                from clientes.models import Cliente
+
+                existente = Cliente.objects.filter(
+                    Q(nombre__iexact=nombre_o_correo) | Q(correo__iexact=nombre_o_correo)
+                ).first()
+                if existente:
+                    self.cliente = existente.nombre
+                else:
+                    Cliente.objects.create(
+                        nombre=nombre_o_correo,
+                        correo="",
+                        telefono="",
+                        tipo_cliente=Cliente.TIPO_NUEVO,
+                    )
+        return super().save(*args, **kwargs)
+
 
 #===================================
 # MODELO REFERENCIAS
 #===================================
 
 class Referencia(models.Model):
+    MEDIOS = [
+        ("aerea", "Aérea"),
+        ("maritima", "Marítima"),
+        ("terrestre", "Terrestre"),
+    ]
 
     referencia = models.CharField(max_length=50, unique=True)
+    consecutivo = models.IntegerField(db_index=True)
     ejecutivo = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -178,6 +206,12 @@ class Referencia(models.Model):
     )
     cliente = models.CharField(max_length=200, blank=True, null=True)
     servicio = models.CharField(max_length=200, blank=True, null=True)
+    medio_operacion = models.CharField(
+        max_length=20,
+        choices=MEDIOS,
+        null=True,
+        blank=True,
+    )
     agencia_aduanal = models.CharField(max_length=200, blank=True, null=True)
     fecha = models.DateField(blank=True, null=True)
 

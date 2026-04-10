@@ -63,7 +63,7 @@ class SolicitudForm(forms.ModelForm):
 
     class Meta:
         model = Solicitud
-        exclude = ["estado_aereo", "estado_maritimo", "estado_terrestre", "creado"]
+        exclude = ["estado_aereo", "estado_maritimo", "estado_terrestre", "fecha_cumplido", "creado"]
         labels = {
             "anio": "Año",
             "fecha_recepcion": "Fecha de inicio",
@@ -502,17 +502,28 @@ class ReferenciaForm(forms.ModelForm):
 
     class Meta:
         model = Referencia
-        fields = ["ejecutivo", "cliente", "servicio", "agencia_aduanal", "fecha"]
+        fields = ["ejecutivo", "cliente", "servicio", "medio_operacion", "agencia_aduanal", "fecha"]
+        labels = {
+            "medio_operacion": "Medio",
+        }
         widgets = {
             "fecha": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
             "cliente": forms.TextInput(
                 attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
             ),
+            "medio_operacion": forms.Select(attrs={"class": "form-select"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _configurar_ejecutivo_field(self.fields.get("ejecutivo"))
+        if "medio_operacion" in self.fields:
+            self.fields["medio_operacion"].required = False
+            choices = list(self.fields["medio_operacion"].choices or [])
+            if not choices or choices[0][0] != "":
+                self.fields["medio_operacion"].choices = [("", "Seleccionar (opcional)")] + choices
+            else:
+                self.fields["medio_operacion"].choices = [("", "Seleccionar (opcional)")] + choices[1:]
         if not self.instance.pk:
             self.fields["fecha"].initial = date.today()
         elif self.instance.servicio and self.instance.servicio not in self.CODIGOS_OPERACION:
@@ -532,10 +543,14 @@ class ReferenciaForm(forms.ModelForm):
                 try:
                     with transaction.atomic():
                         if debe_regenerar and referencia.servicio in self.CODIGOS_OPERACION:
+                            if not referencia.consecutivo:
+                                referencia.consecutivo = self._siguiente_consecutivo_global(
+                                    excluir_pk=referencia.pk,
+                                )
                             referencia.referencia = self._generar_referencia(
                                 fecha=referencia.fecha,
                                 operacion=referencia.servicio,
-                                excluir_pk=referencia.pk,
+                                consecutivo=referencia.consecutivo,
                             )
                         referencia.save()
                     break
@@ -547,22 +562,15 @@ class ReferenciaForm(forms.ModelForm):
     def clean_cliente(self):
         return _validar_cliente(self.cleaned_data.get("cliente"))
 
-    def _generar_referencia(self, fecha, operacion, excluir_pk=None):
+    def _generar_referencia(self, fecha, operacion, consecutivo):
         codigo_operacion = self.CODIGOS_OPERACION[operacion]
-        anio_corto = fecha.strftime("%y")
+        anio_corto = (fecha or date.today()).strftime("%y")
         prefijo = f"{self.PREFIJO_EMPRESA}{anio_corto}{codigo_operacion}"
-        consecutivo = self._siguiente_consecutivo_prefijo(prefijo, excluir_pk=excluir_pk)
-        return f"{prefijo}{consecutivo:03d}"
+        return f"{prefijo}{int(consecutivo):03d}"
 
-    def _siguiente_consecutivo_prefijo(self, prefijo, excluir_pk=None):
-        referencias_existentes = Referencia.objects.filter(referencia__startswith=prefijo)
+    def _siguiente_consecutivo_global(self, excluir_pk=None):
+        qs = Referencia.objects.select_for_update()
         if excluir_pk:
-            referencias_existentes = referencias_existentes.exclude(pk=excluir_pk)
-        referencias_existentes = referencias_existentes.values_list("referencia", flat=True)
-        ultimo = 0
-        patron = re.compile(rf"^{re.escape(prefijo)}(\d{{3}})$")
-        for referencia in referencias_existentes:
-            match = patron.match(str(referencia).strip().upper())
-            if match:
-                ultimo = max(ultimo, int(match.group(1)))
-        return ultimo + 1
+            qs = qs.exclude(pk=excluir_pk)
+        ultimo = qs.order_by("-consecutivo").values_list("consecutivo", flat=True).first()
+        return (ultimo or 0) + 1

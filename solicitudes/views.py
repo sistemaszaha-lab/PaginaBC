@@ -561,7 +561,7 @@ def inicio(request):
         .first()
     )
     ultimo_consecutivo_referencia = (
-        Referencia.objects.order_by("-id")
+        Referencia.objects.order_by("-consecutivo", "-id")
         .values_list("referencia", flat=True)
         .first()
     )
@@ -633,6 +633,7 @@ def lista_solicitudes(request):
                 "paginator": paginator,
                 "anio_seleccionado": anio,
                 "q": q,
+                "today": timezone.localdate(),
             },
         )
 
@@ -648,6 +649,7 @@ def lista_solicitudes(request):
             "orden": orden,
             "page_obj": page_obj,
             "paginator": paginator,
+            "today": timezone.localdate(),
         },
     )
 
@@ -843,7 +845,8 @@ def cambiar_estado(request, pk, tipo):
         raise PermissionDenied("No tienes permisos para cambiar este estado.")
 
     campo = f"estado_{tipo}"
-    setattr(solicitud, campo, ESTADOS_SIGUIENTES.get(getattr(solicitud, campo), "Pendiente"))
+    nuevo_estado = ESTADOS_SIGUIENTES.get(getattr(solicitud, campo), "Pendiente")
+    setattr(solicitud, campo, nuevo_estado)
 
     if tipo != "aereo":
         solicitud.estado_aereo = None
@@ -852,7 +855,38 @@ def cambiar_estado(request, pk, tipo):
     if tipo != "terrestre":
         solicitud.estado_terrestre = None
 
+    if nuevo_estado == "Cumplido":
+        solicitud.fecha_cumplido = timezone.now()
+
     solicitud.save()
+    return redirect("lista_solicitudes")
+
+
+@login_required
+@require_POST
+def marcar_cumplido(request, pk, tipo):
+    if tipo not in TIPOS_TRANSPORTE:
+        raise PermissionDenied("Tipo de transporte no permitido.")
+
+    solicitud = get_object_or_404(Solicitud, pk=pk)
+    if not (_es_admin(request.user) or solicitud.ejecutivo_id == request.user.id):
+        raise PermissionDenied("No tienes permisos para cambiar este estado.")
+
+    campo = f"estado_{tipo}"
+    estado_actual = getattr(solicitud, campo) or "Pendiente"
+
+    if estado_actual != "Cumplido":
+        setattr(solicitud, campo, "Cumplido")
+        if tipo != "aereo":
+            solicitud.estado_aereo = None
+        if tipo != "maritimo":
+            solicitud.estado_maritimo = None
+        if tipo != "terrestre":
+            solicitud.estado_terrestre = None
+
+        solicitud.fecha_cumplido = timezone.now()
+        solicitud.save()
+
     return redirect("lista_solicitudes")
 
 
@@ -1222,9 +1256,9 @@ def lista_referencias(request):
         )
 
     if orden == "asc":
-        referencias_qs = referencias_qs.order_by("id")
+        referencias_qs = referencias_qs.order_by("consecutivo", "id")
     else:
-        referencias_qs = referencias_qs.order_by("-id")
+        referencias_qs = referencias_qs.order_by("-consecutivo", "-id")
     paginator = Paginator(referencias_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     referencias = page_obj.object_list
@@ -1282,7 +1316,7 @@ def importar_referencias_csv(request):
 
 @login_required
 def exportar_referencias_excel(request):
-    referencias = Referencia.objects.select_related("ejecutivo").order_by("id")
+    referencias = Referencia.objects.select_related("ejecutivo").order_by("consecutivo", "id")
     headers = [
         "Referencia",
         "Ejecutivo",

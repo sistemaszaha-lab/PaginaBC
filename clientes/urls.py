@@ -8,4 +8,5 @@ urlpatterns = [
     path("<int:pk>/editar/", views.cliente_editar, name="cliente_editar"),
     path("<int:pk>/eliminar/", views.cliente_eliminar, name="cliente_eliminar"),
     path("<int:pk>/estado/", views.cliente_cambiar_estado, name="cliente_cambiar_estado"),
+    path("<int:pk>/convertir/", views.cliente_convertir_existente, name="cliente_convertir_existente"),
 ]

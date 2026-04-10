@@ -18,7 +18,13 @@
     <td>{{ r.ejecutivo|primer_nombre|default:"-" }}</td>
     {% endif %}
     <td>{{ r.cliente }}</td>
-    <td>{{ r.servicio_legible }}</td>
+    <td>
+        {% if r.medio_operacion %}
+            {{ r.servicio_legible }} - {{ r.get_medio_operacion_display }}
+        {% else %}
+            {{ r.servicio_legible }}
+        {% endif %}
+    </td>
     <td>{{ r.agencia_aduanal }}</td>
     <td>{{ r.fecha }}</td>
     <td>

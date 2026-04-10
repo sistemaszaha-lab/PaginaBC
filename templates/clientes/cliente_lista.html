@@ -15,54 +15,10 @@
     <a class="btn btn-success" href="{% url 'cliente_crear' %}">+ Nuevo cliente</a>
 </div>
 
-<div class="table-responsive">
-    <table class="table table-bordered table-striped align-middle">
-        <thead class="table-light">
-            <tr>
-                <th>Cliente</th>
-                <th>Razón social</th>
-                <th>Representante legal</th>
-                <th>Contacto</th>
-                <th>Correo</th>
-                <th>Teléfono</th>
-                <th>Celular</th>
-                <th>Status</th>
-                <th>Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for cliente in clientes %}
-            <tr class="{% if cliente.estado != 'activo' %}table-warning{% endif %}">
-                <td>
-                    <strong>{{ cliente.nombre }}</strong>
-                </td>
-                <td>{{ cliente.empresa|default:"-" }}</td>
-                <td>{{ cliente.representante_legal|default:"-" }}</td>
-                <td>{{ cliente.contacto|default:"-" }}</td>
-                <td>{{ cliente.correo|default:"-" }}</td>
-                <td>{{ cliente.telefono|default:"-" }}</td>
-                <td>{{ cliente.celular|default:"-" }}</td>
-                <td>
-                    <form method="post" action="{% url 'cliente_cambiar_estado' cliente.pk %}">
-                        {% csrf_token %}
-                        {% if cliente.estado == 'activo' %}
-                            <button type="submit" class="btn btn-sm btn-success">Activo</button>
-                        {% else %}
-                            <button type="submit" class="btn btn-sm btn-warning">Inactivo</button>
-                        {% endif %}
-                    </form>
-                </td>
-                <td class="d-flex gap-2">
-                    <a class="btn btn-sm btn-primary" href="{% url 'cliente_editar' cliente.pk %}">Editar</a>
-                    <a class="btn btn-sm btn-danger" href="{% url 'cliente_eliminar' cliente.pk %}">Eliminar</a>
-                </td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="9" class="text-center">No hay clientes registrados.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+<h3 class="mt-4">Clientes existentes</h3>
+{% include "clientes/_clientes_table.html" with clientes=clientes_existentes %}
+
+<h3 class="mt-4">Nuevos clientes</h3>
+{% include "clientes/_clientes_table.html" with clientes=clientes_nuevos %}
 {% endblock %}
+
