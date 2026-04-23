@@ -566,47 +566,16 @@ def inicio(request):
         .first()
     )
 
-    solicitudes_por_cliente_subq = (
-        Solicitud.objects.filter(cliente=OuterRef("nombre"))
-        .values("cliente")
-        .annotate(c=Count("id"))
-        .values("c")[:1]
-    )
-    cotizaciones_por_cliente_subq = (
-        Cotizacion.objects.filter(cliente=OuterRef("nombre"))
-        .values("cliente")
-        .annotate(c=Count("id"))
-        .values("c")[:1]
-    )
-    referencias_por_cliente_subq = (
-        Referencia.objects.filter(cliente=OuterRef("nombre"))
-        .values("cliente")
-        .annotate(c=Count("id"))
-        .values("c")[:1]
-    )
 
     top_clientes = (
         Cliente.objects.annotate(
-            total_solicitudes=Coalesce(
-                Subquery(solicitudes_por_cliente_subq, output_field=IntegerField()),
-                Value(0),
-            ),
-            total_cotizaciones=Coalesce(
-                Subquery(cotizaciones_por_cliente_subq, output_field=IntegerField()),
-                Value(0),
-            ),
-            total_referencias=Coalesce(
-                Subquery(referencias_por_cliente_subq, output_field=IntegerField()),
-                Value(0),
-            ),
+            total_solicitudes=Count('solicitud', distinct=True),
+            total_referencias=Count('referencia', distinct=True),
         )
         .annotate(
-            total_operaciones=F("total_solicitudes")
-            + F("total_cotizaciones")
-            + F("total_referencias")
+            total_operaciones=F('total_solicitudes') + F('total_referencias')
         )
-        .filter(total_operaciones__gt=0)
-        .order_by("-total_operaciones", "nombre")[:5]
+        .order_by('-total_operaciones', 'nombre')[:5]
     )
 
     clientes_chart_labels = [c.nombre for c in top_clientes]
