@@ -10,8 +10,8 @@ from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import F, IntegerField, Q
-from django.db.models.functions import Cast, Length, Substr
+from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery, Value
+from django.db.models.functions import Cast, Coalesce, Length, Substr
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -566,6 +566,52 @@ def inicio(request):
         .first()
     )
 
+    solicitudes_por_cliente_subq = (
+        Solicitud.objects.filter(cliente=OuterRef("nombre"))
+        .values("cliente")
+        .annotate(c=Count("id"))
+        .values("c")[:1]
+    )
+    cotizaciones_por_cliente_subq = (
+        Cotizacion.objects.filter(cliente=OuterRef("nombre"))
+        .values("cliente")
+        .annotate(c=Count("id"))
+        .values("c")[:1]
+    )
+    referencias_por_cliente_subq = (
+        Referencia.objects.filter(cliente=OuterRef("nombre"))
+        .values("cliente")
+        .annotate(c=Count("id"))
+        .values("c")[:1]
+    )
+
+    top_clientes = (
+        Cliente.objects.annotate(
+            total_solicitudes=Coalesce(
+                Subquery(solicitudes_por_cliente_subq, output_field=IntegerField()),
+                Value(0),
+            ),
+            total_cotizaciones=Coalesce(
+                Subquery(cotizaciones_por_cliente_subq, output_field=IntegerField()),
+                Value(0),
+            ),
+            total_referencias=Coalesce(
+                Subquery(referencias_por_cliente_subq, output_field=IntegerField()),
+                Value(0),
+            ),
+        )
+        .annotate(
+            total_operaciones=F("total_solicitudes")
+            + F("total_cotizaciones")
+            + F("total_referencias")
+        )
+        .filter(total_operaciones__gt=0)
+        .order_by("-total_operaciones", "nombre")[:5]
+    )
+
+    clientes_chart_labels = [c.nombre for c in top_clientes]
+    clientes_chart_data = [int(c.total_operaciones or 0) for c in top_clientes]
+
     return render(
         request,
         "inicio.html",
@@ -579,6 +625,8 @@ def inicio(request):
             "ultimo_solicitud": ultimo_solicitud,
             "ultimo_consecutivo_cotizacion": ultimo_consecutivo_cotizacion,
             "ultimo_consecutivo_referencia": ultimo_consecutivo_referencia,
+            "clientes_chart_labels": clientes_chart_labels,
+            "clientes_chart_data": clientes_chart_data,
         },
     )
 

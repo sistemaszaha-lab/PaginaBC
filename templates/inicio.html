@@ -23,4 +23,91 @@
     {% include "components/kpi_card.html" with title="Referencias" value=total_referencias detail_label="Último consecutivo" detail=ultimo_consecutivo_referencia variant="teal" %}
 </div>
 
+<div class="stat-card mt-4">
+    <div class="p-3 p-md-4">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <h5 class="mb-0 fw-bold">Top clientes con más operaciones</h5>
+            <span class="text-muted small">Top 5</span>
+        </div>
+
+        {% if clientes_chart_data %}
+            <div style="position: relative; height: 340px;">
+                <canvas id="clientesChart"></canvas>
+            </div>
+
+            {{ clientes_chart_labels|json_script:"clientes-chart-labels" }}
+            {{ clientes_chart_data|json_script:"clientes-chart-data" }}
+
+            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+            <script>
+                document.addEventListener("DOMContentLoaded", () => {
+                    const labelsEl = document.getElementById("clientes-chart-labels");
+                    const dataEl = document.getElementById("clientes-chart-data");
+                    if (!labelsEl || !dataEl) return;
+
+                    const labels = JSON.parse(labelsEl.textContent || "[]");
+                    const values = JSON.parse(dataEl.textContent || "[]");
+                    if (!labels.length || !values.length) return;
+
+                    const chartEl = document.getElementById("clientesChart");
+                    if (!chartEl) return;
+
+                    const root = document.documentElement;
+                    const isDark =
+                        (root.getAttribute("data-bs-theme") || "").toLowerCase() === "dark" ||
+                        root.classList.contains("dark");
+
+                    const textColor = isDark ? "rgba(255, 255, 255, 0.85)" : "rgba(15, 23, 42, 0.8)";
+                    const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
+                    const primary = "rgba(62, 159, 162, 0.75)";
+                    const primaryBorder = "rgba(62, 159, 162, 1)";
+
+                    new Chart(chartEl, {
+                        type: "bar",
+                        data: {
+                            labels,
+                            datasets: [
+                                {
+                                    label: "Operaciones",
+                                    data: values,
+                                    backgroundColor: primary,
+                                    borderColor: primaryBorder,
+                                    borderWidth: 1,
+                                    borderRadius: 10,
+                                    maxBarThickness: 46,
+                                },
+                            ],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        label: (ctx) => `Operaciones: ${ctx.parsed.y}`,
+                                    },
+                                },
+                            },
+                            scales: {
+                                x: {
+                                    ticks: { color: textColor },
+                                    grid: { display: false },
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: { color: textColor, precision: 0 },
+                                    grid: { color: gridColor },
+                                },
+                            },
+                        },
+                    });
+                });
+            </script>
+        {% else %}
+            <div class="text-muted">No hay datos disponibles</div>
+        {% endif %}
+    </div>
+</div>
+
 {% endblock %}
