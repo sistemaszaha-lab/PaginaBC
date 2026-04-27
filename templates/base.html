@@ -719,7 +719,8 @@
     syncSidebarMode();
     mobileQuery.addEventListener("change", syncSidebarMode);
 
-    sidebarToggle.addEventListener("click", () => {
+    sidebarToggle.addEventListener("click", (e) => {
+        e.stopPropagation(); // Evitar propagación para no cerrar de inmediato
         if (mobileQuery.matches) {
             body.classList.toggle("sidebar-open");
         } else {
@@ -730,12 +731,22 @@
         updateSidebarIcon();
     });
 
-    sidebarBackdrop.addEventListener("click", () => {
+    // Evento global para cerrar al hacer click fuera
+    document.addEventListener("click", (e) => {
         if (!mobileQuery.matches) return;
-        body.classList.remove("sidebar-open");
-        updateSidebarIcon();
+        
+        // Detectar si el sidebar está abierto en móvil
+        if (body.classList.contains("sidebar-open")) {
+            const sidebar = document.querySelector(".sidebar");
+            // Si el click NO fue dentro del sidebar (el click del botón ya fue bloqueado por stopPropagation)
+            if (sidebar && !sidebar.contains(e.target)) {
+                body.classList.remove("sidebar-open");
+                updateSidebarIcon();
+            }
+        }
     });
 
+    // OPCIONAL: Cerrar el menú al hacer click en los enlaces (<a>) dentro del sidebar
     sidebarLinks.forEach((link) => {
         link.addEventListener("click", () => {
             if (!mobileQuery.matches) return;
