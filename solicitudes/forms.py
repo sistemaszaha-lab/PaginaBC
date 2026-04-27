@@ -1,4 +1,4 @@
-﻿from datetime import date
+from datetime import date
 import re
 import uuid
 from django import forms
@@ -354,6 +354,8 @@ class CotizacionForm(forms.ModelForm):
         ("Exportación Terrestre", "Exportación Terrestre"),
         ("Transporte nacional", "Transporte nacional"),
         ("Consultoría", "Consultoría"),
+        ("Comercializadora de importación", "Comercializadora de importación"),
+        ("Comercializadora de exportación", "Comercializadora de exportación"),
     )
 
     tipo = forms.ChoiceField(
