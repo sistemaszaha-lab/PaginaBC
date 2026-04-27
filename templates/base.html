@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es" data-bs-theme="light">
 <head>
     {% load static %}
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Sistema{% endblock %}</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -546,6 +546,54 @@
             border-radius: var(--radius-xl);
             box-shadow: var(--shadow-sm);
             border-color: var(--color-border);
+        }
+
+        /* ---------- RESPONSIVE AGREGADO SEGÚN REGLAS ---------- */
+        .table-container {
+            overflow-x: auto;
+            width: 100%;
+            display: block;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        @media (max-width: 768px) {
+            /* 3 y 4. Dashboard Grid -> Flex Column */
+            .dashboard-grid {
+                display: flex !important;
+                flex-direction: column !important;
+                width: 100%;
+            }
+            .dashboard-grid > * {
+                width: 100% !important;
+            }
+
+            /* 6. Textos más pequeños en móvil */
+            h1, h2, h3, h4, h5, .stat-card-title, .kpi-card-title {
+                font-size: 0.95rem !important;
+            }
+            .stat-card-value, .kpi-card-value {
+                font-size: 1.6rem !important; /* Evitar desbordamiento */
+            }
+
+            /* 7. Botones más grandes/anchos */
+            .btn {
+                padding: 0.55rem 1rem;
+            }
+            .btn-responsive {
+                width: 100%;
+                display: block;
+                margin-bottom: 8px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            /* Ajustes finos para celular */
+            .content {
+                padding: 12px !important;
+            }
+            .stat-card .stat-card-body, .kpi-card-body {
+                padding: 14px;
+            }
         }
 
     </style>
