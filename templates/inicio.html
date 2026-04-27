@@ -110,4 +110,73 @@
     </div>
 </div>
 
+<!-- Script independiente para gráfica de operaciones por cliente (top_clientes_operaciones) -->
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const labels = {{ clientes_labels|default:"[]"|safe }};
+        const data = {{ clientes_data|default:"[]"|safe }};
+
+        if (!labels || !Array.isArray(labels) || labels.length === 0) {
+            console.warn("top_clientes_operaciones: no hay datos disponibles");
+            return;
+        }
+
+        if (!data || !Array.isArray(data) || data.length === 0) {
+            console.warn("top_clientes_operaciones: data vacía");
+            return;
+        }
+
+        const chartEl = document.getElementById("clientesChart");
+        if (!chartEl) return;
+
+        if (typeof Chart === "undefined") {
+            console.warn("Chart.js no está cargado");
+            return;
+        }
+
+        const root = document.documentElement;
+        const isDark =
+            (root.getAttribute("data-bs-theme") || "").toLowerCase() === "dark" ||
+            root.classList.contains("dark");
+
+        const textColor = isDark ? "rgba(255, 255, 255, 0.85)" : "rgba(15, 23, 42, 0.8)";
+        const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
+        const primary = "rgba(62, 159, 162, 0.75)";
+        const primaryBorder = "rgba(62, 159, 162, 1)";
+
+        new Chart(chartEl, {
+            type: "bar",
+            data: {
+                labels,
+                datasets: [{
+                    label: "Total operaciones",
+                    data,
+                    backgroundColor: primary,
+                    borderColor: primaryBorder,
+                    borderWidth: 1,
+                    borderRadius: 10,
+                    maxBarThickness: 46,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `Operaciones: ${ctx.parsed.y}`,
+                        },
+                    },
+                },
+                scales: {
+                    x: { ticks: { color: textColor }, grid: { display: false } },
+                    y: { beginAtZero: true, ticks: { color: textColor, precision: 0 }, grid: { color: gridColor } },
+                },
+            },
+        });
+    });
+</script>
+</div>
+
 {% endblock %}
