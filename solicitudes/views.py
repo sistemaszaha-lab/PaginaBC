@@ -13,7 +13,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery, Value
 from django.db.models.functions import Cast, Coalesce, Length, Substr
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -548,7 +548,16 @@ def inicio(request):
     )
 
     total_solicitudes = Solicitud.objects.count()
-    total_cotizaciones = Cotizacion.objects.count()
+    
+    # Auto-update de cotizaciones fuera de plazo
+    Cotizacion.objects.filter(estado="Pendiente", fecha_envio__lt=hoy).update(estado="Fuera de plazo")
+    
+    cot_pendientes = Cotizacion.objects.filter(estado="Pendiente").count()
+    cot_cumplidas = Cotizacion.objects.filter(estado="Cumplido").count()
+    cot_fuera = Cotizacion.objects.filter(estado="Fuera de plazo").count()
+    cot_total = Cotizacion.objects.count()
+    
+    total_cotizaciones = cot_total
     total_referencias = Referencia.objects.count()
 
     ultimo_solicitud = (
@@ -590,6 +599,10 @@ def inicio(request):
             "cumplidas": cumplidas,
             "pendientes": pendientes,
             "fuera_de_plazo": fuera_de_plazo,
+            "cot_pendientes": cot_pendientes,
+            "cot_cumplidas": cot_cumplidas,
+            "cot_fuera": cot_fuera,
+            "cot_total": cot_total,
             "ultimo_solicitud": ultimo_solicitud,
             "ultimo_consecutivo_cotizacion": ultimo_consecutivo_cotizacion,
             "ultimo_consecutivo_referencia": ultimo_consecutivo_referencia,
@@ -1005,7 +1018,19 @@ def eliminar_usuario(request, pk):
 
 
 @login_required
+@require_POST
+def cambiar_estado_cotizacion(request, id):
+    cot = get_object_or_404(Cotizacion, id=id)
+    cot.estado = "Cumplido"
+    cot.save()
+    return JsonResponse({"status": "ok"})
+
+
+@login_required
 def lista_cotizaciones(request):
+    hoy = timezone.localdate()
+    Cotizacion.objects.filter(estado="Pendiente", fecha_envio__lt=hoy).update(estado="Fuera de plazo")
+    
     anios = list(
         Cotizacion.objects.values_list("anio", flat=True).distinct().order_by("anio")
     )

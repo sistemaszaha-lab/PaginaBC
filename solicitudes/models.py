@@ -160,6 +160,16 @@ class Cotizacion(models.Model):
 
     creado = models.DateTimeField(auto_now_add=True)
 
+    estado = models.CharField(
+        max_length=50,
+        choices=[
+            ("Pendiente", "Pendiente"),
+            ("Cumplido", "Cumplido"),
+            ("Fuera de plazo", "Fuera de plazo"),
+        ],
+        default="Pendiente",
+    )
+
     def __str__(self):
         return f"{self.consecutivo} - {self.cliente}"
 

@@ -1,9 +1,10 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Cotizaciones{% endblock %}
 
 {% block content %}
 <h2 class="mb-4">Cotizaciones</h2>
+<div style="display: none;">{% csrf_token %}</div>
 
 <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
     <a href="{% url 'crear_cotizacion' %}" class="btn btn-success">+ Nueva cotización</a>
@@ -75,7 +76,66 @@
         form.addEventListener("input", handleChange);
         form.addEventListener("change", handleChange);
     })();
+
+    // Lógica para botones interactivos de Estatus
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('estado-btn') && !e.target.classList.contains('cumplido')) {
+            const btn = e.target;
+            const id = btn.dataset.id;
+            
+            // Obtener CSRF token dinámicamente si existe en algún form
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+            fetch(`/cotizaciones/cambiar-estado/${id}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === "ok") {
+                    btn.innerText = "Cumplido";
+                    btn.classList.remove('pendiente', 'fuera-de-plazo');
+                    btn.classList.add('cumplido');
+                    btn.disabled = true;
+                }
+            })
+            .catch(err => console.error("Error al cambiar estado:", err));
+        }
+    });
 </script>
+
+<style>
+.estado-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: opacity 0.2s;
+}
+.estado-btn:hover {
+    opacity: 0.9;
+}
+.estado-btn.pendiente {
+    background-color: #facc15;
+    color: #1e293b; /* Texto oscuro para contraste */
+}
+.estado-btn.cumplido {
+    background-color: transparent;
+    color: #15803d; /* Verde oscuro */
+    font-weight: 700;
+    padding: 6px 0; /* Quitar padding lateral para que alinee como texto */
+    pointer-events: none; /* Evitar hover y clicks */
+}
+.estado-btn.fuera-de-plazo, .estado-btn.fuera-de-plazo {
+    background-color: #ef4444;
+}
+</style>
 {% endblock %}
 
 

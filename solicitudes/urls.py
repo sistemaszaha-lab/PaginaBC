@@ -1,4 +1,4 @@
-﻿from django.urls import path
+from django.urls import path
 
 from . import views
 
@@ -23,6 +23,7 @@ urlpatterns = [
     path("cotizaciones/nueva/", views.crear_cotizacion, name="crear_cotizacion"),
     path("cotizaciones/editar/<int:pk>/", views.editar_cotizacion, name="editar_cotizacion"),
     path("cotizaciones/eliminar/<int:pk>/", views.eliminar_cotizacion, name="eliminar_cotizacion"),
+    path("cotizaciones/cambiar-estado/<int:id>/", views.cambiar_estado_cotizacion, name="cambiar_estado_cotizacion"),
     path("cotizaciones/cambiar-ejecutivo/<int:pk>/", views.cambiar_ejecutivo_cotizacion, name="cambiar_ejecutivo_cotizacion"),
     path("referencias/", views.lista_referencias, name="lista_referencias"),
     path("referencias/importar-csv/", views.importar_referencias_csv, name="importar_referencias_csv"),

@@ -8,18 +8,27 @@
         <h2 class="mb-1">Inicio</h2>
         <div class="text-muted">Resumen de actividad</div>
     </div>
-    
+
 </div>
 
+<h3 class="mt-4 mb-3" style="font-size: 1.1rem; opacity: 0.9;">Resumen de Solicitudes</h3>
 <div class="dashboard-grid mb-4">
-    {% include "components/kpi_card.html" with title="Solicitudes pendientes" value=pendientes variant="warning" %}
+    {% include "components/kpi_card.html" with title="Pendientes" value=pendientes variant="warning" %}
     {% include "components/kpi_card.html" with title="Fuera de plazo" value=fuera_de_plazo variant="danger" %}
     {% include "components/kpi_card.html" with title="Cumplidas" value=cumplidas variant="success" %}
 </div>
 
+<h3 class="mt-4 mb-3" style="font-size: 1.1rem; opacity: 0.9;">Resumen de Cotizaciones</h3>
+<div class="dashboard-grid mb-4">
+    {% include "components/kpi_card.html" with title="Pendientes" value=cot_pendientes variant="warning" %}
+    {% include "components/kpi_card.html" with title="Fuera de plazo" value=cot_fuera variant="danger" %}
+    {% include "components/kpi_card.html" with title="Cumplidas" value=cot_cumplidas variant="success" %}
+</div>
+
+<h3 class="mt-4 mb-3" style="font-size: 1.1rem; opacity: 0.9;">Totales Globales</h3>
 <div class="dashboard-grid mt-4">
     {% include "components/kpi_card.html" with title="Total solicitudes" value=total_solicitudes detail_label="Último" detail=ultimo_solicitud.codigo variant="primary" %}
-    {% include "components/kpi_card.html" with title="Cotizaciones" value=total_cotizaciones detail_label="Último consecutivo" detail=ultimo_consecutivo_cotizacion variant="indigo" %}
+    {% include "components/kpi_card.html" with title="Total cotizaciones" value=cot_total detail_label="Último consecutivo" detail=ultimo_consecutivo_cotizacion variant="indigo" %}
     {% include "components/kpi_card.html" with title="Referencias" value=total_referencias detail_label="Último consecutivo" detail=ultimo_consecutivo_referencia variant="teal" %}
 </div>
 
@@ -39,66 +48,66 @@
             document.addEventListener("DOMContentLoaded", () => {
                 const labels = {{ clientes_labels|safe }};
                 const values = {{ clientes_data|safe }};
-                
-                if (!labels || !labels.length) {
-                    const canvasContainer = document.getElementById('clientesChart').parentNode;
-                    canvasContainer.innerHTML = '<div class="text-muted mt-3">No hay datos disponibles</div>';
-                    return;
-                }
 
-                const chartEl = document.getElementById("clientesChart");
-                if (!chartEl) return;
+            if (!labels || !labels.length) {
+                const canvasContainer = document.getElementById('clientesChart').parentNode;
+                canvasContainer.innerHTML = '<div class="text-muted mt-3">No hay datos disponibles</div>';
+                return;
+            }
 
-                const root = document.documentElement;
-                const isDark =
-                    (root.getAttribute("data-bs-theme") || "").toLowerCase() === "dark" ||
-                    root.classList.contains("dark");
+            const chartEl = document.getElementById("clientesChart");
+            if (!chartEl) return;
 
-                const textColor = isDark ? "rgba(255, 255, 255, 0.85)" : "rgba(15, 23, 42, 0.8)";
-                const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
-                const primary = "rgba(62, 159, 162, 0.75)";
-                const primaryBorder = "rgba(62, 159, 162, 1)";
+            const root = document.documentElement;
+            const isDark =
+                (root.getAttribute("data-bs-theme") || "").toLowerCase() === "dark" ||
+                root.classList.contains("dark");
 
-                new Chart(chartEl, {
-                    type: "bar",
-                    data: {
-                        labels: labels,
-                        datasets: [
-                            {
-                                label: "Operaciones",
-                                data: values,
-                                backgroundColor: primary,
-                                borderColor: primaryBorder,
-                                borderWidth: 1,
-                                borderRadius: 10,
-                                maxBarThickness: 46,
-                            },
-                        ],
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: (ctx) => `Operaciones: ${ctx.parsed.y}`,
-                                },
-                            },
+            const textColor = isDark ? "rgba(255, 255, 255, 0.85)" : "rgba(15, 23, 42, 0.8)";
+            const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
+            const primary = "rgba(62, 159, 162, 0.75)";
+            const primaryBorder = "rgba(62, 159, 162, 1)";
+
+            new Chart(chartEl, {
+                type: "bar",
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: "Operaciones",
+                            data: values,
+                            backgroundColor: primary,
+                            borderColor: primaryBorder,
+                            borderWidth: 1,
+                            borderRadius: 10,
+                            maxBarThickness: 46,
                         },
-                        scales: {
-                            x: {
-                                ticks: { color: textColor },
-                                grid: { display: false },
-                            },
-                            y: {
-                                beginAtZero: true,
-                                ticks: { color: textColor, precision: 0 },
-                                grid: { color: gridColor },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `Operaciones: ${ctx.parsed.y}`,
                             },
                         },
                     },
-                });
+                    scales: {
+                        x: {
+                            ticks: { color: textColor },
+                            grid: { display: false },
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: textColor, precision: 0 },
+                            grid: { color: gridColor },
+                        },
+                    },
+                },
+            });
             });
         </script>
     </div>
