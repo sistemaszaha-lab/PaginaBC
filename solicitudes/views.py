@@ -1,4 +1,5 @@
-﻿import csv
+import csv
+import json
 import re
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -566,81 +567,18 @@ def inicio(request):
         .first()
     )
 
-    # Nueva lógica: top_clientes_operaciones = solicitudes + referencias (robusta con CharField)
-    from collections import namedtuple
-    ClienteOperaciones = namedtuple('ClienteOperaciones', ['nombre', 'total_operaciones'])
-    
-    clientes_dict = {}
-    
-    # Contar solicitudes por nombre de cliente (CharField)
-    solicitudes_por_cliente = (
-        Solicitud.objects.values('cliente')
-        .annotate(count=Count('id', distinct=True))
-    )
-    for item in solicitudes_por_cliente:
-        cliente_nombre = item['cliente']
-        if cliente_nombre:
-            clientes_dict.setdefault(cliente_nombre, {'solicitudes': 0, 'referencias': 0})
-            clientes_dict[cliente_nombre]['solicitudes'] = item['count']
-    
-    # Contar referencias por nombre de cliente (CharField)
-    referencias_por_cliente = (
-        Referencia.objects.values('cliente')
-        .annotate(count=Count('id', distinct=True))
-        .filter(cliente__isnull=False)
-    )
-    for item in referencias_por_cliente:
-        cliente_nombre = item['cliente']
-        if cliente_nombre:
-            clientes_dict.setdefault(cliente_nombre, {'solicitudes': 0, 'referencias': 0})
-            clientes_dict[cliente_nombre]['referencias'] = item['count']
-    
-    # Crear lista de objetos ordenados por total de operaciones
-    top_clientes_operaciones = [
-        ClienteOperaciones(
-            nombre=nombre,
-            total_operaciones=datos['solicitudes'] + datos['referencias']
-        )
-        for nombre, datos in clientes_dict.items()
-    ]
-    top_clientes_operaciones = sorted(
-        top_clientes_operaciones,
-        key=lambda x: (-x.total_operaciones, x.nombre)
-    )[:5]
-
-    solicitudes_por_cliente = (
-        Solicitud.objects.filter(cliente=OuterRef("nombre"))
-        .values("cliente")
-        .annotate(count=Count("id", distinct=True))
-        .values("count")[:1]
-    )
-    referencias_por_cliente_cliente = (
-        Referencia.objects.filter(cliente=OuterRef("nombre"))
-        .values("cliente")
-        .annotate(count=Count("id", distinct=True))
-        .values("count")[:1]
-    )
-
+    # TOP 5 clientes por número de referencias (solo Referencia, sin Cliente ni solicitudes)
     top_clientes = (
-        Cliente.objects.annotate(
-            total_solicitudes=Coalesce(
-                Subquery(solicitudes_por_cliente, output_field=IntegerField()),
-                Value(0, output_field=IntegerField()),
-            ),
-            total_referencias=Coalesce(
-                Subquery(referencias_por_cliente_cliente, output_field=IntegerField()),
-                Value(0, output_field=IntegerField()),
-            ),
-        )
-        .annotate(total_operaciones=F("total_solicitudes") + F("total_referencias"))
-        .order_by("-total_operaciones", "nombre")[:5]
+        Referencia.objects
+        .exclude(cliente__isnull=True)
+        .exclude(cliente__exact='')
+        .values('cliente')
+        .annotate(total=Count('id'))
+        .order_by('-total')[:5]
     )
 
-    labels = [cliente.nombre for cliente in top_clientes]
-    data = [int(cliente.total_operaciones or 0) for cliente in top_clientes]
-
-    clientes_chart_labels = labels
-    clientes_chart_data = data
+    labels = [c['cliente'] for c in top_clientes]
+    data = [c['total'] for c in top_clientes]
 
     return render(
         request,
@@ -655,10 +593,8 @@ def inicio(request):
             "ultimo_solicitud": ultimo_solicitud,
             "ultimo_consecutivo_cotizacion": ultimo_consecutivo_cotizacion,
             "ultimo_consecutivo_referencia": ultimo_consecutivo_referencia,
-            "clientes_chart_labels": clientes_chart_labels,
-            "clientes_chart_data": clientes_chart_data,
-            "clientes_labels": [c.nombre for c in top_clientes_operaciones] if top_clientes_operaciones else [],
-            "clientes_data": [c.total_operaciones for c in top_clientes_operaciones] if top_clientes_operaciones else [],
+            "clientes_labels": json.dumps(labels),
+            "clientes_data": json.dumps(data),
         },
     )
 

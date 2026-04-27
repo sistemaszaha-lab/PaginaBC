@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Inicio{% endblock %}
 
@@ -30,153 +30,78 @@
             <span class="text-muted small">Top 5</span>
         </div>
 
-        {% if clientes_chart_data %}
-            <div style="position: relative; height: 340px;">
-                <canvas id="clientesChart"></canvas>
-            </div>
+        <div style="position: relative; height: 340px;">
+            <canvas id="clientesChart"></canvas>
+        </div>
 
-            {{ clientes_chart_labels|json_script:"clientes-chart-labels" }}
-            {{ clientes_chart_data|json_script:"clientes-chart-data" }}
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+        <script>
+            document.addEventListener("DOMContentLoaded", () => {
+                const labels = {{ clientes_labels|safe }};
+                const values = {{ clientes_data|safe }};
+                
+                if (!labels || !labels.length) {
+                    const canvasContainer = document.getElementById('clientesChart').parentNode;
+                    canvasContainer.innerHTML = '<div class="text-muted mt-3">No hay datos disponibles</div>';
+                    return;
+                }
 
-            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-            <script>
-                document.addEventListener("DOMContentLoaded", () => {
-                    const labelsEl = document.getElementById("clientes-chart-labels");
-                    const dataEl = document.getElementById("clientes-chart-data");
-                    if (!labelsEl || !dataEl) return;
+                const chartEl = document.getElementById("clientesChart");
+                if (!chartEl) return;
 
-                    const labels = JSON.parse(labelsEl.textContent || "[]");
-                    const values = JSON.parse(dataEl.textContent || "[]");
-                    if (!labels.length || !values.length) return;
+                const root = document.documentElement;
+                const isDark =
+                    (root.getAttribute("data-bs-theme") || "").toLowerCase() === "dark" ||
+                    root.classList.contains("dark");
 
-                    const chartEl = document.getElementById("clientesChart");
-                    if (!chartEl) return;
+                const textColor = isDark ? "rgba(255, 255, 255, 0.85)" : "rgba(15, 23, 42, 0.8)";
+                const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
+                const primary = "rgba(62, 159, 162, 0.75)";
+                const primaryBorder = "rgba(62, 159, 162, 1)";
 
-                    const root = document.documentElement;
-                    const isDark =
-                        (root.getAttribute("data-bs-theme") || "").toLowerCase() === "dark" ||
-                        root.classList.contains("dark");
-
-                    const textColor = isDark ? "rgba(255, 255, 255, 0.85)" : "rgba(15, 23, 42, 0.8)";
-                    const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
-                    const primary = "rgba(62, 159, 162, 0.75)";
-                    const primaryBorder = "rgba(62, 159, 162, 1)";
-
-                    new Chart(chartEl, {
-                        type: "bar",
-                        data: {
-                            labels,
-                            datasets: [
-                                {
-                                    label: "Operaciones",
-                                    data: values,
-                                    backgroundColor: primary,
-                                    borderColor: primaryBorder,
-                                    borderWidth: 1,
-                                    borderRadius: 10,
-                                    maxBarThickness: 46,
-                                },
-                            ],
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { display: false },
-                                tooltip: {
-                                    callbacks: {
-                                        label: (ctx) => `Operaciones: ${ctx.parsed.y}`,
-                                    },
-                                },
+                new Chart(chartEl, {
+                    type: "bar",
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: "Operaciones",
+                                data: values,
+                                backgroundColor: primary,
+                                borderColor: primaryBorder,
+                                borderWidth: 1,
+                                borderRadius: 10,
+                                maxBarThickness: 46,
                             },
-                            scales: {
-                                x: {
-                                    ticks: { color: textColor },
-                                    grid: { display: false },
-                                },
-                                y: {
-                                    beginAtZero: true,
-                                    ticks: { color: textColor, precision: 0 },
-                                    grid: { color: gridColor },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => `Operaciones: ${ctx.parsed.y}`,
                                 },
                             },
                         },
-                    });
-                });
-            </script>
-        {% else %}
-            <div class="text-muted">No hay datos disponibles</div>
-        {% endif %}
-    </div>
-</div>
-
-<!-- Script independiente para gráfica de operaciones por cliente (top_clientes_operaciones) -->
-<script>
-    document.addEventListener("DOMContentLoaded", () => {
-        const labels = {{ clientes_labels|default:"[]"|safe }};
-        const data = {{ clientes_data|default:"[]"|safe }};
-
-        if (!labels || !Array.isArray(labels) || labels.length === 0) {
-            console.warn("top_clientes_operaciones: no hay datos disponibles");
-            return;
-        }
-
-        if (!data || !Array.isArray(data) || data.length === 0) {
-            console.warn("top_clientes_operaciones: data vacía");
-            return;
-        }
-
-        const chartEl = document.getElementById("clientesChart");
-        if (!chartEl) return;
-
-        if (typeof Chart === "undefined") {
-            console.warn("Chart.js no está cargado");
-            return;
-        }
-
-        const root = document.documentElement;
-        const isDark =
-            (root.getAttribute("data-bs-theme") || "").toLowerCase() === "dark" ||
-            root.classList.contains("dark");
-
-        const textColor = isDark ? "rgba(255, 255, 255, 0.85)" : "rgba(15, 23, 42, 0.8)";
-        const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
-        const primary = "rgba(62, 159, 162, 0.75)";
-        const primaryBorder = "rgba(62, 159, 162, 1)";
-
-        new Chart(chartEl, {
-            type: "bar",
-            data: {
-                labels,
-                datasets: [{
-                    label: "Total operaciones",
-                    data,
-                    backgroundColor: primary,
-                    borderColor: primaryBorder,
-                    borderWidth: 1,
-                    borderRadius: 10,
-                    maxBarThickness: 46,
-                }],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => `Operaciones: ${ctx.parsed.y}`,
+                        scales: {
+                            x: {
+                                ticks: { color: textColor },
+                                grid: { display: false },
+                            },
+                            y: {
+                                beginAtZero: true,
+                                ticks: { color: textColor, precision: 0 },
+                                grid: { color: gridColor },
+                            },
                         },
                     },
-                },
-                scales: {
-                    x: { ticks: { color: textColor }, grid: { display: false } },
-                    y: { beginAtZero: true, ticks: { color: textColor, precision: 0 }, grid: { color: gridColor } },
-                },
-            },
-        });
-    });
-</script>
+                });
+            });
+        </script>
+    </div>
 </div>
 
 {% endblock %}
