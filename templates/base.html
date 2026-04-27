@@ -29,11 +29,14 @@
     <style>
         body {
             position: relative;
+            overflow-x: hidden;
+            width: 100%;
+            max-width: 100vw;
         }
 
         @media (max-width: 991.98px) {
             .sidebar {
-                left: -250px;
+                left: -100%; /* Totalmente oculto en móvil */
                 width: min(82vw, 320px);
             }
 
@@ -594,6 +597,9 @@
             .stat-card .stat-card-body, .kpi-card-body {
                 padding: 14px;
             }
+            .header-left > div {
+                font-size: 0.85rem !important; /* Que el nombre no rompa la barra superior */
+            }
         }
 
     </style>
@@ -627,7 +633,7 @@
 
 <div class="header">
     <div class="header-left">
-        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Mostrar u ocultar panel lateral">?</button>
+        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Mostrar u ocultar panel lateral">&#9776;</button>
         <div>
         Bienvenido, <strong>{{ request.user.first_name|default:request.user.username }}</strong>
         {% if request.user.is_superuser %}
@@ -687,22 +693,27 @@
     const mobileQuery = window.matchMedia("(max-width: 991.98px)");
     const savedSidebarState = localStorage.getItem("sidebarCollapsed");
 
+    function updateSidebarIcon() {
+        if (mobileQuery.matches) {
+            sidebarToggle.innerHTML = body.classList.contains("sidebar-open") ? "&times;" : "&#9776;";
+        } else {
+            sidebarToggle.innerHTML = body.classList.contains("sidebar-collapsed") ? "&#9776;" : "&times;";
+        }
+    }
+
     function syncSidebarMode() {
         if (mobileQuery.matches) {
             body.classList.remove("sidebar-collapsed");
             body.classList.remove("sidebar-open");
-            sidebarToggle.textContent = "?";
-            return;
-        }
-
-        body.classList.remove("sidebar-open");
-        if (savedSidebarState === "true") {
-            body.classList.add("sidebar-collapsed");
-            sidebarToggle.textContent = "?";
         } else {
-            body.classList.remove("sidebar-collapsed");
-            sidebarToggle.textContent = "?";
+            body.classList.remove("sidebar-open");
+            if (savedSidebarState === "true") {
+                body.classList.add("sidebar-collapsed");
+            } else {
+                body.classList.remove("sidebar-collapsed");
+            }
         }
+        updateSidebarIcon();
     }
 
     syncSidebarMode();
@@ -711,33 +722,25 @@
     sidebarToggle.addEventListener("click", () => {
         if (mobileQuery.matches) {
             body.classList.toggle("sidebar-open");
-            const open = body.classList.contains("sidebar-open");
-            sidebarToggle.textContent = open ? "?" : "?";
-            return;
+        } else {
+            body.classList.toggle("sidebar-collapsed");
+            const collapsed = body.classList.contains("sidebar-collapsed");
+            localStorage.setItem("sidebarCollapsed", collapsed ? "true" : "false");
         }
-
-        body.classList.toggle("sidebar-collapsed");
-        const collapsed = body.classList.contains("sidebar-collapsed");
-        sidebarToggle.textContent = collapsed ? "?" : "?";
-        localStorage.setItem("sidebarCollapsed", collapsed ? "true" : "false");
+        updateSidebarIcon();
     });
 
     sidebarBackdrop.addEventListener("click", () => {
-        if (!mobileQuery.matches) {
-            return;
-        }
-
+        if (!mobileQuery.matches) return;
         body.classList.remove("sidebar-open");
-        sidebarToggle.textContent = "?";
+        updateSidebarIcon();
     });
 
     sidebarLinks.forEach((link) => {
         link.addEventListener("click", () => {
-            if (!mobileQuery.matches) {
-                return;
-            }
+            if (!mobileQuery.matches) return;
             body.classList.remove("sidebar-open");
-            sidebarToggle.textContent = "?";
+            updateSidebarIcon();
         });
     });
 </script>
