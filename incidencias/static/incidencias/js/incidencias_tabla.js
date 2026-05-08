@@ -47,26 +47,22 @@
     resizableColumnFit: true,
     placeholder: "No hay incidencias todavía.",
     columns: [
-      { title: "Incidencia", field: "incidencia", headerFilter: "input", widthGrow: 1 },
-      { title: "Responsable", field: "responsable", headerFilter: "input", widthGrow: 1 },
+      { title: "Incidencia", field: "incidencia", widthGrow: 1 },
+      { title: "Responsable", field: "responsable", widthGrow: 1 },
       {
         title: "Estado",
         field: "estado",
-        headerFilter: "list",
-        headerFilterParams: { values: { "": "Todos", abierto: "abierto", proceso: "proceso", cerrado: "cerrado" } },
         formatter: (cell) => badgeFromValue("estado", cell.getValue()),
         width: 140,
       },
       {
         title: "Prioridad",
         field: "prioridad",
-        headerFilter: "list",
-        headerFilterParams: { values: { "": "Todas", alta: "alta", media: "media", baja: "baja" } },
         formatter: (cell) => badgeFromValue("prioridad", cell.getValue()),
         width: 140,
       },
-      { title: "Fecha", field: "fecha", sorter: "string", headerFilter: "input", width: 160 },
-      { title: "Descripción", field: "descripcion", headerFilter: "input", widthGrow: 2, formatter: "textarea" },
+      { title: "Fecha", field: "fecha", sorter: "string", width: 160 },
+      { title: "Descripción", field: "descripcion", widthGrow: 2, formatter: "textarea" },
       {
         title: "Acciones",
         field: "id",
@@ -275,4 +271,3 @@
   table.on("dataLoaded", renderPager);
   renderPager();
 })();
-
