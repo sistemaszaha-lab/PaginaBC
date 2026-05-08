@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Incidencias{% endblock %}
+
+{% block content %}
+
+  <!-- Tabulator CDN -->
+  <link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css" rel="stylesheet">
+
+  <!-- CSS propio del módulo -->
+  <link rel="stylesheet" href="{% static 'incidencias/css/incidencias.css' %}">
+
+  <h2 class="mb-4">Incidencias</h2>
+
+  <!-- Botón nueva incidencia -->
+  <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
+    <button id="incidenciasNewBtn"
+            type="button"
+            class="btn btn-success">
+      + Nueva incidencia
+    </button>
+  </div>
+
+  <!-- Buscador -->
+  <form class="mb-3 d-flex gap-2 flex-wrap" onsubmit="return false;">
+
+    <input id="incidenciasSearch"
+           type="search"
+           class="form-control"
+           placeholder="Buscar incidencia, responsable, estado...">
+
+    <button id="incidenciasSearchBtn"
+            type="button"
+            class="btn btn-outline-primary">
+      Buscar
+    </button>
+
+    <button id="incidenciasSearchClear"
+            type="button"
+            class="btn btn-outline-secondary">
+      Limpiar
+    </button>
+
+  </form>
+
+  <!-- Formulario -->
+  <div id="incidenciasFormWrap"
+       class="card mb-3 d-none">
+
+    <div class="card-body">
+
+      <form id="incidenciasForm"
+            class="row g-2"
+            method="post">
+
+        {% csrf_token %}
+
+        <input type="hidden"
+               name="id"
+               id="incidenciasId">
+
+        <!-- Código -->
+        <div class="col-12 col-md-3">
+          <label class="form-label">Código</label>
+
+          <input class="form-control"
+                 name="codigo"
+                 id="incidenciasCodigo"
+                 required>
+        </div>
+
+        <!-- Título -->
+        <div class="col-12 col-md-5">
+          <label class="form-label">Título</label>
+
+          <input class="form-control"
+                 name="titulo"
+                 id="incidenciasTitulo"
+                 required>
+        </div>
+
+        <!-- Responsable -->
+        <div class="col-12 col-md-4">
+          <label class="form-label">Responsable</label>
+
+          <select class="form-select"
+                  name="responsable"
+                  id="incidenciasResponsable"
+                  required>
+
+            {% for u in incidencia_form.fields.responsable.queryset %}
+              <option value="{{ u.id }}">
+                {{ u.get_full_name|default:u.username }}
+              </option>
+            {% endfor %}
+
+          </select>
+        </div>
+
+        <!-- Descripción -->
+        <div class="col-12">
+          <label class="form-label">Descripción</label>
+
+          <textarea class="form-control"
+                    name="descripcion"
+                    id="incidenciasDescripcion"
+                    rows="2"></textarea>
+        </div>
+
+        <!-- Estado -->
+        <div class="col-12 col-md-3">
+          <label class="form-label">Estado</label>
+
+          <select class="form-select"
+                  name="estado"
+                  id="incidenciasEstado"
+                  required>
+
+            <option value="abierto">abierto</option>
+            <option value="proceso">proceso</option>
+            <option value="cerrado">cerrado</option>
+
+          </select>
+        </div>
+
+        <!-- Prioridad -->
+        <div class="col-12 col-md-3">
+          <label class="form-label">Prioridad</label>
+
+          <select class="form-select"
+                  name="prioridad"
+                  id="incidenciasPrioridad"
+                  required>
+
+            <option value="alta">alta</option>
+            <option value="media" selected>media</option>
+            <option value="baja">baja</option>
+
+          </select>
+        </div>
+
+        <!-- Fecha límite -->
+        <div class="col-12 col-md-3">
+          <label class="form-label">Fecha de creación</label>
+
+          <input type="date"
+                 class="form-control"
+                 name="fecha_limite"
+                 id="incidenciasFechaLimite">
+        </div>
+
+        <!-- Botones -->
+        <div class="col-12 col-md-3 d-flex align-items-end gap-2">
+
+          <button id="incidenciasSaveBtn"
+                  type="submit"
+                  class="btn btn-primary">
+            Guardar
+          </button>
+
+          <button id="incidenciasCancelBtn"
+                  type="button"
+                  class="btn btn-outline-secondary">
+            Cancelar
+          </button>
+
+        </div>
+
+        <!-- Errores -->
+        <div class="col-12">
+          <div id="incidenciasFormErrors"
+               class="alert alert-danger d-none mb-0"
+               role="alert"></div>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+  <!-- Tabla -->
+  <div class="table-responsive">
+    <div id="incidenciasTable"
+         class="incidencias-table"></div>
+  </div>
+
+  <!-- Paginación -->
+  <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+
+    <div id="incidenciasPagerInfo">
+      Página 1 de 1
+    </div>
+
+    <nav aria-label="Paginación incidencias">
+      <ul id="incidenciasPager"
+          class="pagination mb-0"></ul>
+    </nav>
+
+  </div>
+
+  <!-- JSON -->
+  {{ incidencias_json|json_script:"incidencias-data" }}
+
+  <!-- Endpoints -->
+  <script>
+    window.__INCIDENCIAS_ENDPOINTS__ = {
+      crear: "{% url 'incidencias:crear_incidencia' %}",
+      editar: "{% url 'incidencias:editar_incidencia' 0 %}",
+      eliminar: "{% url 'incidencias:eliminar_incidencia' 0 %}",
+    };
+  </script>
+
+  <!-- Tabulator CDN -->
+  <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+
+  <!-- JS del módulo -->
+  <script src="{% static 'incidencias/js/incidencias_tabla.js' %}"></script>
+
+{% endblock %}

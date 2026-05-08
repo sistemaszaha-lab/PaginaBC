@@ -1,0 +1,158 @@
+/* CSS aislado del módulo incidencias (no modifica estilos globales). */
+
+.incidencias-table {
+  min-height: 520px;
+}
+
+/* ---- Tabulator look & feel (alineado al estilo de tablas del sistema) ---- */
+/* Objetivo: aproximar a Bootstrap: .table, .table-hover, .align-middle, thead .table-light */
+.tabulator {
+  border: 1px solid var(--bs-border-color, #dee2e6); /* similar a .table */
+  border-radius: 0.5rem; /* borde redondeado consistente */
+  overflow: hidden;
+  background: var(--bs-body-bg, #fff);
+  font-size: 1rem;
+}
+
+/* Ocultamos el footer/paginación default de Tabulator: usamos paginación Bootstrap externa. */
+.tabulator .tabulator-footer {
+  display: none;
+}
+
+.tabulator .tabulator-header {
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+  background: var(--bs-tertiary-bg, #f8f9fa); /* similar a .table-light */
+}
+
+.tabulator .tabulator-header .tabulator-col {
+  background: transparent;
+  border-right: 1px solid var(--bs-border-color, #dee2e6);
+}
+.tabulator .tabulator-header .tabulator-col:last-child {
+  border-right: none;
+}
+.tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+  padding: 0.5rem 0.75rem; /* similar a celdas de tabla */
+}
+.tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+  font-weight: 600;
+}
+
+.tabulator .tabulator-row {
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+  background: transparent;
+}
+.tabulator .tabulator-row:last-child {
+  border-bottom: none;
+}
+.tabulator .tabulator-row .tabulator-cell {
+  padding: 0.5rem 0.75rem;
+  vertical-align: middle; /* align-middle */
+  border-right: 1px solid rgba(0, 0, 0, 0.04);
+}
+.tabulator .tabulator-row .tabulator-cell:last-child {
+  border-right: none;
+}
+
+/* Hover tipo .table-hover */
+.tabulator .tabulator-row.tabulator-selectable:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* Filtros de cabecera con estética Bootstrap */
+.tabulator .tabulator-header input,
+.tabulator .tabulator-header select {
+  width: 100%;
+  height: calc(1.5em + 0.5rem + 2px);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--bs-border-color, #ced4da);
+  background: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, #212529);
+}
+.tabulator .tabulator-header input:focus,
+.tabulator .tabulator-header select:focus {
+  outline: 0;
+  border-color: rgba(13, 110, 253, 0.4);
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+}
+
+/* Paginación similar a Bootstrap */
+.tabulator .tabulator-footer {
+  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  background: var(--bs-body-bg, #fff);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Paginación mejorada - estilo consistente con otras vistas del sistema */
+.tabulator .tabulator-paginator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  flex-wrap: wrap;
+}
+
+.tabulator .tabulator-page-prev,
+.tabulator .tabulator-page-next {
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, #212529);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tabulator .tabulator-page-prev:hover:not(:disabled),
+.tabulator .tabulator-page-next:hover:not(:disabled) {
+  background: var(--bs-light, #f8f9fa);
+  border-color: var(--bs-primary, #0d6efd);
+  color: var(--bs-primary, #0d6efd);
+}
+
+.tabulator .tabulator-page-prev:disabled,
+.tabulator .tabulator-page-next:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tabulator .tabulator-page {
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, #212529);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 2.5rem;
+  text-align: center;
+}
+
+.tabulator .tabulator-page:hover:not(.active) {
+  background: var(--bs-light, #f8f9fa);
+  border-color: var(--bs-secondary, #6c757d);
+}
+
+.tabulator .tabulator-page.active {
+  background: var(--bs-primary, #0d6efd);
+  border-color: var(--bs-primary, #0d6efd);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Información de paginación */
+.tabulator-paginator-info {
+  font-size: 0.875rem;
+  color: var(--bs-body-color, #212529);
+}
+/* Ocultar paginación nativa de Tabulator */
+.tabulator-footer {
+    display: none !important;
+}
