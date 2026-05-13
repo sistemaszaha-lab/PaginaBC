@@ -669,6 +669,8 @@
             {% if request.user.is_superuser %}
             <a href="{% url 'lista_usuarios' %}"
                 class="sidebar-link {% if current == 'lista_usuarios' or current == 'crear_usuario' or current == 'editar_usuario' %}is-active{% endif %}">Usuarios</a>
+            <a href="{% url 'garantias:panel_garantias' %}"
+                class="sidebar-link {% if current == 'panel_garantias' or current == 'crear_garantia' %}is-active{% endif %}">Garantías</a>
             {% endif %}
             <a href="{% url 'incidencias:panel_incidencias' %}"
                 class="sidebar-link {% if current == 'panel_incidencias' %}is-active{% endif %}">Incidencias</a>

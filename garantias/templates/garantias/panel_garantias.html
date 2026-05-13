@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Garantías{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Garantías</h2>
+<div style="display:none;">{% csrf_token %}</div>
+
+<div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
+  <a href="{% url 'garantias:crear_garantia' %}" class="btn btn-success">+ Nueva garantía</a>
+</div>
+
+<div class="row g-3">
+  {% for estado, estado_texto, items in columnas_kanban %}
+  <div class="col-12 col-lg-4">
+    <div class="card h-100">
+      <div class="card-header fw-semibold">
+        {{ estado_texto }}
+      </div>
+      <div class="card-body kanban-col" data-estado="{{ estado }}">
+        {% for g in items %}
+          {% include "garantias/_garantia_card.html" with g=g estados=estados comentario_form=comentario_form only %}
+        {% empty %}
+          <div class="text-muted small">Sin garantías.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+  (function () {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+    function postForm(url, formData) {
+      return fetch(url, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: formData,
+      }).then((r) => r.json());
+    }
+
+    function moveCard(card, newEstado) {
+      const targetCol = document.querySelector(`.kanban-col[data-estado="${newEstado}"]`);
+      if (!targetCol) return;
+      card.parentElement?.querySelector('.text-muted.small')?.remove();
+      targetCol.appendChild(card);
+    }
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-garantia-estado-btn="1"]');
+      if (!btn) return;
+      e.preventDefault();
+
+      const garantiaId = btn.getAttribute('data-garantia-id');
+      const estado = btn.getAttribute('data-estado');
+      const url = btn.getAttribute('data-url');
+      if (!garantiaId || !estado || !url) return;
+
+      const card = document.getElementById(`garantia-${garantiaId}`);
+      if (!card) return;
+
+      const fd = new FormData();
+      fd.set('estado', estado);
+      postForm(url, fd)
+        .then((data) => {
+          if (data.status !== 'ok') return;
+          // activar visualmente
+          card.querySelectorAll('[data-garantia-estado-btn="1"]').forEach((b) => {
+            const isActive = b.getAttribute('data-estado') === data.estado;
+            b.classList.toggle('is-active', isActive);
+          });
+          moveCard(card, data.estado);
+        })
+        .catch(() => {});
+    });
+
+    document.addEventListener('submit', (e) => {
+      const form = e.target.closest('[data-garantia-comentario-form="1"]');
+      if (!form) return;
+      e.preventDefault();
+
+      const url = form.getAttribute('action');
+      const garantiaId = form.getAttribute('data-garantia-id');
+      if (!url || !garantiaId) return;
+
+      const textarea = form.querySelector('textarea[name="comentario"]');
+      const text = (textarea?.value || '').trim();
+      if (!text) return;
+
+      const fd = new FormData();
+      fd.set('comentario', text);
+      postForm(url, fd)
+        .then((data) => {
+          if (data.status !== 'ok') return;
+          if (textarea) textarea.value = '';
+          const list = document.querySelector(`#garantia-${garantiaId} [data-garantia-comentarios="1"]`);
+          if (!list) return;
+          const item = document.createElement('div');
+          const fecha = new Date(data.comentario.fecha);
+          item.className = 'small border rounded p-2 mb-2';
+          item.innerHTML = `<div class="fw-semibold">${data.comentario.usuario} <span class="text-muted fw-normal">• ${fecha.toLocaleString()}</span></div>
+                            <div style="white-space: pre-wrap;"></div>`;
+          item.querySelector('div[style]')?.appendChild(document.createTextNode(data.comentario.texto));
+          list.prepend(item);
+        })
+        .catch(() => {});
+    });
+  })();
+</script>
+
+<style>
+  .kanban-col { min-height: 120px; }
+  .garantia-estado-selector { display: flex; gap: 6px; flex-wrap: wrap; }
+  .garantia-estado-btn {
+    border: 1px solid #3e9fa2;
+    background: transparent;
+    color: #016b6b;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    transition: background-color 0.15s, color 0.15s;
+  }
+  .garantia-estado-btn:hover { background: rgba(1, 107, 107, 0.08); }
+  .garantia-estado-btn.is-active {
+    background: #016b6b;
+    color: #fff;
+  }
+</style>
+{% endblock %}

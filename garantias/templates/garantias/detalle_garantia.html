@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}{{ garantia.titulo }} - Detalle de Garantía{% endblock %}
+
+{% block content %}
+<div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <h2 class="mb-0">{{ garantia.titulo }}</h2>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{% url 'garantias:editar_garantia' garantia.id %}" class="btn btn-primary btn-sm">
+      Editar
+    </a>
+    <a href="{% url 'garantias:eliminar_garantia' garantia.id %}" class="btn btn-danger btn-sm">
+      Eliminar
+    </a>
+    <a href="{% url 'garantias:panel_garantias' %}" class="btn btn-secondary btn-sm">
+      Volver
+    </a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Información Principal -->
+  <div class="col-12 col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Información</h5>
+        
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Descripción</label>
+          <div class="p-2 bg-light rounded" style="white-space: pre-wrap;">
+            {% if garantia.descripcion %}
+              {{ garantia.descripcion }}
+            {% else %}
+              <span class="text-muted">Sin descripción</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-semibold">Cliente</label>
+            <div>{{ garantia.cliente }}</div>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-semibold">Creado por</label>
+            <div>{{ garantia.creado_por.get_full_name|default:garantia.creado_por.username }}</div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-semibold">Fecha de creación</label>
+            <div>{{ garantia.fecha_creacion|date:"Y-m-d H:i" }}</div>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-semibold">Estado</label>
+            <div>
+              <span class="badge bg-info">{{ garantia.get_estado_display }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-semibold">Prioridad</label>
+            <div>
+              {% if garantia.prioridad == 'BAJA' %}
+                <span class="badge bg-secondary">{{ garantia.get_prioridad_display }}</span>
+              {% elif garantia.prioridad == 'MEDIA' %}
+                <span class="badge bg-warning text-dark">{{ garantia.get_prioridad_display }}</span>
+              {% elif garantia.prioridad == 'ALTA' %}
+                <span class="badge bg-danger">{{ garantia.get_prioridad_display }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <hr class="my-4" />
+
+        <h5 class="card-title mb-3">Cambiar Estado</h5>
+        <div class="d-flex gap-2 flex-wrap">
+          {% for estado in estados %}
+            <form method="post" action="{% url 'garantias:cambiar_estado_garantia' garantia.id %}" class="d-inline">
+              {% csrf_token %}
+              <input type="hidden" name="estado" value="{{ estado }}">
+              <button 
+                type="submit" 
+                class="btn btn-sm garantia-estado-btn {% if garantia.estado == estado %}is-active{% endif %}"
+                {% if garantia.estado == estado %}disabled{% endif %}
+              >
+                {{ estado|capfirst }}
+              </button>
+            </form>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comentarios -->
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Comentarios</h5>
+
+        <form method="post" action="{% url 'garantias:agregar_comentario' garantia.id %}" class="mb-3">
+          {% csrf_token %}
+          {{ comentario_form.comentario }}
+          <div class="mt-2 d-flex justify-content-end">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Enviar</button>
+          </div>
+        </form>
+
+        <div class="small">
+          {% for c in garantia.comentarios.all|dictsortreversed:"fecha" %}
+            <div class="border rounded p-2 mb-2">
+              <div class="fw-semibold">
+                {{ c.usuario.get_full_name|default:c.usuario.username }}
+                <span class="text-muted fw-normal">• {{ c.fecha|date:"Y-m-d H:i" }}</span>
+              </div>
+              <div style="white-space: pre-wrap; margin-top: 4px;">{{ c.comentario }}</div>
+            </div>
+          {% empty %}
+            <div class="text-muted small">Aún no hay comentarios.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .garantia-estado-btn {
+    border: 1px solid #3e9fa2;
+    background: transparent;
+    color: #016b6b;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    transition: background-color 0.15s, color 0.15s;
+  }
+  .garantia-estado-btn:hover:not(:disabled) { 
+    background: rgba(1, 107, 107, 0.08);
+  }
+  .garantia-estado-btn.is-active {
+    background: #016b6b;
+    color: #fff;
+  }
+</style>
+{% endblock %}

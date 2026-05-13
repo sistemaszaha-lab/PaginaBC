@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Garantía{% endblock %}
+
+{% block content %}
+
+<h2 class="mb-4">Editar Garantía</h2>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+
+        <form method="post">
+            {% csrf_token %}
+
+            {{ form.as_p }}
+
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary">
+                    Guardar cambios
+                </button>
+
+                <a href="{% url 'garantias:detalle_garantia' garantia.id %}"
+                   class="btn btn-secondary">
+                    Cancelar
+                </a>
+            </div>
+        </form>
+
+    </div>
+</div>
+
+{% endblock %}
