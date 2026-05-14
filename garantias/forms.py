@@ -38,6 +38,9 @@ class GarantiaForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados"]:
+            if name in self.fields:
+                self.fields[name].required = False
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
         User = get_user_model()
         self.fields["asignados"].queryset = User.objects.all().order_by("first_name", "last_name", "username", "id")
@@ -59,6 +62,9 @@ class GarantiaEditarForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados"]:
+            if name in self.fields:
+                self.fields[name].required = False
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
         User = get_user_model()
         self.fields["asignados"].queryset = User.objects.all().order_by("first_name", "last_name", "username", "id")
@@ -84,3 +90,9 @@ class GarantiaEnlaceForm(forms.ModelForm):
             "titulo": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej. Factura"}),
             "url": forms.URLInput(attrs={"class": "form-control", "placeholder": "https://..."}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in ["titulo", "url"]:
+            if name in self.fields:
+                self.fields[name].required = False

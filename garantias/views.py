@@ -262,6 +262,13 @@ def detalle_garantia(request, pk):
 
 @login_required
 @admin_required
+def detalle_garantia_parcial(request, pk):
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    return render(request, "garantias/_detalle_modal_content.html", _contexto_modal_garantia(garantia))
+
+
+@login_required
+@admin_required
 def editar_garantia(request, pk):
     garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     if request.method == "POST":

@@ -24,9 +24,9 @@ class Garantia(models.Model):
         MEDIA = "MEDIA", "Media"
         ALTA = "ALTA", "Alta"
 
-    titulo = models.CharField(max_length=255)
+    titulo = models.CharField(max_length=255, blank=True, default="")
     descripcion = models.TextField(blank=True, default="")
-    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="garantias")
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="garantias", null=True, blank=True)
     estado = models.CharField(
         max_length=20,
         choices=Estado.choices,
@@ -36,6 +36,7 @@ class Garantia(models.Model):
         max_length=20,
         choices=Prioridad.choices,
         default=Prioridad.MEDIA,
+        blank=True,
     )
     asignados = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
