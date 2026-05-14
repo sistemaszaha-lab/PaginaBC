@@ -47,6 +47,7 @@ class Garantia(models.Model):
         on_delete=models.PROTECT,
         related_name="garantias_creadas",
     )
+    fecha_vencimiento = models.DateField(null=True, blank=True)
     fecha_creacion = models.DateTimeField(default=timezone.now)
 
     class Meta:

@@ -19,9 +19,9 @@
       </div>
       <div class="card-body kanban-col" data-estado="{{ estado }}">
         {% for g in items %}
-          {% include "garantias/_garantia_card.html" with g=g estados=estados estados_ui=estados_ui comentario_form=comentario_form only %}
+          {% include "garantias/_garantia_card.html" with g=g comentario_form=comentario_form only %}
         {% empty %}
-          <div class="text-muted small">Sin garantías.</div>
+          <div class="text-muted small garantia-empty">Sin garantías.</div>
         {% endfor %}
       </div>
     </div>
@@ -29,9 +29,11 @@
   {% endfor %}
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script>
   (function () {
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+    const updateUrl = '{{ estado_update_url }}';
 
     function postForm(url, formData) {
       return fetch(url, {
@@ -44,40 +46,62 @@
       }).then((r) => r.json());
     }
 
-    function moveCard(card, newEstado) {
-      const targetCol = document.querySelector(`.kanban-col[data-estado="${newEstado}"]`);
-      if (!targetCol) return;
-      card.parentElement?.querySelector('.text-muted.small')?.remove();
-      targetCol.appendChild(card);
+    function ensureEmptyState(column) {
+      const cards = column.querySelectorAll('[data-garantia-card="1"]');
+      let empty = column.querySelector('.garantia-empty');
+      if (!cards.length && !empty) {
+        empty = document.createElement('div');
+        empty.className = 'text-muted small garantia-empty';
+        empty.textContent = 'Sin garantías.';
+        column.appendChild(empty);
+      }
+      if (cards.length && empty) {
+        empty.remove();
+      }
     }
 
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-garantia-estado-btn="1"]');
-      if (!btn) return;
-      e.preventDefault();
+    function initSortable() {
+      if (typeof Sortable === 'undefined') return;
+      document.querySelectorAll('.kanban-col').forEach((column) => {
+        Sortable.create(column, {
+          group: 'garantias-kanban',
+          animation: 150,
+          ghostClass: 'garantia-ghost',
+          dragClass: 'garantia-drag',
+          onEnd: function (evt) {
+            const card = evt.item;
+            const target = evt.to;
+            const source = evt.from;
+            const garantiaId = card.getAttribute('data-garantia-id');
+            const nuevoEstado = target.getAttribute('data-estado');
+            if (!garantiaId || !nuevoEstado || source === target) {
+              ensureEmptyState(source);
+              ensureEmptyState(target);
+              return;
+            }
 
-      const garantiaId = btn.getAttribute('data-garantia-id');
-      const estado = btn.getAttribute('data-estado');
-      const url = btn.getAttribute('data-url');
-      if (!garantiaId || !estado || !url) return;
+            const fd = new FormData();
+            fd.set('garantia_id', garantiaId);
+            fd.set('nuevo_estado', nuevoEstado);
 
-      const card = document.getElementById(`garantia-${garantiaId}`);
-      if (!card) return;
-
-      const fd = new FormData();
-      fd.set('estado', estado);
-      postForm(url, fd)
-        .then((data) => {
-          if (data.status !== 'ok') return;
-          // activar visualmente
-          card.querySelectorAll('[data-garantia-estado-btn="1"]').forEach((b) => {
-            const isActive = b.getAttribute('data-estado') === data.estado;
-            b.classList.toggle('is-active', isActive);
-          });
-          moveCard(card, data.estado);
-        })
-        .catch(() => {});
-    });
+            postForm(updateUrl, fd)
+              .then((data) => {
+                if (data.status !== 'ok') {
+                  source.appendChild(card);
+                }
+              })
+              .catch(() => {
+                source.appendChild(card);
+              })
+              .finally(() => {
+                ensureEmptyState(source);
+                ensureEmptyState(target);
+              });
+          },
+        });
+        ensureEmptyState(column);
+      });
+    }
 
     document.addEventListener('submit', (e) => {
       const form = e.target.closest('[data-garantia-comentario-form="1"]');
@@ -110,25 +134,18 @@
         })
         .catch(() => {});
     });
+
+    initSortable();
   })();
 </script>
 
 <style>
-  .kanban-col { min-height: 120px; }
-  .garantia-estado-selector { display: flex; gap: 6px; flex-wrap: wrap; }
-  .garantia-estado-btn {
-    border: 1px solid #3e9fa2;
-    background: transparent;
-    color: #016b6b;
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 0.85rem;
-    transition: background-color 0.15s, color 0.15s;
-  }
-  .garantia-estado-btn:hover { background: rgba(1, 107, 107, 0.08); }
-  .garantia-estado-btn.is-active {
-    background: #016b6b;
-    color: #fff;
+  .kanban-col { min-height: 240px; }
+  .garantia-drag { opacity: 0.85; }
+  .garantia-ghost {
+    opacity: 0.45;
+    background: rgba(1, 107, 107, 0.08);
+    border: 1px dashed #3e9fa2;
   }
 </style>
 {% endblock %}

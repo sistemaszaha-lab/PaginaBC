@@ -19,12 +19,46 @@
 </div>
 
 <div class="row g-3">
-  <!-- Información Principal -->
   <div class="col-12 col-lg-8">
     <div class="card shadow-sm">
       <div class="card-body">
-        <h5 class="card-title mb-3">Información</h5>
-        
+        <div class="d-flex gap-2 flex-wrap mb-3">
+          {% if garantia.prioridad == 'BAJA' %}
+            <span class="badge bg-secondary">{{ garantia.get_prioridad_display }}</span>
+          {% elif garantia.prioridad == 'MEDIA' %}
+            <span class="badge bg-warning text-dark">{{ garantia.get_prioridad_display }}</span>
+          {% elif garantia.prioridad == 'ALTA' %}
+            <span class="badge bg-danger">{{ garantia.get_prioridad_display }}</span>
+          {% endif %}
+          <span class="badge bg-info text-dark">{{ garantia.get_estado_display }}</span>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Cliente</label>
+            <div>{{ garantia.cliente }}</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Vence</label>
+            <div>{% if garantia.fecha_vencimiento %}{{ garantia.fecha_vencimiento|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}</div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Asignados</label>
+          <div class="d-flex gap-2 flex-wrap">
+            {% for u in garantia.asignados.all %}
+              {% if u.first_name %}
+                <span class="badge bg-light text-dark border px-3 py-2">
+                  {{ u.first_name|slice:":1"|upper }}{{ u.first_name|slice:"1:2"|upper }} {{ u.first_name }}
+                </span>
+              {% endif %}
+            {% empty %}
+              <span class="text-muted">Sin asignados</span>
+            {% endfor %}
+          </div>
+        </div>
+
         <div class="mb-3">
           <label class="form-label fw-semibold">Descripción</label>
           <div class="p-2 bg-light rounded" style="white-space: pre-wrap;">
@@ -36,73 +70,7 @@
           </div>
         </div>
 
-        <div class="row">
-          <div class="col-md-6 mb-3">
-            <label class="form-label fw-semibold">Cliente</label>
-            <div>{{ garantia.cliente }}</div>
-          </div>
-          <div class="col-md-6 mb-3">
-            <label class="form-label fw-semibold">Asignado a</label>
-            <div class="d-flex gap-1 flex-wrap">
-              {% for u in garantia.asignados.all %}
-                <span class="badge bg-light text-dark border">{{ u.get_full_name|default:u.username }}</span>
-              {% empty %}
-                <span class="text-muted">Sin asignaciÃ³n</span>
-              {% endfor %}
-            </div>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="col-md-6 mb-3">
-            <label class="form-label fw-semibold">Fecha de creación</label>
-            <div>{{ garantia.fecha_creacion|date:"Y-m-d H:i" }}</div>
-          </div>
-          <div class="col-md-6 mb-3">
-            <label class="form-label fw-semibold">Estado</label>
-            <div>
-              <span class="badge bg-info">{{ garantia.get_estado_display }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="col-md-6 mb-3">
-            <label class="form-label fw-semibold">Prioridad</label>
-            <div>
-              {% if garantia.prioridad == 'BAJA' %}
-                <span class="badge bg-secondary">{{ garantia.get_prioridad_display }}</span>
-              {% elif garantia.prioridad == 'MEDIA' %}
-                <span class="badge bg-warning text-dark">{{ garantia.get_prioridad_display }}</span>
-              {% elif garantia.prioridad == 'ALTA' %}
-                <span class="badge bg-danger">{{ garantia.get_prioridad_display }}</span>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-
-        <hr class="my-4" />
-
-        <h5 class="card-title mb-3">Cambiar Estado</h5>
-        <div class="d-flex gap-2 flex-wrap">
-          {% for estado, estado_label in estados_ui %}
-            <form method="post" action="{% url 'garantias:cambiar_estado_garantia' garantia.id %}" class="d-inline">
-              {% csrf_token %}
-              <input type="hidden" name="estado" value="{{ estado }}">
-              <button 
-                type="submit" 
-                class="btn btn-sm garantia-estado-btn {% if garantia.estado == estado %}is-active{% endif %}"
-                {% if garantia.estado == estado %}disabled{% endif %}
-              >
-                {{ estado_label }}
-              </button>
-            </form>
-          {% endfor %}
-        </div>
-
-        <hr class="my-4" />
-
-        <h5 class="card-title mb-3">Archivos</h5>
+        <h5 class="card-title mb-3 mt-4">Archivos</h5>
         {% if garantia.archivos.all %}
           <div class="mb-3">
             {% for a in garantia.archivos.all %}
@@ -136,7 +104,6 @@
     </div>
   </div>
 
-  <!-- Comentarios -->
   <div class="col-12 col-lg-4">
     <div class="card shadow-sm">
       <div class="card-body">
@@ -167,23 +134,4 @@
     </div>
   </div>
 </div>
-
-<style>
-  .garantia-estado-btn {
-    border: 1px solid #3e9fa2;
-    background: transparent;
-    color: #016b6b;
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 0.85rem;
-    transition: background-color 0.15s, color 0.15s;
-  }
-  .garantia-estado-btn:hover:not(:disabled) { 
-    background: rgba(1, 107, 107, 0.08);
-  }
-  .garantia-estado-btn.is-active {
-    background: #016b6b;
-    color: #fff;
-  }
-</style>
 {% endblock %}

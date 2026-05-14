@@ -30,6 +30,20 @@ def _estados_disponibles():
     ]
 
 
+def _nombre_corto_usuario(usuario):
+    return (usuario.first_name or "").strip()
+
+
+def _iniciales_usuario(usuario):
+    nombre = _nombre_corto_usuario(usuario)
+    if not nombre:
+        return ""
+    partes = [parte for parte in nombre.split() if parte]
+    if len(partes) >= 2:
+        return f"{partes[0][0]}{partes[1][0]}".upper()
+    return nombre[:2].upper()
+
+
 @login_required
 @admin_required
 def panel_garantias(request):
@@ -80,6 +94,7 @@ def panel_garantias(request):
             "estados": estados,
             "estados_ui": estados_ui,
             "comentario_form": GarantiaComentarioForm(),
+            "estado_update_url": reverse("garantias:actualizar_estado_garantia"),
         },
     )
 
@@ -123,9 +138,35 @@ def crear_garantia(request):
 @login_required
 @admin_required
 @require_POST
+def actualizar_estado_garantia(request):
+    garantia_id = (request.POST.get("garantia_id") or "").strip()
+    nuevo_estado = (request.POST.get("nuevo_estado") or request.POST.get("estado") or "").strip().upper()
+    garantia = get_object_or_404(Garantia, pk=garantia_id)
+    estados_validos = set(_estados_disponibles())
+    if nuevo_estado not in estados_validos:
+        raise PermissionDenied("Estado invÃ¡lido.")
+    if garantia.estado != nuevo_estado:
+        garantia.estado = nuevo_estado
+        garantia.save(update_fields=["estado"])
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse(
+            {
+                "status": "ok",
+                "id": garantia.pk,
+                "estado": garantia.estado,
+                "estado_label": _estado_label(garantia.estado),
+            }
+        )
+    return redirect("garantias:panel_garantias")
+
+
+@login_required
+@admin_required
+@require_POST
 def cambiar_estado_garantia(request, pk):
     garantia = get_object_or_404(Garantia.objects.prefetch_related("archivos", "enlaces", "asignados"), pk=pk)
-    nuevo_estado = (request.POST.get("estado") or "").strip().upper()
+    nuevo_estado = (request.POST.get("estado") or request.POST.get("nuevo_estado") or "").strip().upper()
     estados_validos = set(_estados_disponibles())
     if nuevo_estado not in estados_validos:
         raise PermissionDenied("Estado inválido.")
@@ -198,6 +239,8 @@ def detalle_garantia(request, pk):
             "estados_ui": [(e, _estado_label(e)) for e in _estados_disponibles()],
             "archivos_form": GarantiaArchivosForm(),
             "enlace_form": GarantiaEnlaceForm(),
+            "nombre_corto_asignados": [_nombre_corto_usuario(usuario) for usuario in garantia.asignados.all() if _nombre_corto_usuario(usuario)],
+            "iniciales_asignados": [_iniciales_usuario(usuario) for usuario in garantia.asignados.all() if _nombre_corto_usuario(usuario)],
         },
     )
 

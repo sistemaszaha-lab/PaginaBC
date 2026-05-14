@@ -7,6 +7,7 @@ app_name = "garantias"
 urlpatterns = [
     path("", views.panel_garantias, name="panel_garantias"),
     path("nueva/", views.crear_garantia, name="crear_garantia"),
+    path("actualizar-estado/", views.actualizar_estado_garantia, name="actualizar_estado_garantia"),
     path("<int:pk>/", views.detalle_garantia, name="detalle_garantia"),
     path("<int:pk>/editar/", views.editar_garantia, name="editar_garantia"),
     path("<int:pk>/eliminar/", views.eliminar_garantia, name="eliminar_garantia"),

@@ -26,13 +26,14 @@ class MultipleFileField(forms.FileField):
 class GarantiaForm(forms.ModelForm):
     class Meta:
         model = Garantia
-        fields = ["titulo", "descripcion", "cliente", "prioridad", "asignados"]
+        fields = ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados"]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
             "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "cliente": forms.Select(attrs={"class": "form-select"}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
-            "asignados": forms.SelectMultiple(attrs={"class": "form-select"}),
+            "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "asignados": forms.SelectMultiple(attrs={"class": "form-select garantia-asignados-select", "data-garantia-tags-select": "1"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -40,19 +41,20 @@ class GarantiaForm(forms.ModelForm):
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
         User = get_user_model()
         self.fields["asignados"].queryset = User.objects.all().order_by("first_name", "last_name", "username", "id")
+        self.fields["asignados"].label_from_instance = lambda obj: obj.first_name
 
 
 class GarantiaEditarForm(forms.ModelForm):
     class Meta:
         model = Garantia
-        fields = ["titulo", "descripcion", "cliente", "prioridad", "asignados", "estado"]
+        fields = ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados"]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
             "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "cliente": forms.Select(attrs={"class": "form-select"}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
-            "asignados": forms.SelectMultiple(attrs={"class": "form-select"}),
-            "estado": forms.Select(attrs={"class": "form-select"}),
+            "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "asignados": forms.SelectMultiple(attrs={"class": "form-select garantia-asignados-select", "data-garantia-tags-select": "1"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -60,6 +62,7 @@ class GarantiaEditarForm(forms.ModelForm):
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
         User = get_user_model()
         self.fields["asignados"].queryset = User.objects.all().order_by("first_name", "last_name", "username", "id")
+        self.fields["asignados"].label_from_instance = lambda obj: obj.first_name
 
 
 class GarantiaComentarioForm(forms.Form):
