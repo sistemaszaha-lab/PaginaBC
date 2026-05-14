@@ -12,14 +12,14 @@
 
 <div class="row g-3">
   {% for estado, estado_texto, items in columnas_kanban %}
-  <div class="col-12 col-lg-4">
+  <div class="col-12 col-lg-3">
     <div class="card h-100">
       <div class="card-header fw-semibold">
         {{ estado_texto }}
       </div>
       <div class="card-body kanban-col" data-estado="{{ estado }}">
         {% for g in items %}
-          {% include "garantias/_garantia_card.html" with g=g estados=estados comentario_form=comentario_form only %}
+          {% include "garantias/_garantia_card.html" with g=g estados=estados estados_ui=estados_ui comentario_form=comentario_form only %}
         {% empty %}
           <div class="text-muted small">Sin garantías.</div>
         {% endfor %}

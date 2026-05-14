@@ -5,9 +5,28 @@
 {% block content %}
 <h2 class="mb-4">Nueva garantía</h2>
 
-<form method="post">
+<form method="post" enctype="multipart/form-data">
   {% csrf_token %}
   {{ form.as_p }}
+
+  <div class="card mt-3">
+    <div class="card-body">
+      <h6 class="mb-3">Archivos</h6>
+      {{ archivos_form.archivos }}
+      <div class="form-text">Puedes adjuntar varios archivos (PDF, Excel, Word, imÃ¡genes, etc.).</div>
+    </div>
+  </div>
+
+  <div class="card mt-3">
+    <div class="card-body">
+      <h6 class="mb-3">Enlaces</h6>
+      <div class="row g-2">
+        <div class="col-md-4">{{ enlace_form.titulo }}</div>
+        <div class="col-md-8">{{ enlace_form.url }}</div>
+      </div>
+      <div class="form-text">Opcional: agrega un enlace inicial (puedes agregar mÃ¡s despuÃ©s en editar/detalle).</div>
+    </div>
+  </div>
 
   <button type="submit" class="btn btn-success">Guardar</button>
   <a href="{% url 'garantias:panel_garantias' %}" class="btn btn-secondary">Cancelar</a>

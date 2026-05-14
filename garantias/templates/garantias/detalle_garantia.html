@@ -42,8 +42,14 @@
             <div>{{ garantia.cliente }}</div>
           </div>
           <div class="col-md-6 mb-3">
-            <label class="form-label fw-semibold">Creado por</label>
-            <div>{{ garantia.creado_por.get_full_name|default:garantia.creado_por.username }}</div>
+            <label class="form-label fw-semibold">Asignado a</label>
+            <div class="d-flex gap-1 flex-wrap">
+              {% for u in garantia.asignados.all %}
+                <span class="badge bg-light text-dark border">{{ u.get_full_name|default:u.username }}</span>
+              {% empty %}
+                <span class="text-muted">Sin asignaciÃ³n</span>
+              {% endfor %}
+            </div>
           </div>
         </div>
 
@@ -79,7 +85,7 @@
 
         <h5 class="card-title mb-3">Cambiar Estado</h5>
         <div class="d-flex gap-2 flex-wrap">
-          {% for estado in estados %}
+          {% for estado, estado_label in estados_ui %}
             <form method="post" action="{% url 'garantias:cambiar_estado_garantia' garantia.id %}" class="d-inline">
               {% csrf_token %}
               <input type="hidden" name="estado" value="{{ estado }}">
@@ -88,11 +94,44 @@
                 class="btn btn-sm garantia-estado-btn {% if garantia.estado == estado %}is-active{% endif %}"
                 {% if garantia.estado == estado %}disabled{% endif %}
               >
-                {{ estado|capfirst }}
+                {{ estado_label }}
               </button>
             </form>
           {% endfor %}
         </div>
+
+        <hr class="my-4" />
+
+        <h5 class="card-title mb-3">Archivos</h5>
+        {% if garantia.archivos.all %}
+          <div class="mb-3">
+            {% for a in garantia.archivos.all %}
+              <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 small">
+                <div class="min-w-0">
+                  <div class="fw-semibold text-truncate">{{ a.archivo.name }}</div>
+                  <div class="text-muted">{{ a.fecha|date:"Y-m-d H:i" }}</div>
+                </div>
+                <a class="btn btn-sm btn-outline-primary" href="{% url 'garantias:descargar_archivo' garantia.id a.id %}">Descargar</a>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-muted small mb-2">Sin archivos.</div>
+        {% endif %}
+
+        <h5 class="card-title mb-3 mt-4">Enlaces</h5>
+        {% if garantia.enlaces.all %}
+          <div class="mb-3 small">
+            {% for e in garantia.enlaces.all %}
+              <div class="border rounded p-2 mb-2">
+                <div class="fw-semibold">{{ e.titulo }}</div>
+                <a href="{{ e.url }}" target="_blank" rel="noopener" class="text-decoration-none">{{ e.url }}</a>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-muted small mb-2">Sin enlaces.</div>
+        {% endif %}
       </div>
     </div>
   </div>

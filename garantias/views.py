@@ -1,22 +1,33 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.http import FileResponse
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from .decorators import admin_required
-from .forms import GarantiaComentarioForm, GarantiaForm, GarantiaEditarForm
-from .models import Garantia, GarantiaComentario
+from .forms import GarantiaArchivosForm, GarantiaComentarioForm, GarantiaEnlaceForm, GarantiaForm, GarantiaEditarForm
+from .models import Garantia, GarantiaArchivo, GarantiaComentario, GarantiaEnlace
 
 
 def _estado_label(estado):
     return {
-        Garantia.Estado.CREADA: "Creada",
-        Garantia.Estado.PRESENTADA: "Presentada",
-        Garantia.Estado.RESUELTA: "Resuelta",
+        Garantia.Estado.SOLICITUD_NAVIERA: "Solicitud a naviera",
+        Garantia.Estado.EN_PROCESO: "En proceso",
+        Garantia.Estado.PAGO_NAVIERA_ZAHA: "Pago naviera a zaha",
+        Garantia.Estado.DEVOLUCION_CLIENTE: "Devolución a cliente",
     }.get(estado, estado)
+
+
+def _estados_disponibles():
+    return [
+        Garantia.Estado.SOLICITUD_NAVIERA,
+        Garantia.Estado.EN_PROCESO,
+        Garantia.Estado.PAGO_NAVIERA_ZAHA,
+        Garantia.Estado.DEVOLUCION_CLIENTE,
+    ]
 
 
 @login_required
@@ -24,35 +35,50 @@ def _estado_label(estado):
 def panel_garantias(request):
     garantias = (
         Garantia.objects.select_related("cliente", "creado_por")
+        .prefetch_related("asignados")
         .prefetch_related("comentarios__usuario")
         .order_by("-fecha_creacion", "-id")
     )
     columnas = {
-        Garantia.Estado.CREADA: [],
-        Garantia.Estado.PRESENTADA: [],
-        Garantia.Estado.RESUELTA: [],
+        Garantia.Estado.SOLICITUD_NAVIERA: [],
+        Garantia.Estado.EN_PROCESO: [],
+        Garantia.Estado.PAGO_NAVIERA_ZAHA: [],
+        Garantia.Estado.DEVOLUCION_CLIENTE: [],
     }
     for g in garantias:
         columnas.setdefault(g.estado, []).append(g)
+
+    estados = _estados_disponibles()
+    estados_ui = [(e, _estado_label(e)) for e in estados]
 
     return render(
         request,
         "garantias/panel_garantias.html",
         {
             "columnas_kanban": [
-                (Garantia.Estado.CREADA, _estado_label(Garantia.Estado.CREADA), columnas.get(Garantia.Estado.CREADA, [])),
                 (
-                    Garantia.Estado.PRESENTADA,
-                    _estado_label(Garantia.Estado.PRESENTADA),
-                    columnas.get(Garantia.Estado.PRESENTADA, []),
+                    Garantia.Estado.SOLICITUD_NAVIERA,
+                    _estado_label(Garantia.Estado.SOLICITUD_NAVIERA),
+                    columnas.get(Garantia.Estado.SOLICITUD_NAVIERA, []),
                 ),
                 (
-                    Garantia.Estado.RESUELTA,
-                    _estado_label(Garantia.Estado.RESUELTA),
-                    columnas.get(Garantia.Estado.RESUELTA, []),
+                    Garantia.Estado.EN_PROCESO,
+                    _estado_label(Garantia.Estado.EN_PROCESO),
+                    columnas.get(Garantia.Estado.EN_PROCESO, []),
+                ),
+                (
+                    Garantia.Estado.PAGO_NAVIERA_ZAHA,
+                    _estado_label(Garantia.Estado.PAGO_NAVIERA_ZAHA),
+                    columnas.get(Garantia.Estado.PAGO_NAVIERA_ZAHA, []),
+                ),
+                (
+                    Garantia.Estado.DEVOLUCION_CLIENTE,
+                    _estado_label(Garantia.Estado.DEVOLUCION_CLIENTE),
+                    columnas.get(Garantia.Estado.DEVOLUCION_CLIENTE, []),
                 ),
             ],
-            "estados": [Garantia.Estado.CREADA, Garantia.Estado.PRESENTADA, Garantia.Estado.RESUELTA],
+            "estados": estados,
+            "estados_ui": estados_ui,
             "comentario_form": GarantiaComentarioForm(),
         },
     )
@@ -63,26 +89,44 @@ def panel_garantias(request):
 def crear_garantia(request):
     if request.method == "POST":
         form = GarantiaForm(request.POST)
-        if form.is_valid():
+        archivos_form = GarantiaArchivosForm(request.POST, request.FILES)
+        enlace_form = GarantiaEnlaceForm(request.POST)
+        if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
             garantia = form.save(commit=False)
-            garantia.estado = Garantia.Estado.CREADA
+            garantia.estado = Garantia.Estado.SOLICITUD_NAVIERA
             garantia.creado_por = request.user
             garantia.save()
+            form.save_m2m()
+
+            for f in request.FILES.getlist("archivos"):
+                GarantiaArchivo.objects.create(garantia=garantia, archivo=f, subido_por=request.user)
+
+            if (enlace_form.cleaned_data.get("titulo") or "").strip() and (enlace_form.cleaned_data.get("url") or "").strip():
+                enlace = enlace_form.save(commit=False)
+                enlace.garantia = garantia
+                enlace.creado_por = request.user
+                enlace.save()
             messages.success(request, "Garantía creada.")
             return redirect("garantias:panel_garantias")
     else:
         form = GarantiaForm()
+        archivos_form = GarantiaArchivosForm()
+        enlace_form = GarantiaEnlaceForm()
 
-    return render(request, "garantias/crear_garantia.html", {"form": form})
+    return render(
+        request,
+        "garantias/crear_garantia.html",
+        {"form": form, "archivos_form": archivos_form, "enlace_form": enlace_form},
+    )
 
 
 @login_required
 @admin_required
 @require_POST
 def cambiar_estado_garantia(request, pk):
-    garantia = get_object_or_404(Garantia, pk=pk)
+    garantia = get_object_or_404(Garantia.objects.prefetch_related("archivos", "enlaces", "asignados"), pk=pk)
     nuevo_estado = (request.POST.get("estado") or "").strip().upper()
-    estados_validos = {Garantia.Estado.CREADA, Garantia.Estado.PRESENTADA, Garantia.Estado.RESUELTA}
+    estados_validos = set(_estados_disponibles())
     if nuevo_estado not in estados_validos:
         raise PermissionDenied("Estado inválido.")
     if garantia.estado != nuevo_estado:
@@ -139,7 +183,9 @@ def agregar_comentario(request, pk):
 @admin_required
 def detalle_garantia(request, pk):
     garantia = get_object_or_404(
-        Garantia.objects.select_related("cliente", "creado_por").prefetch_related("comentarios__usuario"),
+        Garantia.objects.select_related("cliente", "creado_por")
+        .prefetch_related("asignados")
+        .prefetch_related("comentarios__usuario", "archivos", "enlaces"),
         pk=pk,
     )
     return render(
@@ -148,7 +194,10 @@ def detalle_garantia(request, pk):
         {
             "garantia": garantia,
             "comentario_form": GarantiaComentarioForm(),
-            "estados": [Garantia.Estado.CREADA, Garantia.Estado.PRESENTADA, Garantia.Estado.RESUELTA],
+            "estados": _estados_disponibles(),
+            "estados_ui": [(e, _estado_label(e)) for e in _estados_disponibles()],
+            "archivos_form": GarantiaArchivosForm(),
+            "enlace_form": GarantiaEnlaceForm(),
         },
     )
 
@@ -159,14 +208,31 @@ def editar_garantia(request, pk):
     garantia = get_object_or_404(Garantia, pk=pk)
     if request.method == "POST":
         form = GarantiaEditarForm(request.POST, instance=garantia)
-        if form.is_valid():
+        archivos_form = GarantiaArchivosForm(request.POST, request.FILES)
+        enlace_form = GarantiaEnlaceForm(request.POST)
+        if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
             form.save()
+
+            for f in request.FILES.getlist("archivos"):
+                GarantiaArchivo.objects.create(garantia=garantia, archivo=f, subido_por=request.user)
+
+            if (enlace_form.cleaned_data.get("titulo") or "").strip() and (enlace_form.cleaned_data.get("url") or "").strip():
+                enlace = enlace_form.save(commit=False)
+                enlace.garantia = garantia
+                enlace.creado_por = request.user
+                enlace.save()
             messages.success(request, "Garantía actualizada.")
             return redirect("garantias:detalle_garantia", pk=garantia.pk)
     else:
         form = GarantiaEditarForm(instance=garantia)
+        archivos_form = GarantiaArchivosForm()
+        enlace_form = GarantiaEnlaceForm()
 
-    return render(request, "garantias/editar_garantia.html", {"form": form, "garantia": garantia})
+    return render(
+        request,
+        "garantias/editar_garantia.html",
+        {"form": form, "garantia": garantia, "archivos_form": archivos_form, "enlace_form": enlace_form},
+    )
 
 
 @login_required
@@ -179,3 +245,34 @@ def eliminar_garantia(request, pk):
         return redirect("garantias:panel_garantias")
 
     return render(request, "garantias/eliminar_garantia.html", {"garantia": garantia})
+
+
+@login_required
+@admin_required
+def descargar_archivo(request, pk, archivo_id):
+    garantia = get_object_or_404(Garantia, pk=pk)
+    archivo = get_object_or_404(GarantiaArchivo, pk=archivo_id, garantia=garantia)
+    fh = archivo.archivo.open("rb")
+    return FileResponse(fh, as_attachment=True, filename=archivo.archivo.name.split("/")[-1])
+
+
+@login_required
+@admin_required
+@require_POST
+def eliminar_archivo(request, pk, archivo_id):
+    garantia = get_object_or_404(Garantia, pk=pk)
+    archivo = get_object_or_404(GarantiaArchivo, pk=archivo_id, garantia=garantia)
+    archivo.delete()
+    messages.success(request, "Archivo eliminado.")
+    return redirect("garantias:editar_garantia", pk=garantia.pk)
+
+
+@login_required
+@admin_required
+@require_POST
+def eliminar_enlace(request, pk, enlace_id):
+    garantia = get_object_or_404(Garantia, pk=pk)
+    enlace = get_object_or_404(GarantiaEnlace, pk=enlace_id, garantia=garantia)
+    enlace.delete()
+    messages.success(request, "Enlace eliminado.")
+    return redirect("garantias:editar_garantia", pk=garantia.pk)
