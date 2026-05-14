@@ -29,11 +29,23 @@
   {% endfor %}
 </div>
 
+<div class="modal fade" id="garantiaDetalleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content" id="garantiaDetalleModalContent">
+      <div class="modal-body p-4 text-center text-muted">Cargando...</div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+{% include "garantias/_asignados_tags_assets.html" %}
 <script>
   (function () {
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
     const updateUrl = '{{ estado_update_url }}';
+    const modalElement = document.getElementById('garantiaDetalleModal');
+    const modalContent = document.getElementById('garantiaDetalleModalContent');
+    const modalInstance = modalElement && window.bootstrap ? new bootstrap.Modal(modalElement) : null;
 
     function postForm(url, formData) {
       return fetch(url, {
@@ -43,7 +55,13 @@
           'X-Requested-With': 'XMLHttpRequest',
         },
         body: formData,
-      }).then((r) => r.json());
+      });
+    }
+
+    function getHtml(url) {
+      return fetch(url, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      }).then((response) => response.text());
     }
 
     function ensureEmptyState(column) {
@@ -55,14 +73,25 @@
         empty.textContent = 'Sin garantías.';
         column.appendChild(empty);
       }
-      if (cards.length && empty) {
-        empty.remove();
+      if (cards.length && empty) empty.remove();
+    }
+
+    function replaceCard(cardHtml, garantiaId) {
+      if (!cardHtml || !garantiaId) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = cardHtml.trim();
+      const newCard = wrapper.firstElementChild;
+      const currentCard = document.getElementById(`garantia-${garantiaId}`);
+      if (newCard && currentCard) {
+        currentCard.replaceWith(newCard);
       }
     }
 
     function initSortable() {
       if (typeof Sortable === 'undefined') return;
       document.querySelectorAll('.kanban-col').forEach((column) => {
+        if (column.dataset.sortableReady === '1') return;
+        column.dataset.sortableReady = '1';
         Sortable.create(column, {
           group: 'garantias-kanban',
           animation: 150,
@@ -85,10 +114,9 @@
             fd.set('nuevo_estado', nuevoEstado);
 
             postForm(updateUrl, fd)
+              .then((response) => response.json())
               .then((data) => {
-                if (data.status !== 'ok') {
-                  source.appendChild(card);
-                }
+                if (data.status !== 'ok') source.appendChild(card);
               })
               .catch(() => {
                 source.appendChild(card);
@@ -103,34 +131,104 @@
       });
     }
 
-    document.addEventListener('submit', (e) => {
-      const form = e.target.closest('[data-garantia-comentario-form="1"]');
-      if (!form) return;
-      e.preventDefault();
+    function loadModal(url) {
+      if (!modalContent || !modalInstance) return;
+      modalContent.innerHTML = '<div class="modal-body p-4 text-center text-muted">Cargando...</div>';
+      modalInstance.show();
+      getHtml(url)
+        .then((html) => {
+          modalContent.innerHTML = html;
+          if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
+        })
+        .catch(() => {
+          modalContent.innerHTML = '<div class="modal-body p-4 text-center text-danger">No se pudo cargar la garantía.</div>';
+        });
+    }
 
-      const url = form.getAttribute('action');
-      const garantiaId = form.getAttribute('data-garantia-id');
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('[data-garantia-modal-open="1"]');
+      if (!link) return;
+      e.preventDefault();
+      const url = link.getAttribute('data-modal-url') || link.getAttribute('href');
+      if (url) loadModal(url);
+    });
+
+    document.addEventListener('submit', (e) => {
+      const modalForm = e.target.closest('[data-garantia-modal-form="1"]');
+      if (modalForm) {
+        e.preventDefault();
+        const fd = new FormData(modalForm);
+        postForm(modalForm.getAttribute('action'), fd)
+          .then(async (response) => {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) return response.json();
+            return { status: 'error', html: await response.text() };
+          })
+          .then((data) => {
+            if (data.status === 'ok') {
+              modalContent.innerHTML = data.html;
+              replaceCard(data.card_html, data.id);
+            } else if (data.html) {
+              modalContent.innerHTML = data.html;
+            }
+            if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
+          })
+          .catch(() => {});
+        return;
+      }
+
+      const refreshForm = e.target.closest('[data-garantia-modal-refresh="1"], [data-garantia-modal-delete="1"]');
+      if (refreshForm) {
+        e.preventDefault();
+        const fd = new FormData(refreshForm);
+        postForm(refreshForm.getAttribute('action'), fd)
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.deleted) {
+              document.getElementById(`garantia-${data.id}`)?.remove();
+              document.querySelectorAll('.kanban-col').forEach(ensureEmptyState);
+              modalInstance.hide();
+              return;
+            }
+            if (data.status === 'ok') {
+              modalContent.innerHTML = data.html;
+              replaceCard(data.card_html, data.id);
+              if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
+            }
+          })
+          .catch(() => {});
+        return;
+      }
+
+      const commentForm = e.target.closest('[data-garantia-comentario-form="1"]');
+      if (!commentForm) return;
+      e.preventDefault();
+      const url = commentForm.getAttribute('action');
+      const garantiaId = commentForm.getAttribute('data-garantia-id');
       if (!url || !garantiaId) return;
 
-      const textarea = form.querySelector('textarea[name="comentario"]');
+      const textarea = commentForm.querySelector('textarea[name="comentario"]');
       const text = (textarea?.value || '').trim();
       if (!text) return;
 
       const fd = new FormData();
       fd.set('comentario', text);
       postForm(url, fd)
+        .then((response) => response.json())
         .then((data) => {
           if (data.status !== 'ok') return;
           if (textarea) textarea.value = '';
-          const list = document.querySelector(`#garantia-${garantiaId} [data-garantia-comentarios="1"]`);
-          if (!list) return;
-          const item = document.createElement('div');
-          const fecha = new Date(data.comentario.fecha);
-          item.className = 'small border rounded p-2 mb-2';
-          item.innerHTML = `<div class="fw-semibold">${data.comentario.usuario} <span class="text-muted fw-normal">• ${fecha.toLocaleString()}</span></div>
-                            <div style="white-space: pre-wrap;"></div>`;
-          item.querySelector('div[style]')?.appendChild(document.createTextNode(data.comentario.texto));
-          list.prepend(item);
+          const cardList = document.querySelector(`#garantia-${garantiaId} [data-garantia-comentarios="1"]`);
+          const modalList = modalContent.querySelector('[data-garantia-comentarios="1"]');
+          [cardList, modalList].forEach((list) => {
+            if (!list) return;
+            const item = document.createElement('div');
+            const fecha = new Date(data.comentario.fecha);
+            item.className = 'small border rounded p-2 mb-2';
+            item.innerHTML = `<div class="fw-semibold">${data.comentario.usuario} <span class="text-muted fw-normal">• ${fecha.toLocaleString()}</span></div><div style="white-space: pre-wrap;"></div>`;
+            item.querySelector('div[style]')?.appendChild(document.createTextNode(data.comentario.texto));
+            list.prepend(item.cloneNode(true));
+          });
         })
         .catch(() => {});
     });

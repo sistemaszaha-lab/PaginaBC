@@ -1,187 +1,33 @@
-<style>
-  .garantia-tags-widget { position: relative; }
-  .garantia-tags-control {
-    min-height: 42px;
-    border: 1px solid #ced4da;
-    border-radius: 0.375rem;
-    background: #fff;
-    padding: 0.375rem 0.75rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    align-items: center;
-  }
-  .garantia-tags-control.is-focus {
-    border-color: #86b7fe;
-    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
-  }
-  .garantia-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    background: rgba(1, 107, 107, 0.08);
-    color: #016b6b;
-    border: 1px solid rgba(1, 107, 107, 0.18);
-    border-radius: 999px;
-    padding: 0.2rem 0.55rem;
-    font-size: 0.85rem;
-  }
-  .garantia-tag-remove {
-    border: 0;
-    background: transparent;
-    color: inherit;
-    padding: 0;
-    line-height: 1;
-  }
-  .garantia-tags-input {
-    border: 0;
-    outline: 0;
-    min-width: 120px;
-    flex: 1 1 120px;
-    padding: 0;
-    font-size: 0.95rem;
-  }
-  .garantia-tags-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
-    z-index: 20;
-    background: #fff;
-    border: 1px solid #ced4da;
-    border-radius: 0.375rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08);
-    max-height: 220px;
-    overflow-y: auto;
-    display: none;
-  }
-  .garantia-tags-dropdown.is-open { display: block; }
-  .garantia-tags-option {
-    padding: 0.5rem 0.75rem;
-    cursor: pointer;
-  }
-  .garantia-tags-option:hover,
-  .garantia-tags-option.is-active {
-    background: rgba(1, 107, 107, 0.08);
-  }
-  .garantia-tags-empty {
-    padding: 0.5rem 0.75rem;
-    color: #6c757d;
-    font-size: 0.9rem;
-  }
-</style>
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 <script>
-  (function () {
-    function buildTagsSelect(select) {
-      if (!select || select.dataset.tagsReady === '1') return;
-      select.dataset.tagsReady = '1';
-      select.style.display = 'none';
-
-      const wrapper = document.createElement('div');
-      wrapper.className = 'garantia-tags-widget';
-      const control = document.createElement('div');
-      control.className = 'garantia-tags-control';
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'garantia-tags-input';
-      input.placeholder = 'Buscar usuario...';
-      const dropdown = document.createElement('div');
-      dropdown.className = 'garantia-tags-dropdown';
-
-      wrapper.appendChild(control);
-      wrapper.appendChild(dropdown);
-      select.insertAdjacentElement('afterend', wrapper);
-
-      function selectedValues() {
-        return Array.from(select.selectedOptions).map((option) => option.value);
-      }
-
-      function renderTags() {
-        control.querySelectorAll('.garantia-tag').forEach((item) => item.remove());
-        Array.from(select.selectedOptions).forEach((option) => {
-          const tag = document.createElement('span');
-          tag.className = 'garantia-tag';
-          tag.innerHTML = `<span>${option.text}</span>`;
-          const remove = document.createElement('button');
-          remove.type = 'button';
-          remove.className = 'garantia-tag-remove';
-          remove.textContent = '×';
-          remove.addEventListener('click', function () {
-            option.selected = false;
-            renderTags();
-            renderOptions(input.value);
-          });
-          tag.appendChild(remove);
-          control.insertBefore(tag, input);
-        });
-      }
-
-      function renderOptions(query) {
-        const term = (query || '').trim().toLowerCase();
-        const selected = new Set(selectedValues());
-        const options = Array.from(select.options).filter((option) => {
-          return option.value && !selected.has(option.value) && option.text.toLowerCase().includes(term);
-        });
-
-        dropdown.innerHTML = '';
-        if (!options.length) {
-          const empty = document.createElement('div');
-          empty.className = 'garantia-tags-empty';
-          empty.textContent = 'Sin coincidencias';
-          dropdown.appendChild(empty);
-          return;
-        }
-
-        options.forEach((option) => {
-          const item = document.createElement('div');
-          item.className = 'garantia-tags-option';
-          item.textContent = option.text;
-          item.addEventListener('mousedown', function (event) {
-            event.preventDefault();
-            option.selected = true;
-            input.value = '';
-            renderTags();
-            renderOptions('');
-            input.focus();
-          });
-          dropdown.appendChild(item);
-        });
-      }
-
-      input.addEventListener('focus', function () {
-        control.classList.add('is-focus');
-        dropdown.classList.add('is-open');
-        renderOptions(input.value);
-      });
-      input.addEventListener('input', function () {
-        dropdown.classList.add('is-open');
-        renderOptions(input.value);
-      });
-      input.addEventListener('keydown', function (event) {
-        if (event.key === 'Backspace' && !input.value) {
-          const selected = Array.from(select.selectedOptions);
-          const last = selected[selected.length - 1];
-          if (last) {
-            last.selected = false;
-            renderTags();
-            renderOptions('');
+  window.initGarantiaSelects = window.initGarantiaSelects || function (root) {
+    const scope = root || document;
+    if (typeof TomSelect === 'undefined') return;
+    scope.querySelectorAll('[data-garantia-tags-select="1"]').forEach(function (select) {
+      if (select.tomselect) return;
+      new TomSelect(select, {
+        plugins: ['remove_button'],
+        create: false,
+        maxOptions: 200,
+        persist: false,
+        closeAfterSelect: false,
+        hidePlaceholder: true,
+        placeholder: 'Buscar usuario...',
+        searchField: ['text'],
+        render: {
+          item: function (data, escape) {
+            return '<div>' + escape(data.text) + '</div>';
+          },
+          option: function (data, escape) {
+            return '<div>' + escape(data.text) + '</div>';
           }
         }
       });
-      document.addEventListener('click', function (event) {
-        if (!wrapper.contains(event.target)) {
-          dropdown.classList.remove('is-open');
-          control.classList.remove('is-focus');
-        }
-      });
-      control.addEventListener('click', function () {
-        input.focus();
-      });
+    });
+  };
 
-      renderTags();
-      renderOptions('');
-    }
-
-    document.querySelectorAll('[data-garantia-tags-select="1"]').forEach(buildTagsSelect);
-  })();
+  document.addEventListener('DOMContentLoaded', function () {
+    window.initGarantiaSelects(document);
+  });
 </script>
