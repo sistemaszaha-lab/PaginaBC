@@ -16,7 +16,7 @@ def _estado_label(estado):
     return {
         Garantia.Estado.SOLICITUD_NAVIERA: "Solicitud a naviera",
         Garantia.Estado.EN_PROCESO: "En proceso",
-        Garantia.Estado.PAGO_NAVIERA_ZAHA: "Pago naviera a zaha",
+        Garantia.Estado.PAGO_NAVIERA_ZAHA: "Pago naviera a ZAHA",
         Garantia.Estado.DEVOLUCION_CLIENTE: "Devolución a cliente",
     }.get(estado, estado)
 
