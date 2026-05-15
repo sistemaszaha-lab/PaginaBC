@@ -17,6 +17,7 @@ urlpatterns = [
     path("clientes/", include("clientes.urls")),
     path("incidencias/", include("incidencias.urls")),
     path("garantias/", include("garantias.urls")),
+    path("panel-cotizaciones/", include("panel_cotizaciones.urls")),
     path("", include("solicitudes.urls")),
 ]
 

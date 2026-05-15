@@ -1,0 +1,51 @@
+<div
+  class="card shadow-sm mb-3"
+  id="panel-cotizacion-{{ c.id }}"
+  data-panel-cotizacion-card="1"
+  data-panel-cotizacion-id="{{ c.id }}"
+  style="border-left: 4px solid {% if c.prioridad == 'ALTA' %}#dc3545{% elif c.prioridad == 'MEDIA' %}#fd7e14{% else %}#198754{% endif %};">
+  <div class="card-body p-3">
+    <div class="d-flex justify-content-between align-items-start gap-2">
+      <div class="fw-semibold" style="line-height: 1.2;">{{ c.titulo }}</div>
+      <span class="badge {% if c.prioridad == 'ALTA' %}text-bg-danger{% elif c.prioridad == 'MEDIA' %}text-bg-warning{% else %}text-bg-success{% endif %}">{{ c.get_prioridad_display }}</span>
+    </div>
+    <div class="text-muted small mt-1">{{ c.cliente }}</div>
+
+    <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+      <div class="small text-muted">
+        Asignados:
+        {% for u in c.asignados.all %}
+          <span class="badge text-bg-light">{{ u.first_name }}</span>
+        {% empty %}
+          <span class="text-muted">—</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="mt-2 d-flex justify-content-between align-items-center">
+      <div class="small text-muted">
+        Vence:
+        {% if c.fecha_vencimiento %}
+          <span>{{ c.fecha_vencimiento }}</span>
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="small text-muted">
+        Comentarios: <span data-panel-cotizacion-comentarios-count="1">{{ c.comentarios_count|default:0 }}</span>
+      </div>
+    </div>
+
+    <div class="mt-3 d-flex justify-content-end">
+      <a
+        href="{% url 'panel_cotizaciones:detalle_modal' c.id %}"
+        class="btn btn-sm btn-outline-primary"
+        data-panel-cotizacion-modal-open="1"
+        data-modal-url="{% url 'panel_cotizaciones:detalle_modal' c.id %}">
+        Ver
+      </a>
+    </div>
+
+    <div class="mt-2" data-panel-cotizacion-comentarios="1" style="display:none;"></div>
+  </div>
+</div>
