@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "incidencias",
     "garantias",
     "panel_cotizaciones",
+    "operaciones",
 ]
 
 MIDDLEWARE = [

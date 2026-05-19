@@ -674,6 +674,8 @@
             {% if request.user.is_superuser or request.user.is_authenticated %}
             <a href="{% url 'garantias:panel_garantias' %}"
                 class="sidebar-link {% if current == 'panel_garantias' or current == 'crear_garantia' %}is-active{% endif %}">Garantías</a>
+            <a href="{% url 'operaciones:panel_operaciones' %}"
+                class="sidebar-link {% if current == 'panel_operaciones' or current == 'crear_operacion' %}is-active{% endif %}">Operaciones</a>
             <a href="{% url 'panel_cotizaciones:panel_cotizaciones' %}"
                 class="sidebar-link {% if current == 'panel_cotizaciones' %}is-active{% endif %}">Panel Cotizaciones</a>
             {% endif %}

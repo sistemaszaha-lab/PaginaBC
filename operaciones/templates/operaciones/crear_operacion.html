@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Crear Operación{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card" style="border: 1px solid var(--color-border); border-radius: 12px; box-shadow: var(--shadow-md);">
+                <div class="card-header" style="background: var(--color-card); border-bottom: 1px solid var(--color-border); padding: 20px;">
+                    <h3 style="margin: 0; font-weight: 600;">Nueva Operación</h3>
+                </div>
+                
+                <div class="card-body" style="padding: 20px;">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <div class="mb-3">
+                            <label for="id_titulo" class="form-label">Título *</label>
+                            {{ form.titulo }}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="id_descripcion" class="form-label">Descripción</label>
+                            {{ form.descripcion }}
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="id_cliente" class="form-label">Cliente</label>
+                                    {{ form.cliente }}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="id_prioridad" class="form-label">Prioridad</label>
+                                    {{ form.prioridad }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="id_fecha_vencimiento" class="form-label">Vencimiento</label>
+                            {{ form.fecha_vencimiento }}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="id_asignados" class="form-label">Asignados</label>
+                            {{ form.asignados }}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="id_etiquetas" class="form-label">Etiquetas</label>
+                            {{ form.etiquetas }}
+                        </div>
+                        
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-grow-1">Crear Operación</button>
+                            <a href="{% url 'operaciones:panel_operaciones' %}" class="btn btn-outline-secondary flex-grow-1">Cancelar</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% comment %}TomSelect (mismo look & feel que Garantías){% endcomment %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+window.initOperacionSelects = window.initOperacionSelects || function(root) {
+    const scope = root || document;
+    if (typeof TomSelect === 'undefined') return;
+    scope.querySelectorAll('[data-operacion-tags-select="1"]').forEach(function(select) {
+        if (select.tomselect) return;
+        const isEtiquetas = select.id === 'id_etiquetas';
+        new TomSelect(select, {
+            plugins: ['remove_button'],
+            create: isEtiquetas,
+            maxOptions: 200,
+            persist: false,
+            closeAfterSelect: false,
+            hidePlaceholder: true,
+            placeholder: isEtiquetas ? 'Buscar o crear etiqueta...' : 'Buscar usuario...',
+            searchField: ['text']
+        });
+    });
+};
+document.addEventListener('DOMContentLoaded', function() {
+    window.initOperacionSelects(document);
+});
+</script>
+
+
+{% endblock %}

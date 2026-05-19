@@ -1,0 +1,513 @@
+{% load static %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+
+<div class="operacion-detalle-modal" data-operacion-id="{{ operacion.id }}">
+    <div class="detalle-columnas">
+        <!-- Columna izquierda: Información principal -->
+        <div class="detalle-info-principal">
+            <form id="form-editar-operacion" method="post" action="{% url 'operaciones:editar_operacion' operacion.id %}">
+                {% csrf_token %}
+                
+                <div class="form-group">
+                    <label>Título:</label>
+                    {{ form.titulo }}
+                </div>
+                
+                <div class="form-group">
+                    <label>Descripción:</label>
+                    {{ form.descripcion }}
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Cliente:</label>
+                        {{ form.cliente }}
+                    </div>
+                    <div class="form-group">
+                        <label>Prioridad:</label>
+                        {{ form.prioridad }}
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Vencimiento:</label>
+                    {{ form.fecha_vencimiento }}
+                </div>
+                
+                <!-- Asignados -->
+                <div class="form-group">
+                    <label>Asignados:</label>
+                    {{ form.asignados }}
+                </div>
+                
+                <!-- Opciones -->
+                <div class="form-group">
+                    <label>Opciones:</label>
+                    <div class="opciones-container">
+                        <div class="opciones-checkboxes">
+                            {{ form.opciones }}
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#crearOpcionModal">
+                            + Nueva Opción
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Etiquetas -->
+                <div class="form-group">
+                    <label>Etiquetas:</label>
+                    <div class="etiquetas-container">
+                        <div>
+                            {{ form.etiquetas }}
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#crearEtiquetaModal">
+                            + Nueva Etiqueta
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="form-buttons">
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
+            <form method="post" action="{% url 'operaciones:eliminar_operacion' operacion.id %}" data-confirm-delete="1" class="mt-2">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger w-100">Eliminar</button>
+            </form>
+        </div>
+        
+        <!-- Columna derecha: Comentarios y Archivos -->
+        <div class="detalle-comentarios-archivos">
+            <!-- Comentarios -->
+            <div class="comentarios-seccion">
+                <h5>Comentarios ({{ operacion.comentarios.count }})</h5>
+                
+                <div class="comentarios-lista">
+                    {% for comentario in operacion.comentarios.all %}
+                    <div class="comentario-item">
+                        <strong>{{ comentario.usuario.first_name }}</strong>
+                        <small class="text-muted">{{ comentario.fecha|date:"d/m/Y H:i" }}</small>
+                        <p>{{ comentario.comentario }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <form method="post" action="{% url 'operaciones:agregar_comentario' operacion.id %}" class="comentario-form">
+                    {% csrf_token %}
+                    {{ comentario_form.comentario }}
+                    <button type="submit" class="btn btn-sm btn-primary">Agregar</button>
+                </form>
+            </div>
+            
+            <!-- Archivos -->
+            <div class="archivos-seccion">
+                <h5>Archivos</h5>
+                
+                <div class="archivos-lista">
+                    {% for archivo in operacion.archivos.all %}
+                    <div class="archivo-item">
+                        <a href="{{ archivo.archivo.url }}" target="_blank" class="archivo-link">
+                            📎 {{ archivo.archivo.name|truncatewords:3 }}
+                        </a>
+                        <small class="text-muted">{{ archivo.subido_por.first_name }} - {{ archivo.fecha|date:"d/m/Y" }}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <form method="post" action="{% url 'operaciones:agregar_archivo' operacion.id %}" enctype="multipart/form-data" class="archivo-form">
+                    {% csrf_token %}
+                    {{ archivos_form.archivos }}
+                    <button type="submit" class="btn btn-sm btn-primary">Subir archivo</button>
+                </form>
+            </div>
+            
+            <!-- Enlaces -->
+            <div class="enlaces-seccion">
+                <h5>Enlaces</h5>
+                
+                <div class="enlaces-lista">
+                    {% for enlace in operacion.enlaces.all %}
+                    <div class="enlace-item">
+                        <a href="{{ enlace.url }}" target="_blank" class="enlace-link">
+                            🔗 {{ enlace.titulo }}
+                        </a>
+                        <small class="text-muted">{{ enlace.creado_por.first_name }} - {{ enlace.fecha|date:"d/m/Y" }}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <form method="post" action="{% url 'operaciones:agregar_archivo' operacion.id %}" class="enlace-form">
+                    {% csrf_token %}
+                    {{ enlace_form.titulo }}
+                    {{ enlace_form.url }}
+                    <button type="submit" class="btn btn-sm btn-primary">Agregar enlace</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.operacion-detalle-modal {
+    padding: 0;
+}
+
+.detalle-columnas {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.detalle-info-principal {
+    border-right: 1px solid var(--color-border);
+    padding-right: 20px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.form-group {
+    margin-bottom: 12px;
+}
+
+.form-group label {
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: block;
+    font-size: 0.9rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+}
+
+.etiquetas-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.opciones-container,
+.etiquetas-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.opciones-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.form-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.form-buttons button {
+    flex: 1;
+}
+
+/* Comentarios */
+.comentarios-seccion {
+    margin-bottom: 20px;
+}
+
+.comentarios-lista {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.comentario-item {
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.comentario-item:last-child {
+    border-bottom: none;
+}
+
+.comentario-item p {
+    margin: 4px 0;
+}
+
+.comentario-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.comentario-form textarea {
+    font-size: 0.85rem;
+}
+
+/* Archivos */
+.archivos-seccion,
+.enlaces-seccion {
+    margin-bottom: 20px;
+}
+
+.archivos-lista,
+.enlaces-lista {
+    max-height: 150px;
+    overflow-y: auto;
+    margin-bottom: 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.archivo-item,
+.enlace-item {
+    margin-bottom: 6px;
+}
+
+.archivo-link,
+.enlace-link {
+    color: var(--color-secondary);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.archivo-link:hover,
+.enlace-link:hover {
+    text-decoration: underline;
+}
+
+.archivo-form,
+.enlace-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+@media (max-width: 768px) {
+    .detalle-columnas {
+        grid-template-columns: 1fr;
+    }
+    
+    .detalle-info-principal {
+        border-right: none;
+        border-bottom: 1px solid var(--color-border);
+        padding-right: 0;
+        padding-bottom: 20px;
+    }
+}
+</style>
+
+<!-- Modal para crear nueva opción -->
+<div class="modal fade" id="crearOpcionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nueva Opción</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="form-crear-opcion" method="post" action="{% url 'operaciones:crear_opcion' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="opcion_nombre" class="form-label">Nombre:</label>
+                        <input type="text" class="form-control" id="opcion_nombre" name="nombre" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para crear nueva etiqueta -->
+<div class="modal fade" id="crearEtiquetaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nueva Etiqueta</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="form-crear-etiqueta" method="post" action="{% url 'operaciones:crear_etiqueta' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="etiqueta_nombre" class="form-label">Nombre:</label>
+                        <input type="text" class="form-control" id="etiqueta_nombre" name="nombre" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="etiqueta_color" class="form-label">Color:</label>
+                        <input type="color" class="form-control form-control-color" id="etiqueta_color" name="color" value="#3E9FA2" required>
+                    </div>
+                    <div class="form-group mt-2">
+                        <label class="form-label">Etiquetas existentes:</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for etiqueta in form.fields.etiquetas.queryset %}
+                            <span class="badge" style="background-color: {{ etiqueta.color }}; color:#fff;">
+                                {{ etiqueta.nombre }}
+                                <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1 btn-editar-etiqueta" data-id="{{ etiqueta.id }}" data-nombre="{{ etiqueta.nombre }}" data-color="{{ etiqueta.color }}">✎</button>
+                                <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1 btn-eliminar-etiqueta" data-id="{{ etiqueta.id }}">×</button>
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+window.initOperacionSelects = window.initOperacionSelects || function(root) {
+    const scope = root || document;
+    if (typeof TomSelect === 'undefined') return;
+    scope.querySelectorAll('[data-operacion-tags-select="1"]').forEach(function(select) {
+        if (select.tomselect) return;
+        const isEtiquetas = select.id === 'id_etiquetas';
+        new TomSelect(select, {
+            plugins: ['remove_button'],
+            create: isEtiquetas,
+            maxOptions: 200,
+            persist: false,
+            closeAfterSelect: false,
+            hidePlaceholder: true,
+            placeholder: isEtiquetas ? 'Buscar o crear etiqueta...' : 'Buscar usuario...',
+            searchField: ['text']
+        });
+    });
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    window.initOperacionSelects(document);
+
+    const formOpcion = document.getElementById('form-crear-opcion');
+    if (formOpcion) {
+        formOpcion.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('opcion_nombre').value;
+
+            fetch("{% url 'operaciones:crear_opcion' %}", {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'nombre=' + encodeURIComponent(nombre)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const currentId = document.querySelector('.operacion-detalle-modal')?.dataset.operacionId;
+                    if (currentId && typeof cargarDetalleOperacion === 'function') cargarDetalleOperacion(currentId);
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo crear'));
+                }
+            });
+        });
+    }
+
+    const formEtiqueta = document.getElementById('form-crear-etiqueta');
+    if (formEtiqueta) {
+        formEtiqueta.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('etiqueta_nombre').value;
+            const color = document.getElementById('etiqueta_color').value;
+
+            fetch("{% url 'operaciones:crear_etiqueta' %}", {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'nombre=' + encodeURIComponent(nombre) + '&color=' + encodeURIComponent(color)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const currentId = document.querySelector('.operacion-detalle-modal')?.dataset.operacionId;
+                    if (currentId && typeof cargarDetalleOperacion === 'function') cargarDetalleOperacion(currentId);
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo crear'));
+                }
+            });
+        });
+    }
+
+    document.querySelectorAll('.btn-editar-etiqueta').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const id = this.dataset.id;
+            const nombreActual = this.dataset.nombre || '';
+            const colorActual = this.dataset.color || '#3E9FA2';
+            const nuevoNombre = prompt('Nombre de etiqueta:', nombreActual);
+            if (!nuevoNombre) return;
+            const nuevoColor = prompt('Color hexadecimal (#RRGGBB):', colorActual);
+            if (!nuevoColor) return;
+            fetch(`/operaciones/etiqueta/${id}/editar/`, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'nombre=' + encodeURIComponent(nuevoNombre) + '&color=' + encodeURIComponent(nuevoColor)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const currentId = document.querySelector('.operacion-detalle-modal')?.dataset.operacionId;
+                    if (currentId && typeof cargarDetalleOperacion === 'function') cargarDetalleOperacion(currentId);
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo editar'));
+                }
+            });
+        });
+    });
+
+    document.querySelectorAll('.btn-eliminar-etiqueta').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const id = this.dataset.id;
+            if (!confirm('¿Eliminar etiqueta?')) return;
+            fetch(`/operaciones/etiqueta/${id}/eliminar/`, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const currentId = document.querySelector('.operacion-detalle-modal')?.dataset.operacionId;
+                    if (currentId && typeof cargarDetalleOperacion === 'function') cargarDetalleOperacion(currentId);
+                } else {
+                    alert('No se pudo eliminar');
+                }
+            });
+        });
+    });
+});
+</script>

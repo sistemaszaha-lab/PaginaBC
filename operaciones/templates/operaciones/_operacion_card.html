@@ -1,0 +1,186 @@
+<div class="operacion-card" data-operacion-id="{{ o.id }}" draggable="true">
+    <div class="card-header">
+        <h4 class="card-titulo">{{ o.titulo|truncatewords:7 }}</h4>
+        <span class="badge bg-{{ o.get_prioridad_color }}">{{ o.get_prioridad_display }}</span>
+    </div>
+    
+    <div class="card-body">
+        {% if o.cliente %}
+        <p class="card-cliente">
+            <strong>Cliente:</strong> {{ o.cliente.nombre }}
+        </p>
+        {% endif %}
+        
+        <!-- Opciones -->
+        {% if o.opciones.all %}
+        <div class="card-opciones">
+            {% for opcion in o.opciones.all|slice:":3" %}
+            <span class="badge bg-light text-dark">{{ opcion.nombre }}</span>
+            {% endfor %}
+            {% if o.opciones.count > 3 %}
+            <span class="badge bg-light text-dark">+{{ o.opciones.count|add:"-3" }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        <!-- Etiquetas -->
+        {% if o.etiquetas.count %}
+        <div class="card-etiquetas">
+            {% for etiqueta in o.etiquetas.all %}
+            <span class="badge" style="background-color: {{ etiqueta.color }}; color: #fff;">{{ etiqueta.nombre }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <!-- Vencimiento -->
+        {% if o.fecha_vencimiento %}
+        <p class="card-vencimiento">
+            <strong>Vence:</strong> {{ o.fecha_vencimiento|date:"d/m/Y" }}
+        </p>
+        {% endif %}
+        
+        <!-- Asignados -->
+        {% if o.asignados.all %}
+        <div class="card-asignados">
+            {% for usuario in o.asignados.all|slice:":3" %}
+            <span class="avatar-mini" title="{{ usuario.first_name }}">
+                {% with nombre=usuario.first_name %}
+                    {% if nombre %}{{ nombre|truncatewords:1 }}{% else %}U{% endif %}
+                {% endwith %}
+            </span>
+            {% endfor %}
+            {% if o.asignados.count > 3 %}
+            <span class="avatar-mini" title="+{{ o.asignados.count|add:"-3" }} más">+{{ o.asignados.count|add:"-3" }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        <!-- Contador de comentarios -->
+        <div class="card-comentarios">
+             {{ o.comentarios.count }}
+        </div>
+    </div>
+    
+    <div class="card-footer">
+        <button
+            type="button"
+            class="btn btn-sm btn-outline-primary ver-operacion"
+            data-bs-toggle="modal"
+            data-bs-target="#operacionModal"
+            data-id="{{ o.id }}"
+            data-operacion-modal-open="1"
+            data-modal-url="/operaciones/detalle/{{ o.id }}/"
+        >
+            Ver
+        </button>
+    </div>
+</div>
+
+<style>
+.operacion-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: move;
+    transition: all 0.2s;
+}
+
+.operacion-card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--color-secondary);
+    transform: translateY(-2px);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.card-titulo {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    flex: 1;
+}
+
+.card-body {
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+}
+
+.card-cliente {
+    margin: 4px 0;
+    color: #666;
+}
+
+.card-opciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 4px 0;
+}
+
+.card-opciones .badge {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border: 1px solid #ddd;
+}
+
+.card-etiquetas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 6px 0;
+}
+
+.card-etiquetas .badge {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+}
+
+.card-vencimiento {
+    margin: 4px 0;
+    color: #d9534f;
+    font-size: 0.8rem;
+}
+
+.card-asignados {
+    display: flex;
+    gap: 2px;
+    margin: 6px 0;
+}
+
+.avatar-mini {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--color-secondary);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.card-comentarios {
+    margin: 6px 0;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.card-footer {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-ver-operacion {
+    flex: 1;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+}
+</style>

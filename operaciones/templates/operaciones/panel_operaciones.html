@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% load static %}
+{% load operaciones_extras %}
+
+{% block title %}Panel Operaciones{% endblock %}
+
+{% block content %}
+
+<div class="kanban-container">
+    <div style="display:none;">{% csrf_token %}</div>
+    <div class="kanban-header">
+        <h1>Operaciones</h1>
+        
+        <!-- Filtros -->
+        <div class="kanban-filtros">
+            <form method="get" class="filtro-form">
+                <div class="d-flex flex-column">
+                    <label for="filtro-usuarios" class="form-label mb-1">Filtro por usuario</label>
+                    <select name="usuarios" multiple class="form-select rounded" id="filtro-usuarios">
+                        <option value="all">Todos</option>
+                    {% for usuario in usuarios_filtro %}
+                        <option value="{{ usuario.id }}" {% if usuario.seleccionado %}selected{% endif %}>
+                            {{ usuario.nombre }}
+                        </option>
+                    {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary">Filtrar</button>
+            </form>
+            
+            <a href="{% url 'operaciones:crear_operacion' %}" class="btn btn-primary">
+                + Nueva Operación
+            </a>
+        </div>
+    </div>
+
+    <!-- Kanban Board -->
+    <div class="kanban-board">
+        {% for estado, label in estados %}
+        <div class="kanban-columna" data-estado="{{ estado }}">
+            <div class="columna-header">
+                <h3>{{ label }}</h3>
+                <span class="badge bg-secondary">{{ columnas|get_item:estado|length }}</span>
+            </div>
+            
+            <div class="columna-tarjetas" data-estado="{{ estado }}">
+                {% for operacion in columnas|get_item:estado %}
+                    {% include "operaciones/_operacion_card.html" with o=operacion %}
+                {% empty %}
+                <div class="empty-state">
+                    <p>Sin operaciones</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Modal para detalles -->
+<div class="modal fade" id="operacionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Detalles Operación</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalContent">
+                Cargando...
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.kanban-container {
+    padding: 20px;
+}
+
+.kanban-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.kanban-filtros {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.filtro-form {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.filtro-form select {
+    min-width: 150px;
+}
+
+.kanban-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.kanban-columna {
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    max-height: 70vh;
+    overflow: hidden;
+}
+
+.columna-header {
+    padding: 12px;
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(1, 107, 107, 0.05);
+}
+
+.columna-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.columna-tarjetas {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.empty-state {
+    text-align: center;
+    color: #999;
+    padding: 20px 10px;
+    font-size: 0.9rem;
+}
+
+@media (max-width: 1200px) {
+    .kanban-board {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .kanban-container {
+        padding: 10px;
+    }
+    
+    .kanban-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .kanban-filtros {
+        justify-content: stretch;
+    }
+    
+    .filtro-form {
+        flex-direction: column;
+    }
+    
+    .kanban-board {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+{# Bootstrap JS necesario para modals (patrón igual a Garantías) #}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Botón Ver (delegado) - evita perder handlers al reemplazar cards via AJAX
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('[data-operacion-modal-open="1"]');
+        if (!btn) return;
+        e.preventDefault();
+        const operacionId = btn.dataset.id;
+        const url = btn.getAttribute('data-modal-url') || (operacionId ? `/operaciones/detalle/${operacionId}/` : null);
+        console.log('[Operaciones] click ver-operacion id=', operacionId, 'url=', url, btn);
+        if (url) cargarDetalleOperacion(operacionId, url);
+    });
+
+    // Inicializar drag and drop con SortableJS
+    const columnas = document.querySelectorAll('.columna-tarjetas');
+    columnas.forEach(columna => {
+        Sortable.create(columna, {
+            group: 'operaciones',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            onEnd: function(evt) {
+                const operacionId = evt.item.dataset.operacionId;
+                const nuevoEstado = evt.to.dataset.estado;
+                moverOperacion(operacionId, nuevoEstado);
+            }
+        });
+    });
+});
+
+function cargarDetalleOperacion(operacionId, url) {
+    document.getElementById('modalContent').innerHTML = 'Cargando...';
+
+    const modalEl = document.getElementById('operacionModal');
+    if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+
+    const finalUrl = url || `/operaciones/detalle/${operacionId}/`;
+    console.log('[Operaciones] fetch detalle operacionId=', operacionId, 'url=', finalUrl);
+    fetch(finalUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(response => response.json())
+        .then(data => {
+            console.log('[Operaciones] detalle response=', data);
+            document.getElementById('modalContent').innerHTML = data.html || '';
+            if (typeof window.initOperacionSelects === 'function') window.initOperacionSelects(document.getElementById('modalContent'));
+        })
+        .catch((err) => {
+            console.log('[Operaciones] error cargando detalle', err);
+            document.getElementById('modalContent').innerHTML = '<div class="alert alert-danger mb-0">No se pudo cargar el detalle.</div>';
+        });
+}
+
+document.addEventListener('submit', function(e) {
+    const form = e.target.closest('#modalContent form');
+    if (!form) return;
+    e.preventDefault();
+
+    if (form.dataset.confirmDelete === '1' && !confirm('¿Deseas eliminar esta operación?')) return;
+
+    const formData = new FormData(form);
+    fetch(form.action, {
+        method: form.method || 'POST',
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
+        body: formData
+    })
+    .then(async (response) => {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) return response.json();
+        return { success: false, html: await response.text() };
+    })
+    .then((data) => {
+        console.log('[Operaciones] submit response=', data);
+        if (data.redirect) {
+            const modalEl = document.getElementById('operacionModal');
+            const instance = bootstrap.Modal.getOrCreateInstance(modalEl);
+            instance.hide();
+            const card = document.querySelector(`.operacion-card[data-operacion-id="${data.id}"]`);
+            if (card) card.remove();
+            return;
+        }
+        if (data.success && data.html) {
+            const currentId = document.querySelector('#modalContent .operacion-detalle-modal')?.dataset.operacionId || document.querySelector('#modalContent [data-operacion-id]')?.dataset.operacionId;
+            if (currentId) {
+                const card = document.querySelector(`.operacion-card[data-operacion-id="${currentId}"]`);
+                if (card) card.outerHTML = data.html;
+                cargarDetalleOperacion(currentId);
+                return;
+            }
+            document.getElementById('modalContent').innerHTML = data.html;
+            if (typeof window.initOperacionSelects === 'function') window.initOperacionSelects(document.getElementById('modalContent'));
+            return;
+        }
+        if (data.success && (data.comentario || data.id)) {
+            const currentId = document.querySelector('#modalContent [data-operacion-id]')?.dataset.operacionId;
+            if (currentId) cargarDetalleOperacion(currentId);
+        }
+    })
+    .catch(() => {});
+});
+
+function moverOperacion(operacionId, nuevoEstado) {
+    const getCookie = (name) => {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+        return '';
+    };
+
+    const formData = new FormData();
+    formData.append('estado', nuevoEstado);
+    
+    fetch(`/operaciones/${operacionId}/mover/`, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': getCookie('csrftoken'),
+        },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Error al mover la operación');
+        }
+    });
+}
+</script>
+
+{% endblock %}
+
+
+
