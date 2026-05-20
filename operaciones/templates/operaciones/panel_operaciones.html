@@ -72,6 +72,35 @@
     </div>
 </div>
 
+<!-- Modal para crear nueva etiqueta (NO anidar dentro de operacionModal) -->
+<div class="modal fade" id="crearEtiquetaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nueva Etiqueta</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="form-crear-etiqueta" method="post" action="{% url 'operaciones:crear_etiqueta' %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label for="etiqueta_nombre" class="form-label">Nombre:</label>
+                        <input type="text" class="form-control" id="etiqueta_nombre" name="nombre" required>
+                    </div>
+                    <div>
+                        <label for="etiqueta_color" class="form-label">Color:</label>
+                        <input type="color" class="form-control form-control-color w-100" id="etiqueta_color" name="color" value="#3E9FA2" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <style>
 .kanban-container {
     padding: 20px;
@@ -187,6 +216,8 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Temporal: verificar que el modal exista y NO sea null
+    console.log(document.getElementById('crearEtiquetaModal'));
     // Botón Ver (delegado) - evita perder handlers al reemplazar cards via AJAX
     document.addEventListener('click', function(e) {
         const btn = e.target.closest('[data-operacion-modal-open="1"]');
@@ -281,6 +312,44 @@ document.addEventListener('submit', function(e) {
             const currentId = document.querySelector('#modalContent [data-operacion-id]')?.dataset.operacionId;
             if (currentId) cargarDetalleOperacion(currentId);
         }
+    })
+    .catch(() => {});
+});
+
+// Crear etiqueta desde modal externo (no estÃ¡ dentro de #modalContent)
+document.addEventListener('submit', function(e) {
+    const formEtiqueta = e.target.closest('#form-crear-etiqueta');
+    if (!formEtiqueta) return;
+    e.preventDefault();
+
+    const nombre = document.getElementById('etiqueta_nombre')?.value || '';
+    const color = document.getElementById('etiqueta_color')?.value || '#3E9FA2';
+    const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+    fetch(formEtiqueta.action, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrf,
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'nombre=' + encodeURIComponent(nombre) + '&color=' + encodeURIComponent(color)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Error: ' + (data.error || 'No se pudo crear'));
+            return;
+        }
+
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('crearEtiquetaModal')).hide();
+        }
+
+        const currentId =
+            document.querySelector('#modalContent .operacion-detalle-modal')?.dataset.operacionId ||
+            document.querySelector('#modalContent [data-operacion-id]')?.dataset.operacionId;
+        if (currentId) cargarDetalleOperacion(currentId);
     })
     .catch(() => {});
 });
