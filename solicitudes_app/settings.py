@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "garantias",
     "panel_cotizaciones",
     "operaciones",
+    "cuenta_gastos",
 ]
 
 MIDDLEWARE = [

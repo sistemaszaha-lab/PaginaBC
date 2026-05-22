@@ -1,98 +1,84 @@
 {% extends "base.html" %}
-{% load static %}
 
-{% block title %}Crear Operación{% endblock %}
+{% block title %}Nueva operacion{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card" style="border: 1px solid var(--color-border); border-radius: 12px; box-shadow: var(--shadow-md);">
-                <div class="card-header" style="background: var(--color-card); border-bottom: 1px solid var(--color-border); padding: 20px;">
-                    <h3 style="margin: 0; font-weight: 600;">Nueva Operación</h3>
-                </div>
-                
-                <div class="card-body" style="padding: 20px;">
-                    <form method="post">
-                        {% csrf_token %}
-                        
-                        <div class="mb-3">
-                            <label for="id_titulo" class="form-label">Título *</label>
-                            {{ form.titulo }}
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_descripcion" class="form-label">Descripción</label>
-                            {{ form.descripcion }}
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="id_cliente" class="form-label">Cliente</label>
-                                    {{ form.cliente }}
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="id_prioridad" class="form-label">Prioridad</label>
-                                    {{ form.prioridad }}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_fecha_vencimiento" class="form-label">Vencimiento</label>
-                            {{ form.fecha_vencimiento }}
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_asignados" class="form-label">Asignados</label>
-                            {{ form.asignados }}
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="id_etiquetas" class="form-label">Etiquetas</label>
-                            {{ form.etiquetas }}
-                        </div>
-                        
-                        <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary flex-grow-1">Crear Operación</button>
-                            <a href="{% url 'operaciones:panel_operaciones' %}" class="btn btn-outline-secondary flex-grow-1">Cancelar</a>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
+{% include "garantias/_asignados_tags_assets.html" %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Nueva operacion</h2>
+  <a href="{% url 'operaciones:panel_operaciones' %}" class="btn btn-outline-secondary">Volver</a>
 </div>
 
-{% comment %}TomSelect (mismo look & feel que Garantías){% endcomment %}
-<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
-<script>
-window.initOperacionSelects = window.initOperacionSelects || function(root) {
-    const scope = root || document;
-    if (typeof TomSelect === 'undefined') return;
-    scope.querySelectorAll('[data-operacion-tags-select="1"]').forEach(function(select) {
-        if (select.tomselect) return;
-        const isEtiquetas = select.id === 'id_etiquetas';
-        new TomSelect(select, {
-            plugins: ['remove_button'],
-            create: isEtiquetas,
-            maxOptions: 200,
-            persist: false,
-            closeAfterSelect: false,
-            hidePlaceholder: true,
-            placeholder: isEtiquetas ? 'Buscar o crear etiqueta...' : 'Buscar usuario...',
-            searchField: ['text']
-        });
-    });
-};
-document.addEventListener('DOMContentLoaded', function() {
-    window.initOperacionSelects(document);
-});
-</script>
+<div class="card">
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <div class="row g-3">
+        <div class="col-12 col-lg-6">
+          <label for="id_titulo" class="form-label">Título</label>
+          {{ form.titulo }}
+          {% if form.titulo.errors %}<div class="text-danger small">{{ form.titulo.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-lg-6">
+          <label for="id_cliente" class="form-label">Cliente</label>
+          {{ form.cliente }}
+          {% if form.cliente.errors %}<div class="text-danger small">{{ form.cliente.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12">
+          <label for="id_descripcion" class="form-label">Descripción</label>
+          {{ form.descripcion }}
+          {% if form.descripcion.errors %}<div class="text-danger small">{{ form.descripcion.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-lg-4">
+          <label for="id_prioridad" class="form-label">Prioridad</label>
+          {{ form.prioridad }}
+          {% if form.prioridad.errors %}<div class="text-danger small">{{ form.prioridad.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-lg-4">
+          <label for="id_fecha_vencimiento" class="form-label">Vencimiento</label>
+          {{ form.fecha_vencimiento }}
+          {% if form.fecha_vencimiento.errors %}<div class="text-danger small">{{ form.fecha_vencimiento.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-lg-4">
+          <label for="id_asignados" class="form-label">Asignados</label>
+          {{ form.asignados }}
+          {% if form.asignados.errors %}<div class="text-danger small">{{ form.asignados.errors }}</div>{% endif %}
+        </div>
+      </div>
 
+      </div>
 
+      <hr class="my-4" />
+
+      <div class="mb-4">
+        <h5 class="mb-3">Archivos</h5>
+        {{ archivos_form.archivos }}
+        {% if archivos_form.archivos.errors %}<div class="text-danger small">{{ archivos_form.archivos.errors }}</div>{% endif %}
+        <div class="form-text">Puedes subir varios archivos (PDF, Excel, Word, imágenes, etc.).</div>
+      </div>
+
+      <div class="mb-4">
+        <h5 class="mb-3">Enlaces</h5>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label for="id_titulo" class="form-label">Título</label>
+            {{ enlace_form.titulo }}
+            {% if enlace_form.titulo.errors %}<div class="text-danger small">{{ enlace_form.titulo.errors }}</div>{% endif %}
+          </div>
+          <div class="col-md-8">
+            <label for="id_url" class="form-label">URL</label>
+            {{ enlace_form.url }}
+            {% if enlace_form.url.errors %}<div class="text-danger small">{{ enlace_form.url.errors }}</div>{% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex justify-content-end gap-2">
+        <a href="{% url 'operaciones:panel_operaciones' %}" class="btn btn-light">Cancelar</a>
+        <button type="submit" class="btn btn-primary">Crear</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}

@@ -20,6 +20,7 @@ urlpatterns = [
     path("panel-cotizaciones/", include("panel_cotizaciones.urls")),
     path("operaciones/", include("operaciones.urls")),
     path("", include("solicitudes.urls")),
+    path("cuenta-gastos/",include("cuenta_gastos.urls")),
 ]
 
 if settings.DEBUG:

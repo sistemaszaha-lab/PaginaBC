@@ -679,6 +679,9 @@
             <a href="{% url 'panel_cotizaciones:panel_cotizaciones' %}"
                 class="sidebar-link {% if current == 'panel_cotizaciones' %}is-active{% endif %}">Panel Cotizaciones</a>
             {% endif %}
+            <a href="{% url 'cuenta_gastos:panel_cuenta_gastos' %}"
+                class="sidebar-link {% if current == 'panel_cuenta_gastos' or current == 'crear_cuenta_gastos' %}is-active{% endif %}">Cuenta
+                de Gastos</a>
             <a href="{% url 'incidencias:panel_incidencias' %}"
                 class="sidebar-link {% if current == 'panel_incidencias' %}is-active{% endif %}">Incidencias</a>
         </nav>

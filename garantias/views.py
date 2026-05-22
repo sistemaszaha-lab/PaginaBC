@@ -267,6 +267,22 @@ def detalle_garantia_parcial(request, pk):
     return render(request, "garantias/_detalle_modal_content.html", _contexto_modal_garantia(garantia))
 
 
+def _preservar_vacios_garantia(form, objeto):
+    """
+    Antes de guardar, si un campo no-m2m llega vacío/None en el POST
+    y el objeto ya tenía un valor, restaura el valor original.
+    """
+    m2m_names = {f.name for f in objeto._meta.many_to_many}
+    for campo in list(form.fields.keys()):
+        if campo in m2m_names:
+            continue
+        valor = form.cleaned_data.get(campo)
+        if valor in (None, ""):
+            actual = getattr(objeto, campo, None)
+            if actual not in (None, ""):
+                setattr(form.instance, campo, actual)
+
+
 @login_required
 @admin_required
 def editar_garantia(request, pk):
@@ -276,7 +292,18 @@ def editar_garantia(request, pk):
         archivos_form = GarantiaArchivosForm(request.POST, request.FILES)
         enlace_form = GarantiaEnlaceForm(request.POST)
         if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
-            form.save()
+            # Preservar campos no-m2m que llegan vacíos
+            _preservar_vacios_garantia(form, garantia)
+
+            obj = form.save(commit=False)
+            obj.save()
+
+            # M2M: solo actualizar si el campo fue enviado explícitamente en el POST
+            if "asignados" in request.POST:
+                valores = form.cleaned_data.get("asignados")
+                if valores is not None:
+                    garantia.asignados.set(valores)
+
             _guardar_adjuntos_enlaces(request, garantia, enlace_form)
             garantia = get_object_or_404(_garantia_queryset(), pk=pk)
             messages.success(request, "Garantía actualizada.")

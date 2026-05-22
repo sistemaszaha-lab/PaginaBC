@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Crear Cuenta de Gastos{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card"
+                style="border: 1px solid var(--color-border); border-radius: 12px; box-shadow: var(--shadow-md);">
+                <div class="card-header"
+                    style="background: var(--color-card); border-bottom: 1px solid var(--color-border); padding: 20px;">
+                    <h3 style="margin: 0; font-weight: 600;">Nueva Cuenta de Gastos</h3>
+                </div>
+
+                <div class="card-body" style="padding: 20px;">
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <div class="mb-3">
+                            <label for="id_titulo" class="form-label">Nombre *</label>
+                            {{ form.titulo }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="id_descripcion" class="form-label">Descripción</label>
+                            {{ form.descripcion }}
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="id_cliente" class="form-label">Cliente</label>
+                                    {{ form.cliente }}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="id_prioridad" class="form-label">Prioridad</label>
+                                    {{ form.prioridad }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="id_fecha_vencimiento" class="form-label">Vencimiento</label>
+                            {{ form.fecha_vencimiento }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="id_asignados" class="form-label">Asignados</label>
+                            {{ form.asignados }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="id_etiquetas" class="form-label">Etiquetas</label>
+                            {{ form.etiquetas }}
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-grow-1">Crear Cuenta de Gastos</button>
+                            <a href="{% url 'cuenta_gastos:panel_cuenta_gastos' %}"
+                                class="btn btn-outline-secondary flex-grow-1">Cancelar</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include 'garantias/_asignados_tags_assets.html' %}
+<script>
+    // Alias para compatibilidad con inicializadores usados en cuenta_gastos
+    window.initOperacionSelects = window.initOperacionSelects || window.initGarantiaSelects;
+</script>
+
+
+{% endblock %}

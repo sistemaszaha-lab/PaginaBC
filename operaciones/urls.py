@@ -6,7 +6,7 @@ app_name = "operaciones"
 
 urlpatterns = [
     path("", views.panel_operaciones, name="panel_operaciones"),
-    path("crear/", views.crear_operacion, name="crear_operacion"),
+    path("nueva/", views.crear_operacion, name="crear_operacion"),
     path("opcion/crear/", views.crear_opcion, name="crear_opcion"),
     path("etiqueta/crear/", views.crear_etiqueta, name="crear_etiqueta"),
     path("etiqueta/<int:etiqueta_id>/editar/", views.editar_etiqueta, name="editar_etiqueta"),

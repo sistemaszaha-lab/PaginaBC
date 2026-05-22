@@ -1,388 +1,451 @@
 {% extends "base.html" %}
-{% load static %}
-{% load operaciones_extras %}
-
-{% block title %}Panel Operaciones{% endblock %}
+{% block title %}Panel de Operaciones{% endblock %}
 
 {% block content %}
+{% include "garantias/_asignados_tags_assets.html" %}
+<h2 class="mb-4">Panel de Operaciones</h2>
+<div style="display:none;">{% csrf_token %}</div>
 
-<div class="kanban-container">
-    <div style="display:none;">{% csrf_token %}</div>
-    <div class="kanban-header">
-        <h1>Operaciones</h1>
-        
-        <!-- Filtros -->
-        <div class="kanban-filtros">
-            <form method="get" class="filtro-form">
-                <div class="d-flex flex-column">
-                    <label for="filtro-usuarios" class="form-label mb-1">Filtro por usuario</label>
-                    <select name="usuarios" multiple class="form-select rounded" id="filtro-usuarios">
-                        <option value="all">Todos</option>
-                    {% for usuario in usuarios_filtro %}
-                        <option value="{{ usuario.id }}" {% if usuario.seleccionado %}selected{% endif %}>
-                            {{ usuario.nombre }}
-                        </option>
-                    {% endfor %}
-                    </select>
-                </div>
-                <button type="submit" class="btn btn-sm btn-primary">Filtrar</button>
-            </form>
-            
-            <a href="{% url 'operaciones:crear_operacion' %}" class="btn btn-primary">
-                + Nueva Operación
-            </a>
-        </div>
+<div class="mb-3 d-flex gap-2 flex-wrap align-items-end">
+  <a href="{% url 'operaciones:crear_operacion' %}" class="btn btn-success">+ Nueva operación</a>
+
+    <form method="GET" class="ms-auto">
+
+    <div class="ms-auto" style="min-width:220px;">
+
+    <label class="form-label small text-muted mb-1">
+        Filtro por usuario
+    </label>
+
+    <select
+    id="OperacionesUserFilter"
+    name="usuarios"
+    class="form-select"
+    >
+
+    <option value="">
+    Todos
+    </option>
+
+    {% for usuario in usuarios_filtro %}
+
+    <option
+    value="{{usuario.id}}"
+
+    {% if usuario.seleccionado %}
+    selected
+    {% endif %}
+    >
+
+    {{usuario.nombre}}
+
+    </option>
+
+    {% endfor %}
+
+    </select>
+
     </div>
 
-    <!-- Kanban Board -->
-    <div class="kanban-board">
-        {% for estado, label in estados %}
-        <div class="kanban-columna" data-estado="{{ estado }}">
-            <div class="columna-header">
-                <h3>{{ label }}</h3>
-                <span class="badge bg-secondary">{{ columnas|get_item:estado|length }}</span>
-            </div>
-            
-            <div class="columna-tarjetas" data-estado="{{ estado }}">
-                {% for operacion in columnas|get_item:estado %}
-                    {% include "operaciones/_operacion_card.html" with o=operacion %}
-                {% empty %}
-                <div class="empty-state">
-                    <p>Sin operaciones</p>
-                </div>
-                {% endfor %}
-            </div>
+</form>
+
+
+<div id="OperacionesBoard">
+  <div class="row">
+
+    {% for estado, operaciones in columnas.items %}
+    <div class="col-md-4 mb-4">
+
+      <div class="card h-100">
+
+        <div class="card-header d-flex justify-content-between">
+
+          <strong>
+            {{ estado.label|title }}
+          </strong>
+
+          <span class="badge bg-secondary">
+            {{ operaciones|length }}
+          </span>
+
         </div>
-        {% endfor %}
+
+        <div
+          class="card-body panel-operaciones-col"
+          data-estado="{{ estado.label }}"
+        >
+
+          {% for operacion in operaciones %}
+
+            {% include "operaciones/_operacion_card.html" %}
+
+          {% empty %}
+
+            <div class="text-center text-muted panel-operacion-empty py-4">
+              Sin operaciones
+            </div>
+
+          {% endfor %}
+
+        </div>
+
+      </div>
+
     </div>
+    {% endfor %}
+
+  </div>
 </div>
 
-<!-- Modal para detalles -->
-<div class="modal fade" id="operacionModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Detalles Operación</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body" id="modalContent">
-                Cargando...
-            </div>
-        </div>
+</div>
+<div class="modal fade" id="OperacionDetalleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content" id="OperacionDetalleModalContent">
+      <div class="modal-body p-4 text-center text-muted">Cargando...</div>
     </div>
+  </div>
 </div>
 
-<!-- Modal para crear nueva etiqueta (NO anidar dentro de operacionModal) -->
-<div class="modal fade" id="crearEtiquetaModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Nueva Etiqueta</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="form-crear-etiqueta" method="post" action="{% url 'operaciones:crear_etiqueta' %}">
-                {% csrf_token %}
-                <div class="modal-body">
-                    <div class="mb-2">
-                        <label for="etiqueta_nombre" class="form-label">Nombre:</label>
-                        <input type="text" class="form-control" id="etiqueta_nombre" name="nombre" required>
-                    </div>
-                    <div>
-                        <label for="etiqueta_color" class="form-label">Color:</label>
-                        <input type="color" class="form-control form-control-color w-100" id="etiqueta_color" name="color" value="#3E9FA2" required>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Crear</button>
-                </div>
-            </form>
-        </div>
+<div class="modal fade" id="OperacionEliminarConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Confirmar eliminación</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <p id="OperacionEliminarConfirmMessage">¿Deseas eliminar esta operación?</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal" data-operacion-cancel-delete="1">Cancelar</button>
+        <button type="button" class="btn btn-danger" data-operacion-confirm-delete="1">Eliminar</button>
+      </div>
     </div>
+  </div>
 </div>
 
-<style>
-.kanban-container {
-    padding: 20px;
-}
-
-.kanban-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 15px;
-}
-
-.kanban-filtros {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.filtro-form {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
-.filtro-form select {
-    min-width: 150px;
-}
-
-.kanban-board {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 16px;
-    margin-bottom: 20px;
-}
-
-.kanban-columna {
-    background: var(--color-card);
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    display: flex;
-    flex-direction: column;
-    max-height: 70vh;
-    overflow: hidden;
-}
-
-.columna-header {
-    padding: 12px;
-    border-bottom: 1px solid var(--color-border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: rgba(1, 107, 107, 0.05);
-}
-
-.columna-header h3 {
-    margin: 0;
-    font-size: 0.95rem;
-    font-weight: 600;
-}
-
-.columna-tarjetas {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.empty-state {
-    text-align: center;
-    color: #999;
-    padding: 20px 10px;
-    font-size: 0.9rem;
-}
-
-@media (max-width: 1200px) {
-    .kanban-board {
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    }
-}
-
-@media (max-width: 768px) {
-    .kanban-container {
-        padding: 10px;
-    }
-    
-    .kanban-header {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .kanban-filtros {
-        justify-content: stretch;
-    }
-    
-    .filtro-form {
-        flex-direction: column;
-    }
-    
-    .kanban-board {
-        grid-template-columns: 1fr;
-    }
-}
-</style>
-
-{# Bootstrap JS necesario para modals (patrón igual a Garantías) #}
+{# Bootstrap JS sólo para este módulo (modals) #}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Temporal: verificar que el modal exista y NO sea null
-    console.log(document.getElementById('crearEtiquetaModal'));
-    // Botón Ver (delegado) - evita perder handlers al reemplazar cards via AJAX
-    document.addEventListener('click', function(e) {
-        const btn = e.target.closest('[data-operacion-modal-open="1"]');
-        if (!btn) return;
-        e.preventDefault();
-        const operacionId = btn.dataset.id;
-        const url = btn.getAttribute('data-modal-url') || (operacionId ? `/operaciones/detalle/${operacionId}/` : null);
-        console.log('[Operaciones] click ver-operacion id=', operacionId, 'url=', url, btn);
-        if (url) cargarDetalleOperacion(operacionId, url);
-    });
+  (function () {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
 
-    // Inicializar drag and drop con SortableJS
-    const columnas = document.querySelectorAll('.columna-tarjetas');
-    columnas.forEach(columna => {
-        Sortable.create(columna, {
-            group: 'operaciones',
-            animation: 150,
-            ghostClass: 'sortable-ghost',
-            onEnd: function(evt) {
-                const operacionId = evt.item.dataset.operacionId;
-                const nuevoEstado = evt.to.dataset.estado;
-                moverOperacion(operacionId, nuevoEstado);
-            }
-        });
-    });
-});
+    const modalElement = document.getElementById('OperacionDetalleModal');
+    const modalContent = document.getElementById('OperacionDetalleModalContent');
+    const modalInstance = modalElement && window.bootstrap ? new bootstrap.Modal(modalElement) : null;
+    const confirmModalElement = document.getElementById('OperacionEliminarConfirmModal');
+    const confirmModalInstance = confirmModalElement && window.bootstrap ? new bootstrap.Modal(confirmModalElement) : null;
+    let OperacionDeleteUrl = null;
 
-function cargarDetalleOperacion(operacionId, url) {
-    document.getElementById('modalContent').innerHTML = 'Cargando...';
-
-    const modalEl = document.getElementById('operacionModal');
-    if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    function postForm(url, formData) {
+      return fetch(url, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: formData,
+      });
     }
 
-    const finalUrl = url || `/operaciones/detalle/${operacionId}/`;
-    console.log('[Operaciones] fetch detalle operacionId=', operacionId, 'url=', finalUrl);
-    fetch(finalUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-        .then(response => response.json())
-        .then(data => {
-            console.log('[Operaciones] detalle response=', data);
-            document.getElementById('modalContent').innerHTML = data.html || '';
-            if (typeof window.initOperacionSelects === 'function') window.initOperacionSelects(document.getElementById('modalContent'));
-        })
-        .catch((err) => {
-            console.log('[Operaciones] error cargando detalle', err);
-            document.getElementById('modalContent').innerHTML = '<div class="alert alert-danger mb-0">No se pudo cargar el detalle.</div>';
-        });
-}
-
-document.addEventListener('submit', function(e) {
-    const form = e.target.closest('#modalContent form');
-    if (!form) return;
-    e.preventDefault();
-
-    if (form.dataset.confirmDelete === '1' && !confirm('¿Deseas eliminar esta operación?')) return;
-
-    const formData = new FormData(form);
-    fetch(form.action, {
-        method: form.method || 'POST',
-        headers: {'X-Requested-With': 'XMLHttpRequest'},
-        body: formData
+    function getHtml(url) {
+    return fetch(url, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
     })
     .then(async (response) => {
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) return response.json();
-        return { success: false, html: await response.text() };
-    })
-    .then((data) => {
-        console.log('[Operaciones] submit response=', data);
-        if (data.redirect) {
-            const modalEl = document.getElementById('operacionModal');
-            const instance = bootstrap.Modal.getOrCreateInstance(modalEl);
-            instance.hide();
-            const card = document.querySelector(`.operacion-card[data-operacion-id="${data.id}"]`);
-            if (card) card.remove();
-            return;
-        }
-        if (data.success && data.html) {
-            const currentId = document.querySelector('#modalContent .operacion-detalle-modal')?.dataset.operacionId || document.querySelector('#modalContent [data-operacion-id]')?.dataset.operacionId;
-            if (currentId) {
-                const card = document.querySelector(`.operacion-card[data-operacion-id="${currentId}"]`);
-                if (card) card.outerHTML = data.html;
-                cargarDetalleOperacion(currentId);
-                return;
-            }
-            document.getElementById('modalContent').innerHTML = data.html;
-            if (typeof window.initOperacionSelects === 'function') window.initOperacionSelects(document.getElementById('modalContent'));
-            return;
-        }
-        if (data.success && (data.comentario || data.id)) {
-            const currentId = document.querySelector('#modalContent [data-operacion-id]')?.dataset.operacionId;
-            if (currentId) cargarDetalleOperacion(currentId);
-        }
-    })
-    .catch(() => {});
-});
 
-// Crear etiqueta desde modal externo (no estÃ¡ dentro de #modalContent)
-document.addEventListener('submit', function(e) {
-    const formEtiqueta = e.target.closest('#form-crear-etiqueta');
-    if (!formEtiqueta) return;
-    e.preventDefault();
+        const contentType =
+            response.headers.get(
+                'content-type'
+            );
 
-    const nombre = document.getElementById('etiqueta_nombre')?.value || '';
-    const color = document.getElementById('etiqueta_color')?.value || '#3E9FA2';
-    const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+        if (
+            contentType &&
+            contentType.includes(
+                'application/json'
+            )
+        ) {
 
-    fetch(formEtiqueta.action, {
-        method: 'POST',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRFToken': csrf,
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: 'nombre=' + encodeURIComponent(nombre) + '&color=' + encodeURIComponent(color)
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (!data.success) {
-            alert('Error: ' + (data.error || 'No se pudo crear'));
-            return;
+            const data =
+                await response.json();
+
+            return data.html;
         }
 
-        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('crearEtiquetaModal')).hide();
-        }
+        return response.text();
 
-        const currentId =
-            document.querySelector('#modalContent .operacion-detalle-modal')?.dataset.operacionId ||
-            document.querySelector('#modalContent [data-operacion-id]')?.dataset.operacionId;
-        if (currentId) cargarDetalleOperacion(currentId);
-    })
-    .catch(() => {});
-});
-
-function moverOperacion(operacionId, nuevoEstado) {
-    const getCookie = (name) => {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-        return '';
-    };
-
-    const formData = new FormData();
-    formData.append('estado', nuevoEstado);
-    
-    fetch(`/operaciones/${operacionId}/mover/`, {
-        method: 'POST',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRFToken': getCookie('csrftoken'),
-        },
-        body: formData
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (!data.success) {
-            alert('Error al mover la operación');
-        }
     });
 }
+
+    function ensureEmptyState(column) {
+      const cards = column.querySelectorAll('[data-panel-operacion-card="1"]');
+      let empty = column.querySelector('.panel-operacion-empty');
+      if (!cards.length && !empty) {
+        empty = document.createElement('div');
+        empty.className = 'text-muted small panel-operacion-empty';
+        empty.textContent = 'Sin operaciones.';
+        column.appendChild(empty);
+      }
+      if (cards.length && empty) empty.remove();
+    }
+
+    function replaceCard(cardHtml, id) {
+      if (!cardHtml || !id) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = cardHtml.trim();
+      const newCard = wrapper.firstElementChild;
+      const currentCard = document.getElementById(`panel-operacion-${id}`);
+      if (newCard && currentCard) currentCard.replaceWith(newCard);
+    }
+
+    function initSortable() {
+      if (typeof Sortable === 'undefined') return;
+      document.querySelectorAll('.panel-operaciones-col').forEach((column) => {
+        if (column.dataset.sortableReady === '1') return;
+        column.dataset.sortableReady = '1';
+        Sortable.create(column, {
+          group: 'panel-operaciones-kanban',
+          animation: 150,
+          ghostClass: 'panel-operacion-ghost',
+          dragClass: 'panel-operacion-drag',
+          onEnd: function(evt){
+            const card = evt.item;
+            const operacionId =
+            card.dataset.panelOperacionId;
+            const nuevoEstado =
+            evt.to.dataset.estado;
+            const origen = evt.from;
+            const destino = evt.to;
+            if(
+            !operacionId ||
+            !nuevoEstado
+            ){
+        return;
+    }
+
+    const fd = new FormData();
+
+    fd.append(
+       'estado',
+       nuevoEstado
+    );
+
+    fetch(
+      `/operaciones/${operacionId}/mover/`,
+      {
+        method:'POST',
+
+        headers:{
+            'X-CSRFToken':
+            document.querySelector(
+             '[name=csrfmiddlewaretoken]'
+            ).value,
+
+            'X-Requested-With':
+            'XMLHttpRequest'
+        },
+
+        body:fd
+      }
+
+    )
+    .then(r=>r.json())
+
+    .then(data=>{
+
+        if(
+           data.status!=="ok"
+        ){
+
+            origen.appendChild(
+                card
+            );
+
+        }
+
+    })
+
+    .catch(()=>{
+
+        origen.appendChild(
+            card
+        );
+
+    });
+
+}
+        });
+        ensureEmptyState(column);
+      });
+    }
+
+    function initOperacionModalContent(container) {
+      if (!container) return;
+      if (window.initGarantiaSelects) {
+        window.initGarantiaSelects(container);
+      }
+    }
+
+    function loadModal(url) {
+      if (!modalContent || !modalInstance) return;
+      modalContent.innerHTML = '<div class="modal-body p-4 text-center text-muted">Cargando...</div>';
+      modalInstance.show();
+      getHtml(url)
+        .then((html) => {
+          modalContent.innerHTML = html;
+          initOperacionModalContent(modalContent);
+        })
+        .catch(() => {
+          modalContent.innerHTML = '<div class="modal-body p-4 text-center text-danger">No se pudo cargar la operación.</div>';
+        });
+    }
+
+    function showDeleteConfirm(url) {
+      OperacionDeleteUrl = url;
+      if (confirmModalInstance) {
+        confirmModalInstance.show();
+      }
+    }
+
+    function performDelete() {
+      if (!OperacionDeleteUrl) return;
+      fetch(OperacionDeleteUrl, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.status === 'ok') {
+            if (modalInstance) modalInstance.hide();
+            if (confirmModalInstance) confirmModalInstance.hide();
+            refreshBoard();
+          }
+        })
+        .catch(() => {
+          if (confirmModalInstance) confirmModalInstance.hide();
+        });
+    }
+
+    function refreshBoard() {
+      const select = document.getElementById('OperacionesUserFilter');
+      const usuario = select ? (select.value || '') : '';
+      const url = usuario ? `${boardUrl}?usuario=${encodeURIComponent(usuario)}` : boardUrl;
+      getHtml(url)
+        .then((html) => {
+          const board = document.getElementById('OperacionesBoard');
+          if (!board) return;
+          board.innerHTML = html;
+          initSortable();
+        })
+        .catch(() => {});
+    }
+
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'OperacionesUserFilter') refreshBoard();
+    });
+
+    document.addEventListener('click', (e) => {
+      const deleteButton = e.target.closest('[data-panel-operacion-delete="1"]');
+      if (deleteButton) {
+        e.preventDefault();
+        const url = deleteButton.dataset.deleteUrl;
+        if (url) showDeleteConfirm(url);
+        return;
+      }
+
+      const confirmDeleteButton = e.target.closest('[data-panel-operacion-confirm-delete="1"]');
+      if (confirmDeleteButton) {
+        e.preventDefault();
+        performDelete();
+        return;
+      }
+
+      const link = e.target.closest('[data-panel-operacion-modal-open="1"]');
+      if (!link) return;
+      e.preventDefault();
+      const url = link.getAttribute('data-modal-url') || link.getAttribute('href');
+      if (url) loadModal(url);
+    });
+
+    document.addEventListener('submit', (e) => {
+      const modalForm = e.target.closest('[data-panel-operacion-modal-form="1"]');
+      if (modalForm) {
+        e.preventDefault();
+        const fd = new FormData(modalForm);
+        postForm(modalForm.getAttribute('action'), fd)
+          .then(async (response) => {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) return response.json();
+            return { status: 'error', html: await response.text() };
+          })
+          .then((data) => {
+            if (data.status === 'ok') {
+              modalContent.innerHTML = data.html;
+              initOperacionModalContent(modalContent);
+              replaceCard(data.card_html, data.id);
+            } else if (data.html) {
+              modalContent.innerHTML = data.html;
+              initOperacionModalContent(modalContent);
+            }
+          })
+          .catch(() => {});
+        return;
+      }
+
+      const commentForm = e.target.closest('[data-panel-operacion-comentario-form="1"]');
+      if (!commentForm) return;
+      e.preventDefault();
+      const url = commentForm.getAttribute('action');
+      const id = commentForm.getAttribute('data-panel-operacion-id');
+      if (!url || !id) return;
+      const textarea = commentForm.querySelector('textarea[name="texto"]');
+      const text = (textarea?.value || '').trim();
+      if (!text) return;
+      const fd = new FormData();
+      fd.set('texto', text);
+      postForm(url, fd)
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.status !== 'ok') return;
+          if (textarea) textarea.value = '';
+          const lists = [
+            document.querySelector(`#panel-operacion-${id} [data-panel-operacion-comentarios="1"]`),
+            modalContent?.querySelector('[data-panel-operacion-comentarios="1"]'),
+          ];
+          lists.forEach((list) => {
+            if (!list) return;
+            const item = document.createElement('div');
+            const fecha = new Date(data.comentario.fecha);
+            item.className = 'small border rounded p-2 mb-2';
+            item.innerHTML = `<div class="fw-semibold">${data.comentario.usuario} <span class="text-muted fw-normal">• ${fecha.toLocaleString()}</span></div><div style="white-space: pre-wrap;"></div>`;
+            item.querySelector('div[style]')?.appendChild(document.createTextNode(data.comentario.texto));
+            list.prepend(item.cloneNode(true));
+          });
+          const counter = document.querySelector(`#panel-operacion-${id} [data-panel-operacion-comentarios-count="1"]`);
+          if (counter) counter.textContent = String((parseInt(counter.textContent || '0', 10) || 0) + 1);
+        })
+        .catch(() => {});
+    });
+
+    initSortable();
+  })();
 </script>
 
+<style>
+  .panel-operaciones-col { min-height: 240px; }
+  .panel-operacion-drag { opacity: 0.85; }
+  .panel-operacion-ghost {
+    opacity: 0.45;
+    background: rgba(1, 107, 107, 0.08);
+    border: 1px dashed #3e9fa2;
+  }
+</style>
+
 {% endblock %}
-
-
 

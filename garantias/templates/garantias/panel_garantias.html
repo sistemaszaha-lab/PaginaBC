@@ -6,8 +6,43 @@
 <h2 class="mb-4">Garantías</h2>
 <div style="display:none;">{% csrf_token %}</div>
 
-<div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
+<div class="mb-3 d-flex gap-2 flex-wrap align-items-end">
   <a href="{% url 'garantias:crear_garantia' %}" class="btn btn-success">+ Nueva garantía</a>
+  <div class="ms-auto" style="min-width:220px;">
+
+    <label class="form-label small text-muted mb-1">
+        Filtro por usuario
+    </label>
+
+    <select
+    id="GarantiasUserFilter"
+    name="usuarios"
+    class="form-select"
+    >
+
+    <option value="">
+    Todos
+    </option>
+
+    {% for usuario in usuarios_filtro %}
+
+    <option
+    value="{{usuario.id}}"
+
+    {% if usuario.seleccionado %}
+    selected
+    {% endif %}
+    >
+
+    {{usuario.nombre}}
+
+    </option>
+
+    {% endfor %}
+
+    </select>
+
+    </div>
 </div>
 
 <div class="row g-3">

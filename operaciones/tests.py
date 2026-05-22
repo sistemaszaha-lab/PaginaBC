@@ -60,3 +60,43 @@ class OperacionesDetalleModalTests(TestCase):
     def test_detalle_operacion_endpoint(self):
         resp = self.client.get(reverse("operaciones:detalle_operacion", args=[self.operacion.id]))
         self.assertEqual(resp.status_code, 200)
+
+    def test_editar_operacion_preserva_valores(self):
+        # Crear asignados y etiquetas
+        User = get_user_model()
+        usuario_2 = User.objects.create_user(username="tester2", password="pass")
+        from operaciones.models import OperacionEtiqueta
+        etiqueta = OperacionEtiqueta.objects.create(nombre="Urgente")
+        
+        self.operacion.titulo = "Laptop"
+        self.operacion.fecha_vencimiento = "2026-05-22"
+        self.operacion.prioridad = "ALTA"
+        self.operacion.save()
+        self.operacion.asignados.add(usuario_2)
+        self.operacion.etiquetas.add(etiqueta)
+
+        # Hacemos un POST mandando valores vacíos/None
+        post_data = {
+            "titulo": "",
+            "fecha_vencimiento": "",
+            "prioridad": "MEDIA",  # Queremos cambiar solo la prioridad
+            "asignados": [],
+            "etiquetas": [],
+        }
+        
+        resp = self.client.post(
+            reverse("operaciones:editar_operacion", args=[self.operacion.id]),
+            post_data,
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest"
+        )
+        self.assertEqual(resp.status_code, 200)
+        
+        self.operacion.refresh_from_db()
+        # Verificar que la prioridad cambió a MEDIA
+        self.assertEqual(self.operacion.prioridad, "MEDIA")
+        # Verificar que el título y fecha de vencimiento se mantuvieron intactos
+        self.assertEqual(self.operacion.titulo, "Laptop")
+        self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-05-22")
+        # Verificar que los asignados y etiquetas se mantuvieron
+        self.assertIn(usuario_2, self.operacion.asignados.all())
+        self.assertIn(etiqueta, self.operacion.etiquetas.all())

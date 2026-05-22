@@ -7,6 +7,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.http import require_POST, require_http_methods
 
+# pyrefly: ignore [missing-import]
 from .forms import (
     OperacionArchivosForm,
     OperacionComentarioForm,
@@ -86,7 +87,7 @@ def _guardar_adjuntos_enlaces(request, operacion, enlace_form):
 def _render_card_html(request, operacion):
     return render_to_string(
         "operaciones/_operacion_card.html",
-        {"o": operacion, "comentario_form": OperacionComentarioForm()},
+        {"operacion": operacion, "comentario_form": OperacionComentarioForm()},
         request=request,
     )
 
@@ -189,29 +190,75 @@ def detalle_operacion(request, operacion_id):
 
 @login_required
 def detalle_operacion_modal(request, operacion_id):
-    # Backward-compatible endpoint (usado por versiones anteriores del front)
-    return detalle_operacion(request, operacion_id)
+    operacion = get_object_or_404(Operacion, id=operacion_id)
+    if request.method == "POST":
+        form = OperacionEditarForm(request.POST, request.FILES, instance=operacion)
+        if form.is_valid():
+            original = Operacion.objects.get(id=operacion_id)
+            for campo in form.fields:
+                valor = form.cleaned_data.get(campo)
+                if valor in (None, '', [], {}) or (hasattr(valor, 'exists') and not valor.exists()):
+                    actual = getattr(original, campo)
+                    if hasattr(actual, 'all'):
+                        form.cleaned_data[campo] = actual.all()
+                    else:
+                        setattr(form.instance, campo, actual)
+            obj = form.save(commit=False)
+            obj.save()
+            form.save_m2m()
+
+            if _es_ajax(request):
+                return JsonResponse({
+                    "success": True,
+                    "html": _render_card_html(request, operacion),
+                })
+            messages.success(request, "Operación actualizada exitosamente.")
+            return redirect("operaciones:panel_operaciones")
+    else:
+        form = OperacionEditarForm(instance=operacion)
+
+    contexto = _contexto_modal_operacion(operacion, form=form)
+    if _es_ajax(request):
+        html = render_to_string("operaciones/_detalle_modal_content.html", contexto, request=request)
+        return JsonResponse({"html": html})
+    return render(request, "operaciones/_detalle_modal_content.html", contexto)
 
 
 @login_required
 @require_http_methods(["POST"])
 def editar_operacion(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
-    form = OperacionEditarForm(request.POST, instance=operacion)
-    
+    form = OperacionEditarForm(request.POST, request.FILES, instance=operacion)
+
     if form.is_valid():
-        form.save()
-        
+        original = Operacion.objects.get(id=operacion_id)
+        for campo in form.fields:
+            valor = form.cleaned_data.get(campo)
+            if valor in (None, '', [], {}) or (hasattr(valor, 'exists') and not valor.exists()):
+                actual = getattr(original, campo)
+                if hasattr(actual, 'all'):
+                    form.cleaned_data[campo] = actual.all()
+                else:
+                    setattr(form.instance, campo, actual)
+        obj = form.save(commit=False)
+        obj.save()
+        form.save_m2m()
+
+        operacion.refresh_from_db()
+
         if _es_ajax(request):
             return JsonResponse({
                 "success": True,
                 "html": _render_card_html(request, operacion),
             })
-        
+
         messages.success(request, "Operación actualizada exitosamente.")
         return redirect("operaciones:panel_operaciones")
-    
+
     contexto = _contexto_modal_operacion(operacion, form=form)
+    if _es_ajax(request):
+        html = render_to_string("operaciones/_detalle_modal_content.html", contexto, request=request)
+        return JsonResponse({"html": html})
     return render(request, "operaciones/_detalle_modal_content.html", contexto)
 
 
@@ -317,27 +364,50 @@ def editar_etiqueta(request, etiqueta_id):
 def eliminar_etiqueta(request, etiqueta_id):
     etiqueta = get_object_or_404(OperacionEtiqueta, id=etiqueta_id)
     etiqueta.delete()
+    # Si se proporciona un objeto en el POST (operacion abierta), devolver html actualizado
+    obj_id = request.POST.get("obj_id")
+    if _es_ajax(request) and obj_id:
+        try:
+            operacion = get_object_or_404(Operacion, id=int(obj_id))
+            html = render_to_string("operaciones/_detalle_modal_content.html", _contexto_modal_operacion(operacion), request=request)
+            card_html = _render_card_html(request, operacion)
+            return JsonResponse({"success": True, "html": html, "card_html": card_html, "id": operacion.id})
+        except Exception:
+            pass
     return JsonResponse({"success": True})
 
 
 @login_required
 @require_POST
-def mover_operacion(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
-    nuevo_estado = request.POST.get("estado")
-    
-    if nuevo_estado in dict(Operacion.Estado.choices):
-        operacion.estado = nuevo_estado
-        operacion.save()
-        
-        if _es_ajax(request):
-            return JsonResponse({
-                "success": True,
-                "html": _render_card_html(request, operacion),
-            })
-    
-    return JsonResponse({"success": False})
+def mover_operacion(
+    request,
+    operacion_id
+):
 
+    if request.method=="POST":
+
+        operacion=get_object_or_404(
+           Operacion,
+           id=operacion_id
+        )
+
+        estado=request.POST.get(
+           "estado"
+        )
+
+        if estado:
+
+            operacion.estado=estado
+
+            operacion.save()
+
+            return JsonResponse({
+                "status":"ok"
+            })
+
+    return JsonResponse({
+        "status":"error"
+    })
 
 @login_required
 @require_POST

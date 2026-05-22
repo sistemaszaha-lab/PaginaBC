@@ -118,6 +118,11 @@ class PanelCotizacionUpdateForm(forms.ModelForm):
         widget=forms.SelectMultiple(attrs={"class": "form-select rounded garantia-asignados-select", "data-garantia-tags-select": "1"}),
     )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in list(self.fields.keys()):
+            self.fields[field_name].required = False
+
 
 class PanelCotizacionComentarioForm(forms.ModelForm):
     class Meta:

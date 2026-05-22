@@ -171,6 +171,22 @@ def detalle_modal(request: HttpRequest, pk: int) -> HttpResponse:
     )
 
 
+def _preservar_vacios_cotizacion(form, objeto):
+    """
+    Antes de guardar, si un campo no-m2m llega vacío/None en el POST
+    y el objeto ya tenía un valor, restaura el valor original.
+    """
+    m2m_names = {f.name for f in objeto._meta.many_to_many}
+    for campo in list(form.fields.keys()):
+        if campo in m2m_names:
+            continue
+        valor = form.cleaned_data.get(campo)
+        if valor in (None, ""):
+            actual = getattr(objeto, campo, None)
+            if actual not in (None, ""):
+                setattr(form.instance, campo, actual)
+
+
 @login_required
 @require_POST
 def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
@@ -182,13 +198,30 @@ def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
     archivos_form = PanelCotizacionArchivosForm(request.POST, request.FILES)
     enlace_form = PanelCotizacionEnlaceForm(request.POST)
     if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
-        obj = form.save()
-        _guardar_adjuntos_enlaces(request, obj, enlace_form)
+        # Preservar campos no-m2m que llegan vacíos
+        _preservar_vacios_cotizacion(form, obj)
+
+        saved_obj = form.save(commit=False)
+        saved_obj.save()
+
+        # M2M: solo actualizar asignados si fue enviado explícitamente en el POST
+        if "asignados" in request.POST:
+            valores = form.cleaned_data.get("asignados")
+            if valores is not None:
+                saved_obj.asignados.set(valores)
+
+        _guardar_adjuntos_enlaces(request, saved_obj, enlace_form)
+
+        # Refrescar con prefetch para el modal y la tarjeta
+        saved_obj = get_object_or_404(
+            PanelCotizacion.objects.prefetch_related("asignados", "comentarios__creado_por", "archivos", "enlaces"),
+            pk=pk,
+        )
         html = render_to_string(
             "panel_cotizaciones/_detalle_modal.html",
             {
-                "c": obj,
-                "form": PanelCotizacionUpdateForm(instance=obj),
+                "c": saved_obj,
+                "form": PanelCotizacionUpdateForm(instance=saved_obj),
                 "comentario_form": comentario_form,
                 "archivos_form": PanelCotizacionArchivosForm(),
                 "enlace_form": PanelCotizacionEnlaceForm(),
@@ -196,9 +229,9 @@ def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
             request=request,
         )
         card_html = render_to_string(
-            "panel_cotizaciones/_card.html", {"c": obj}, request=request
+            "panel_cotizaciones/_card.html", {"c": saved_obj}, request=request
         )
-        return JsonResponse({"status": "ok", "html": html, "card_html": card_html, "id": obj.pk})
+        return JsonResponse({"status": "ok", "html": html, "card_html": card_html, "id": saved_obj.pk})
     html = render_to_string(
         "panel_cotizaciones/_detalle_modal.html",
         {
