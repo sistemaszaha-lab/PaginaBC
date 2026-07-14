@@ -6,6 +6,7 @@ from django.db import IntegrityError, transaction
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
+from clientes.models import normalizar_texto_cliente
 from .models import Cotizacion, Referencia, Solicitud, UserProfile
 
 CLIENTE_NUEVO_LABEL = "Registrar cliente nuevo"
@@ -74,7 +75,7 @@ class SolicitudForm(forms.ModelForm):
             "fecha_recepcion": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
             "fecha_entrega": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
             "cliente": forms.TextInput(
-                attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
+                attrs={"class": "form-control js-uppercase-cliente", "list": "clientes_datalist", "autocomplete": "off"}
             ),
         }
 
@@ -103,7 +104,7 @@ class SolicitudForm(forms.ModelForm):
         return solicitud
 
     def clean_cliente(self):
-        return _validar_cliente(self.cleaned_data.get("cliente"))
+        return normalizar_texto_cliente(_validar_cliente(self.cleaned_data.get("cliente")))
 
     def _generar_sg(self, anio):
         """
@@ -511,7 +512,7 @@ class ReferenciaForm(forms.ModelForm):
         widgets = {
             "fecha": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
             "cliente": forms.TextInput(
-                attrs={"class": "form-control", "list": "clientes_datalist", "autocomplete": "off"}
+                attrs={"class": "form-control js-uppercase-cliente", "list": "clientes_datalist", "autocomplete": "off"}
             ),
             "medio_operacion": forms.Select(attrs={"class": "form-select"}),
         }
@@ -562,7 +563,7 @@ class ReferenciaForm(forms.ModelForm):
         return referencia
 
     def clean_cliente(self):
-        return _validar_cliente(self.cleaned_data.get("cliente"))
+        return normalizar_texto_cliente(_validar_cliente(self.cleaned_data.get("cliente")))
 
     def _generar_referencia(self, fecha, operacion, consecutivo):
         codigo_operacion = self.CODIGOS_OPERACION[operacion]

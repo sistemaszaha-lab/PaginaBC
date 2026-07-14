@@ -20,4 +20,31 @@
         </form>
     </div>
 </div>
+<script>
+(() => {
+    const fields = ["id_nombre", "id_empresa"];
+
+    const normalizeValue = (value) => value.trimStart().replace(/\s+/g, " ").toUpperCase();
+
+    fields.forEach((fieldId) => {
+        const input = document.getElementById(fieldId);
+        if (!input) return;
+
+        input.addEventListener("input", () => {
+            const start = input.selectionStart;
+            const end = input.selectionEnd;
+            const original = input.value;
+            const normalized = normalizeValue(original);
+
+            if (original === normalized) return;
+
+            const beforeStart = normalizeValue(original.slice(0, start));
+            const beforeEnd = normalizeValue(original.slice(0, end));
+
+            input.value = normalized;
+            input.setSelectionRange(beforeStart.length, beforeEnd.length);
+        });
+    });
+})();
+</script>
 {% endblock %}

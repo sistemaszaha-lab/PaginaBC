@@ -72,8 +72,8 @@ class SeguridadPermisosTests(TestCase):
         response = self.client.get(reverse("crear_solicitud"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Cliente Uno")
-        self.assertContains(response, "Cliente Dos")
+        self.assertContains(response, "CLIENTE UNO")
+        self.assertContains(response, "CLIENTE DOS")
 
     def test_editar_formulario_muestra_fechas_actuales(self):
         self.client.login(username="admin", password="admin123")
@@ -259,7 +259,7 @@ class SeguridadPermisosTests(TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        referencia_ejec = Referencia.objects.get(cliente="Cliente R Ejec")
+        referencia_ejec = Referencia.objects.get(cliente="CLIENTE R EJEC")
         self.assertEqual(referencia_ejec.referencia, "BC261002")
 
         self.client.login(username="admin", password="admin123")
@@ -275,7 +275,7 @@ class SeguridadPermisosTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
 
-        referencia = Referencia.objects.get(cliente="Cliente R")
+        referencia = Referencia.objects.get(cliente="CLIENTE R")
         self.assertEqual(referencia.referencia, "BC261003")
 
         response = self.client.post(
@@ -348,6 +348,7 @@ class SeguridadPermisosTests(TestCase):
 class CotizacionFormTests(TestCase):
     def setUp(self):
         self.ejecutivo = User.objects.create_user(username="ejec_form", password="ejec123")
+        self.estado_pendiente = "Pendiente"
 
     def test_genera_consecutivo_automatico(self):
         form_1 = CotizacionForm(
@@ -359,6 +360,7 @@ class CotizacionFormTests(TestCase):
                 "fecha_envio": "",
                 "tipo": "Importación aérea",
                 "ejecutivo": self.ejecutivo.pk,
+                "estado": self.estado_pendiente,
                 "tiempo_entrega": "5 dias",
                 "aerea": "Si",
                 "maritima": "",
@@ -378,6 +380,7 @@ class CotizacionFormTests(TestCase):
                 "fecha_envio": "",
                 "tipo": "Exportación aérea",
                 "ejecutivo": self.ejecutivo.pk,
+                "estado": self.estado_pendiente,
                 "tiempo_entrega": "7 dias",
                 "aerea": "",
                 "maritima": "Si",
@@ -423,6 +426,7 @@ class CotizacionFormTests(TestCase):
                 "fecha_envio": "",
                 "tipo": "Exportación aérea",
                 "ejecutivo": self.ejecutivo.pk,
+                "estado": self.estado_pendiente,
                 "tiempo_entrega": "",
                 "aerea": "on",
                 "maritima": "",
@@ -452,6 +456,64 @@ class CotizacionFormTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("tipo", form.errors)
 
+
+class CotizacionClienteNormalizacionTests(TestCase):
+    def setUp(self):
+        self.ejecutivo = User.objects.create_user(username="ejec_norm", password="ejec123")
+
+    def _crear_cotizacion(self, consecutivo, cliente):
+        return Cotizacion.objects.create(
+            anio=2026,
+            consecutivo=consecutivo,
+            cliente=cliente,
+            fecha_solicitud=date(2026, 2, 10),
+            tipo="Importación aérea",
+            ejecutivo=self.ejecutivo,
+            tiempo_entrega="",
+            aerea="Aérea",
+            maritima="",
+            terrestre="",
+        )
+
+    def test_crear_cotizacion_normaliza_y_crea_cliente_en_mayusculas(self):
+        cotizacion = self._crear_cotizacion("C26901", "empresa vargas")
+
+        cliente = Cliente.objects.get()
+        self.assertEqual(cliente.nombre, "EMPRESA VARGAS")
+        self.assertEqual(cotizacion.cliente, "EMPRESA VARGAS")
+        self.assertEqual(cliente.tipo_cliente, Cliente.TIPO_NUEVO)
+        self.assertEqual(cotizacion.tipo, "Importación aérea")
+        self.assertEqual(cotizacion.ejecutivo, self.ejecutivo)
+
+    def test_no_crea_cliente_duplicado_por_espacios_o_mayusculas(self):
+        cotizacion_1 = self._crear_cotizacion("C26902", "empresa vargas")
+        cotizacion_2 = self._crear_cotizacion("C26903", " Empresa   Vargas")
+        cotizacion_3 = self._crear_cotizacion("C26904", "EMPRESA VARGAS")
+
+        self.assertEqual(Cliente.objects.count(), 1)
+        cliente = Cliente.objects.get()
+        self.assertEqual(cliente.nombre, "EMPRESA VARGAS")
+        self.assertEqual(cotizacion_1.cliente, "EMPRESA VARGAS")
+        self.assertEqual(cotizacion_2.cliente, "EMPRESA VARGAS")
+        self.assertEqual(cotizacion_3.cliente, "EMPRESA VARGAS")
+
+    def test_editar_cotizacion_existente_no_crea_clientes_adicionales(self):
+        cotizacion = self._crear_cotizacion("C26905", "empresa vargas")
+
+        self.assertEqual(Cliente.objects.count(), 1)
+
+        cotizacion.cliente = " Empresa   Vargas "
+        cotizacion.save()
+        cotizacion.refresh_from_db()
+
+        self.assertEqual(Cliente.objects.count(), 1)
+        self.assertEqual(cotizacion.cliente, "EMPRESA VARGAS")
+
+
+class ReferenciaImportacionTests(TestCase):
+    def setUp(self):
+        self.ejecutivo = User.objects.create_user(username="ejec_form", password="ejec123")
+
     def test_importar_referencias_normaliza_al_formato_de_pagina(self):
         filas = [
             ["Referencia", "Ejecutivo", "Cliente", "Servicio", "Agencia", "Fecha"],
@@ -463,11 +525,13 @@ class CotizacionFormTests(TestCase):
         self.assertEqual((creados, actualizados, omitidos), (2, 0, 0))
 
         referencias = list(
-            Referencia.objects.filter(cliente__in=["Cliente 1", "Cliente 2"]).order_by("cliente")
+            Referencia.objects.filter(cliente__in=["CLIENTE 1", "CLIENTE 2"]).order_by("cliente")
         )
         self.assertEqual(len(referencias), 2)
         self.assertRegex(referencias[0].referencia, r"^BC26[1-6]\d{3}$")
         self.assertRegex(referencias[1].referencia, r"^BC26[1-6]\d{3}$")
+        self.assertEqual(referencias[0].cliente, "CLIENTE 1")
+        self.assertEqual(referencias[1].cliente, "CLIENTE 2")
         self.assertEqual(referencias[0].servicio, "servicios_transporte")
         self.assertEqual(referencias[1].servicio, "comercializador_exportacion")
 
@@ -543,3 +607,70 @@ class SolicitudFormTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         actualizado = form.save()
         self.assertEqual(actualizado.sg, "SG26001")
+
+
+class SolicitudClienteNormalizacionTests(TestCase):
+    def setUp(self):
+        self.ejecutivo = User.objects.create_user(username="ejec_sol_norm", password="ejec123")
+
+    def test_creacion_normaliza_cliente(self):
+        solicitud = Solicitud.objects.create(
+            anio=2026,
+            sg="SG26901",
+            cliente=" empresa vargas ",
+            fecha_recepcion=date(2026, 2, 1),
+            tipo="Operacion",
+            ejecutivo=self.ejecutivo,
+            aerea=True,
+            estado_aereo="Pendiente",
+        )
+        self.assertEqual(solicitud.cliente, "EMPRESA VARGAS")
+
+    def test_edicion_normaliza_cliente_y_conserva_caracteres(self):
+        solicitud = Solicitud.objects.create(
+            anio=2026,
+            sg="SG26902",
+            cliente="MÉXICO & CIA.",
+            fecha_recepcion=date(2026, 2, 1),
+            tipo="Operacion",
+            ejecutivo=self.ejecutivo,
+            aerea=True,
+            estado_aereo="Pendiente",
+        )
+        solicitud.cliente = " méxico  & cia. - log / sur "
+        solicitud.save()
+        solicitud.refresh_from_db()
+        self.assertEqual(solicitud.cliente, "MÉXICO & CIA. - LOG / SUR")
+
+
+class ReferenciaClienteNormalizacionTests(TestCase):
+    def setUp(self):
+        self.ejecutivo = User.objects.create_user(username="ejec_ref_norm", password="ejec123")
+
+    def test_creacion_normaliza_cliente(self):
+        referencia = Referencia.objects.create(
+            referencia="BC26901",
+            consecutivo=901,
+            ejecutivo=self.ejecutivo,
+            cliente=" empresa vargas ",
+            servicio="importacion",
+            agencia_aduanal="Agencia",
+            fecha=date(2026, 2, 1),
+        )
+        self.assertEqual(referencia.cliente, "EMPRESA VARGAS")
+
+    def test_edicion_normaliza_cliente_y_admite_none(self):
+        referencia = Referencia.objects.create(
+            referencia="BC26902",
+            consecutivo=902,
+            ejecutivo=self.ejecutivo,
+            cliente=None,
+            servicio="importacion",
+            agencia_aduanal="Agencia",
+            fecha=date(2026, 2, 1),
+        )
+        self.assertEqual(referencia.cliente, "")
+        referencia.cliente = " méxico  & cia. - log / sur "
+        referencia.save()
+        referencia.refresh_from_db()
+        self.assertEqual(referencia.cliente, "MÉXICO & CIA. - LOG / SUR")

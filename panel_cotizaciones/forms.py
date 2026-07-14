@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
-from clientes.models import Cliente
+from clientes.models import Cliente, normalizar_texto_cliente
 from .models import PanelCotizacion, PanelCotizacionComentario
 
 User = get_user_model()
@@ -75,7 +75,7 @@ class PanelCotizacionCreateForm(forms.ModelForm):
 
     def clean_cliente(self):
         cliente = self.cleaned_data.get("cliente")
-        return cliente.nombre if cliente else ""
+        return normalizar_texto_cliente(cliente.nombre if cliente else "")
 
 
 class PanelCotizacionArchivosForm(forms.Form):
@@ -142,4 +142,3 @@ class PanelCotizacionUserFilterForm(forms.Form):
         empty_label="Todos",
         widget=forms.Select(attrs={"class": "form-select", "id": "panelCotizacionesUserFilter"}),
     )
-

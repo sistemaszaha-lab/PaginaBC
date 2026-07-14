@@ -820,6 +820,30 @@
             });
         });
     </script>
+    <script>
+        (() => {
+            const normalizeUppercaseCliente = (value) => value.trimStart().replace(/\s+/g, " ").toUpperCase();
+
+            document.addEventListener("input", (event) => {
+                const input = event.target;
+                if (!input || !input.classList || !input.classList.contains("js-uppercase-cliente")) return;
+                if (typeof input.selectionStart !== "number" || typeof input.selectionEnd !== "number") return;
+
+                const start = input.selectionStart;
+                const end = input.selectionEnd;
+                const original = input.value;
+                const normalized = normalizeUppercaseCliente(original);
+
+                if (original === normalized) return;
+
+                const beforeStart = normalizeUppercaseCliente(original.slice(0, start));
+                const beforeEnd = normalizeUppercaseCliente(original.slice(0, end));
+
+                input.value = normalized;
+                input.setSelectionRange(beforeStart.length, beforeEnd.length);
+            });
+        })();
+    </script>
 </body>
 
 </html>

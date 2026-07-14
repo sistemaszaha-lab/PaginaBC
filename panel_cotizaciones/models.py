@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.db import models
 from django.utils import timezone
+from clientes.models import normalizar_texto_cliente
 
 panelcotizaciones_upload_storage = FileSystemStorage(
     location="uploads",
@@ -44,6 +45,10 @@ class PanelCotizacion(models.Model):
 
     class Meta:
         ordering = ["-fecha_creacion"]
+
+    def save(self, *args, **kwargs):
+        self.cliente = normalizar_texto_cliente(self.cliente)
+        return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.titulo} ({self.cliente})"
@@ -112,4 +117,3 @@ class PanelCotizacionComentario(models.Model):
 
     def __str__(self) -> str:
         return f"Comentario #{self.pk} - {self.cotizacion_id}"
-

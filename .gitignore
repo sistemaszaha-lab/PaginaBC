@@ -8,9 +8,14 @@ venv/
 
 # Django/local state
 .env
+.env.*
 staticfiles/
+media/
+backups/
 *.sqlite3
 data.json
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/

@@ -1,5 +1,9 @@
 from django import forms
 from .models import Cliente
+from .models import normalizar_texto_cliente
+
+
+MENSAJE_CLIENTE_DUPLICADO = "Ya existe un cliente con el mismo nombre y empresa."
 
 
 class ClienteForm(forms.ModelForm):
@@ -44,8 +48,8 @@ class ClienteForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        nombre = (cleaned_data.get("nombre") or "").strip()
-        empresa = (cleaned_data.get("empresa") or "").strip()
+        nombre = normalizar_texto_cliente(cleaned_data.get("nombre"))
+        empresa = normalizar_texto_cliente(cleaned_data.get("empresa"))
         cleaned_data["nombre"] = nombre
         cleaned_data["empresa"] = empresa
         if nombre:
@@ -53,7 +57,5 @@ class ClienteForm(forms.ModelForm):
             if self.instance.pk:
                 duplicado = duplicado.exclude(pk=self.instance.pk)
             if duplicado.exists():
-                raise forms.ValidationError(
-                    "Este cliente ya existe con el mismo nombre y empresa."
-                )
+                raise forms.ValidationError(MENSAJE_CLIENTE_DUPLICADO)
         return cleaned_data

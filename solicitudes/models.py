@@ -1,6 +1,7 @@
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.contrib.auth.models import User
 from datetime import date
+from clientes.models import es_integrity_error_duplicado_cliente, normalizar_texto_cliente
 
 
 
@@ -54,6 +55,10 @@ class Solicitud(models.Model):
 
     creado = models.DateTimeField(auto_now_add=True)
     fecha_cumplido = models.DateTimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        self.cliente = normalizar_texto_cliente(self.cliente)
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.sg} - {self.cliente}"
@@ -174,8 +179,9 @@ class Cotizacion(models.Model):
         return f"{self.consecutivo} - {self.cliente}"
 
     def save(self, *args, **kwargs):
+        self.cliente = normalizar_texto_cliente(self.cliente)
         if self._state.adding:
-            nombre_o_correo = (self.cliente or "").strip()
+            nombre_o_correo = self.cliente
             if nombre_o_correo:
                 from django.db.models import Q
                 from clientes.models import Cliente
@@ -186,12 +192,24 @@ class Cotizacion(models.Model):
                 if existente:
                     self.cliente = existente.nombre
                 else:
-                    Cliente.objects.create(
-                        nombre=nombre_o_correo,
-                        correo="",
-                        telefono="",
-                        tipo_cliente=Cliente.TIPO_NUEVO,
-                    )
+                    try:
+                        with transaction.atomic():
+                            Cliente.objects.create(
+                                nombre=nombre_o_correo,
+                                correo="",
+                                telefono="",
+                                tipo_cliente=Cliente.TIPO_NUEVO,
+                            )
+                    except IntegrityError as exc:
+                        if not es_integrity_error_duplicado_cliente(exc):
+                            raise
+                        existente = Cliente.objects.filter(
+                            nombre=nombre_o_correo,
+                            empresa="",
+                        ).first()
+                        if not existente:
+                            raise
+                        self.cliente = existente.nombre
         return super().save(*args, **kwargs)
 
 
@@ -243,6 +261,10 @@ class Referencia(models.Model):
 
     def __str__(self):
         return self.referencia
+
+    def save(self, *args, **kwargs):
+        self.cliente = normalizar_texto_cliente(self.cliente)
+        return super().save(*args, **kwargs)
 
 
 class UserProfile(models.Model):
