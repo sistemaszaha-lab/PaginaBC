@@ -1,0 +1,26 @@
+<form
+  method="post"
+  action="{% url 'garantias:agregar_comentario' garantia.id %}"
+  data-garantia-comentario-form="1"
+  data-garantia-id="{{ garantia.id }}"
+  class="garantia-comments__form"
+>
+  {% csrf_token %}
+  <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
+  {{ comentario_form.comentario }}
+  {% if comentario_form.comentario.errors %}
+    <div class="invalid-feedback d-block">
+      {% for error in comentario_form.comentario.errors %}
+        <div>{{ error }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <div class="alert alert-danger py-2 px-3 small mt-2 mb-0{% if not comentario_form.non_field_errors %} d-none{% endif %}" data-garantia-comment-error="1">
+    {% for error in comentario_form.non_field_errors %}
+      <div>{{ error }}</div>
+    {% endfor %}
+  </div>
+  <div class="mt-2 d-flex justify-content-end">
+    <button type="submit" class="btn btn-outline-primary btn-sm" data-garantia-comment-submit="1">Enviar</button>
+  </div>
+</form>

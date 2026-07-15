@@ -1,0 +1,18 @@
+{% load garantias_extras %}
+<div
+  class="garantia-inline-value"
+  data-garantia-inline-field="asignados"
+  data-selected-ids="{% for u in g.asignados.all %}{{ u.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
+  data-update-url="{% url 'garantias:actualizar_garantia_inline' g.id %}">
+  <div class="garantia-card__assignees">
+    {% for u in g.asignados.all %}
+      {% if u.first_name %}
+        <span class="garantia-card__assignee" title="{{ u.first_name|default:u.username }}">
+          {{ u.first_name|iniciales_nombre }}
+        </span>
+      {% endif %}
+    {% empty %}
+      <span class="garantia-card__placeholder">Sin asignados</span>
+    {% endfor %}
+  </div>
+</div>

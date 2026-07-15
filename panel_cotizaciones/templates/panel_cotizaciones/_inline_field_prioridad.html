@@ -1,0 +1,9 @@
+<div
+  class="panel-cotizacion-inline-value panel-cotizacion-inline-value--compact"
+  data-panel-cotizacion-inline-field="prioridad"
+  data-update-url="{% url 'panel_cotizaciones:inline_update' c.id %}">
+  <span class="panel-cotizacion-card__editable-label">Prioridad</span>
+  <span class="badge panel-cotizacion-card__badge panel-cotizacion-card__badge--priority panel-cotizacion-card__badge--{{ c.prioridad|lower }}">
+    {{ c.get_prioridad_display }}
+  </span>
+</div>

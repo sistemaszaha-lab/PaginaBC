@@ -1,0 +1,8 @@
+<div
+  class="garantia-inline-value"
+  data-garantia-inline-field="prioridad"
+  data-update-url="{% url 'garantias:actualizar_garantia_inline' g.id %}">
+  <span class="badge garantia-priority garantia-priority--{{ g.prioridad|lower }}">
+    {{ g.get_prioridad_display }}
+  </span>
+</div>

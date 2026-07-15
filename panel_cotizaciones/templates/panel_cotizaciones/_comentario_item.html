@@ -1,0 +1,7 @@
+<div class="small border rounded p-3 mb-2 panel-cotizacion-comment-item" data-panel-cotizacion-comment-item="1">
+  <div class="fw-semibold">
+    {{ com.creado_por.first_name|default:com.creado_por.username }}
+    <span class="text-muted fw-normal">• {{ com.fecha_creacion }}</span>
+  </div>
+  <div style="white-space: pre-wrap;">{{ com.texto }}</div>
+</div>

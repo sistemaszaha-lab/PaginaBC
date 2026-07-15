@@ -1,0 +1,9 @@
+<div
+  class="panel-cotizacion-inline-value panel-cotizacion-card__title-wrap"
+  data-panel-cotizacion-inline-field="titulo"
+  data-update-url="{% url 'panel_cotizaciones:inline_update' c.id %}">
+  <span class="panel-cotizacion-card__editable-label">Titulo</span>
+  <h3 class="panel-cotizacion-card__title mb-0">
+    {% if c.titulo %}{{ c.titulo }}{% else %}Cotizacion #{{ c.id }}{% endif %}
+  </h3>
+</div>

@@ -1,0 +1,16 @@
+<div
+  class="panel-cotizacion-inline-value"
+  data-panel-cotizacion-inline-field="asignados"
+  data-selected-ids="{% for u in c.asignados.all %}{{ u.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
+  data-update-url="{% url 'panel_cotizaciones:inline_update' c.id %}">
+  <span class="panel-cotizacion-card__label">Asignados</span>
+  <div class="panel-cotizacion-card__assignees">
+    {% for u in c.asignados.all %}
+      <span class="panel-cotizacion-card__assignee" title="{{ u.first_name|default:u.username }}">
+        {{ u.first_name|default:u.username|slice:":1"|upper }}
+      </span>
+    {% empty %}
+      <span class="panel-cotizacion-card__placeholder">Sin asignar</span>
+    {% endfor %}
+  </div>
+</div>

@@ -1,0 +1,11 @@
+<div
+  class="panel-cotizacion-inline-value"
+  data-panel-cotizacion-inline-field="fecha_vencimiento"
+  data-update-url="{% url 'panel_cotizaciones:inline_update' c.id %}">
+  <span class="panel-cotizacion-card__label">Vencimiento</span>
+  {% if c.fecha_vencimiento %}
+    <span class="panel-cotizacion-card__value">{{ c.fecha_vencimiento|date:"d M Y" }}</span>
+  {% else %}
+    <span class="panel-cotizacion-card__placeholder">Sin fecha</span>
+  {% endif %}
+</div>

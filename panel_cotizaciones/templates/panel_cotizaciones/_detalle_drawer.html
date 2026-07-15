@@ -1,0 +1,9 @@
+<div class="offcanvas-header panel-cotizacion-drawer__header">
+  <div>
+    <div class="h5 mb-0">{{ c.titulo|default:"Cotizacion" }}</div>
+    <div class="text-muted small">{{ c.cliente|default:"Sin cliente" }} • {{ c.get_estado_display }}</div>
+  </div>
+  <button type="button" class="btn-close" data-panel-cotizacion-close-drawer="1" aria-label="Cerrar"></button>
+</div>
+
+{% include "panel_cotizaciones/_detalle_panel_content.html" with c=c form=form comentario_form=comentario_form archivos_form=archivos_form enlace_form=enlace_form layout="drawer" only %}

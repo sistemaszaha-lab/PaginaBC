@@ -1,0 +1,9 @@
+<article class="garantia-comment-item">
+  <div class="garantia-comment-item__meta">
+    <span class="garantia-comment-item__author">
+      {{ comentario.usuario.get_full_name|default:comentario.usuario.username }}
+    </span>
+    <span class="garantia-comment-item__date">{{ comentario.fecha|date:"Y-m-d H:i" }}</span>
+  </div>
+  <div class="garantia-comment-item__body">{{ comentario.comentario|linebreaksbr }}</div>
+</article>

@@ -1,20 +1,5 @@
 <div class="row g-3">
   {% for estado, estado_texto, items in columnas_kanban %}
-  <div class="col-12 col-lg-4">
-    <div class="card h-100">
-      <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-        <span>{{ estado_texto }}</span>
-        <span class="badge text-bg-light">{{ items|length }}</span>
-      </div>
-      <div class="card-body panel-cotizaciones-col" data-estado="{{ estado }}">
-        {% for c in items %}
-          {% include "panel_cotizaciones/_card.html" with c=c only %}
-        {% empty %}
-          <div class="text-muted small panel-cotizacion-empty">Sin cotizaciones.</div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
+    {% include "panel_cotizaciones/_columna.html" with estado=estado estado_texto=estado_texto items=items inline_form=inline_form only %}
   {% endfor %}
 </div>
-

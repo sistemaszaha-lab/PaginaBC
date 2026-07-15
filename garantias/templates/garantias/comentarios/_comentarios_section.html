@@ -1,0 +1,16 @@
+<section class="garantia-comments" data-garantia-comments-section="1">
+  <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+    <h5 class="mb-0">Comentarios</h5>
+    <span class="badge text-bg-light border" data-garantia-comments-count="1">{{ comentarios_count|default:0 }}</span>
+  </div>
+
+  {% include "garantias/comentarios/_comentario_form.html" with garantia=garantia comentario_form=comentario_form layout=layout only %}
+
+  <div class="garantia-comments__list mt-3" data-garantia-comentarios="1">
+    {% for comentario in comentarios %}
+      {% include "garantias/comentarios/_comentario_item.html" with comentario=comentario only %}
+    {% empty %}
+      {% include "garantias/comentarios/_comentarios_empty.html" only %}
+    {% endfor %}
+  </div>
+</section>

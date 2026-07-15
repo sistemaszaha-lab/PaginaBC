@@ -1,0 +1,79 @@
+<article
+  class="panel-cotizacion-card card shadow-sm border-0 mb-3"
+  id="panel-cotizacion-{{ c.id }}"
+  data-panel-cotizacion-card="1"
+  data-panel-cotizacion-id="{{ c.id }}">
+  <div class="card-body p-3">
+    <div class="panel-cotizacion-card__top">
+      <div class="panel-cotizacion-card__top-main">
+        <div data-panel-cotizacion-inline-slot="titulo">
+          {% include "panel_cotizaciones/_inline_field_titulo.html" with c=c only %}
+        </div>
+        <div class="mt-2" data-panel-cotizacion-inline-slot="cliente">
+          {% include "panel_cotizaciones/_inline_field_cliente.html" with c=c only %}
+        </div>
+      </div>
+      <div class="d-flex flex-wrap justify-content-end gap-2">
+        <div data-panel-cotizacion-inline-slot="prioridad">
+          {% include "panel_cotizaciones/_inline_field_prioridad.html" with c=c only %}
+        </div>
+      </div>
+    </div>
+
+    {% if c.descripcion %}
+      <div class="panel-cotizacion-card__section">
+        <p class="panel-cotizacion-card__description mb-0">{{ c.descripcion|truncatewords:18 }}</p>
+      </div>
+    {% endif %}
+
+    <div class="panel-cotizacion-card__section panel-cotizacion-card__meta">
+      <div class="panel-cotizacion-card__meta-item" data-panel-cotizacion-inline-slot="asignados">
+        {% include "panel_cotizaciones/_inline_field_asignados.html" with c=c only %}
+      </div>
+
+      <div class="panel-cotizacion-card__meta-item panel-cotizacion-card__meta-item--due" data-panel-cotizacion-inline-slot="fecha_vencimiento">
+        {% include "panel_cotizaciones/_inline_field_vencimiento.html" with c=c only %}
+      </div>
+    </div>
+
+    <div class="panel-cotizacion-card__section">
+      <div class="panel-cotizacion-card__state-row">
+        <div>
+          <span class="panel-cotizacion-card__label">Estado</span>
+          <span class="badge panel-cotizacion-card__badge panel-cotizacion-card__badge--state" data-panel-cotizacion-state-badge="1">
+            {{ c.get_estado_display }}
+          </span>
+        </div>
+        <select
+          class="form-select form-select-sm panel-cotizacion-card__state-select"
+          data-panel-cotizacion-state-select="1"
+          aria-label="Cambiar estado de cotizacion">
+          <option value="REQUERIMIENTO" {% if c.estado == "REQUERIMIENTO" %}selected{% endif %}>Requerimiento</option>
+          <option value="EN_PROGRESO" {% if c.estado == "EN_PROGRESO" %}selected{% endif %}>En progreso</option>
+          <option value="ENVIADA" {% if c.estado == "ENVIADA" %}selected{% endif %}>Enviada</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="panel-cotizacion-card__section panel-cotizacion-card__footer">
+      <div class="panel-cotizacion-card__comments" aria-label="Comentarios">
+        <svg class="panel-cotizacion-card__comments-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path
+            fill="currentColor"
+            d="M2 2.75A1.75 1.75 0 0 1 3.75 1h8.5A1.75 1.75 0 0 1 14 2.75v6.5A1.75 1.75 0 0 1 12.25 11H6.56l-2.9 2.42A.75.75 0 0 1 2.5 12.84V11A1.75 1.75 0 0 1 1 9.25z" />
+        </svg>
+        <span data-panel-cotizacion-comentarios-count="1">{{ c.comentarios_count|default:0 }}</span>
+      </div>
+
+      <a
+        href="{% url 'panel_cotizaciones:detalle_modal' c.id %}"
+        class="btn btn-sm panel-cotizacion-card__detail-btn"
+        data-panel-cotizacion-modal-open="1"
+        data-modal-url="{% url 'panel_cotizaciones:detalle_modal' c.id %}">
+        Detalles
+      </a>
+    </div>
+
+    <div class="mt-2" data-panel-cotizacion-comentarios="1" style="display:none;"></div>
+  </div>
+</article>

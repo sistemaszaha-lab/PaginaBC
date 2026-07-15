@@ -1,0 +1,13 @@
+<div
+  class="garantia-inline-value"
+  data-garantia-inline-field="fecha_vencimiento"
+  data-date-value="{% if g.fecha_vencimiento %}{{ g.fecha_vencimiento|date:'Y-m-d' }}{% endif %}"
+  data-update-url="{% url 'garantias:actualizar_garantia_inline' g.id %}">
+  {% if g.fecha_vencimiento %}
+    <span class="garantia-card__due {% if g.fecha_vencimiento < today %}garantia-card__due--late{% endif %}">
+      {{ g.fecha_vencimiento|date:"d M Y" }}
+    </span>
+  {% else %}
+    <span class="garantia-card__placeholder">Sin fecha</span>
+  {% endif %}
+</div>

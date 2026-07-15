@@ -2,18 +2,39 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db.models import Count
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .decorators import admin_required
-from .forms import GarantiaArchivosForm, GarantiaComentarioForm, GarantiaEditarForm, GarantiaEnlaceForm, GarantiaForm
+from .forms import (
+    GarantiaArchivosForm,
+    GarantiaComentarioForm,
+    GarantiaEditarForm,
+    GarantiaEnlaceForm,
+    GarantiaForm,
+    GarantiaInlineAsignadosForm,
+    GarantiaInlineClienteForm,
+    GarantiaInlineCreateForm,
+    GarantiaInlinePrioridadForm,
+    GarantiaInlineTituloForm,
+    GarantiaInlineVencimientoForm,
+)
 from .models import Garantia, GarantiaArchivo, GarantiaComentario, GarantiaEnlace
 
 User = get_user_model()
+INLINE_FIELD_FORMS = {
+    "titulo": GarantiaInlineTituloForm,
+    "prioridad": GarantiaInlinePrioridadForm,
+    "fecha_vencimiento": GarantiaInlineVencimientoForm,
+    "cliente": GarantiaInlineClienteForm,
+    "asignados": GarantiaInlineAsignadosForm,
+}
 
 
 def _estado_label(estado):
@@ -56,6 +77,7 @@ def _garantia_queryset():
     return (
         Garantia.objects.select_related("cliente", "creado_por")
         .prefetch_related("asignados", "comentarios__usuario", "archivos", "enlaces")
+        .annotate(comentarios_count=Count("comentarios", distinct=True))
         .order_by("-fecha_creacion", "-id")
     )
 
@@ -101,7 +123,17 @@ def _contexto_modal_garantia(garantia, form=None, archivos_form=None, enlace_for
         "nombre_corto_asignados": [_nombre_corto_usuario(usuario) for usuario in asignados],
         "iniciales_asignados": [_iniciales_usuario(usuario) for usuario in asignados],
         "asignados_count": len(asignados),
+        "comentarios": _comentarios_queryset(garantia),
+        "comentarios_count": garantia.comentarios.count(),
     }
+
+
+def _render_inline_create_form(request, form, estado):
+    return render_to_string(
+        "garantias/_inline_create_form.html",
+        {"form": form, "estado": estado},
+        request=request,
+    )
 
 
 def _guardar_adjuntos_enlaces(request, garantia, enlace_form):
@@ -118,8 +150,49 @@ def _guardar_adjuntos_enlaces(request, garantia, enlace_form):
 def _render_card_html(request, garantia):
     return render_to_string(
         "garantias/_garantia_card.html",
-        {"g": garantia, "comentario_form": GarantiaComentarioForm()},
+        {"g": garantia, "today": timezone.localdate()},
         request=request,
+    )
+
+
+def _comentarios_queryset(garantia):
+    return garantia.comentarios.select_related("usuario").order_by("-fecha", "-id")
+
+
+def _render_comentarios_section(request, garantia, *, form=None, layout="modal"):
+    return render_to_string(
+        "garantias/comentarios/_comentarios_section.html",
+        {
+            "garantia": garantia,
+            "comentario_form": form or GarantiaComentarioForm(),
+            "comentarios": _comentarios_queryset(garantia),
+            "comentarios_count": garantia.comentarios.count(),
+            "layout": layout,
+        },
+        request=request,
+    )
+
+
+def _render_inline_field(request, garantia, field_name):
+    templates = {
+        "titulo": "garantias/_inline_field_titulo.html",
+        "prioridad": "garantias/_inline_field_prioridad.html",
+        "fecha_vencimiento": "garantias/_inline_field_vencimiento.html",
+        "cliente": "garantias/_inline_field_cliente.html",
+        "asignados": "garantias/_inline_field_asignados.html",
+    }
+    return render_to_string(
+        templates[field_name],
+        {"g": garantia, "today": timezone.localdate()},
+        request=request,
+    )
+
+
+def _detalle_template_name(layout: str) -> str:
+    return (
+        "garantias/_detalle_drawer.html"
+        if layout == "drawer"
+        else "garantias/_detalle_modal_content.html"
     )
 
 
@@ -168,9 +241,17 @@ def panel_garantias(request):
                     columnas.get(Garantia.Estado.DEVOLUCION_CLIENTE, []),
                 ),
             ],
-            "comentario_form": GarantiaComentarioForm(),
             "estado_update_url": reverse("garantias:actualizar_estado_garantia"),
+            "inline_create_url": reverse("garantias:crear_garantia_inline"),
+            "inline_form": GarantiaInlineCreateForm(),
+            "inline_fake_g": Garantia(pk="__PK__"),
+            "inline_titulo_form": GarantiaInlineTituloForm(),
+            "inline_prioridad_form": GarantiaInlinePrioridadForm(),
+            "inline_vencimiento_form": GarantiaInlineVencimientoForm(),
+            "inline_cliente_form": GarantiaInlineClienteForm(),
+            "inline_asignados_form": GarantiaInlineAsignadosForm(),
             "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
+            "today": timezone.localdate(),
         },
     )
 
@@ -203,6 +284,94 @@ def crear_garantia(request):
         request,
         "garantias/crear_garantia.html",
         {"form": form, "archivos_form": archivos_form, "enlace_form": enlace_form, "next_url": next_url},
+    )
+
+
+@login_required
+@admin_required
+@require_POST
+def crear_garantia_inline(request):
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+
+    estado = (request.POST.get("estado") or "").strip().upper()
+    estados_validos = set(_estados_disponibles())
+    if estado not in estados_validos:
+        return JsonResponse(
+            {"ok": False, "errors": {"estado": ["Estado invalido."]}},
+            status=400,
+        )
+
+    form = GarantiaInlineCreateForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {
+                "ok": False,
+                "errors": form.errors.get_json_data(escape_html=True),
+                "html": _render_inline_create_form(request, form, estado),
+            },
+            status=400,
+        )
+
+    garantia = form.save(commit=False)
+    garantia.estado = estado
+    garantia.creado_por = request.user
+    garantia.save()
+    form.save_m2m()
+
+    garantia = get_object_or_404(_garantia_queryset(), pk=garantia.pk)
+    return JsonResponse(
+        {
+            "ok": True,
+            "html": _render_card_html(request, garantia),
+            "id": garantia.pk,
+            "estado": garantia.estado,
+            "column_count": Garantia.objects.filter(estado=garantia.estado).count(),
+        }
+    )
+
+
+@login_required
+@admin_required
+@require_POST
+def actualizar_garantia_inline(request, pk):
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+
+    field_name = (request.POST.get("field") or "").strip()
+    form_class = INLINE_FIELD_FORMS.get(field_name)
+    if form_class is None:
+        return JsonResponse(
+            {"ok": False, "errors": {"field": ["Campo no permitido."]}},
+            status=400,
+        )
+
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    form = form_class(request.POST, instance=garantia)
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            status=400,
+        )
+
+    if field_name == "asignados":
+        garantia.asignados.set(form.cleaned_data.get("asignados"))
+    else:
+        garantia = form.save()
+
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    return JsonResponse(
+        {
+            "ok": True,
+            "field": field_name,
+            "html": _render_inline_field(request, garantia, field_name),
+        }
     )
 
 
@@ -263,6 +432,7 @@ def cambiar_estado_garantia(request, pk):
 def agregar_comentario(request, pk):
     garantia = get_object_or_404(Garantia, pk=pk)
     form = GarantiaComentarioForm(request.POST)
+    layout = (request.POST.get("layout") or "modal").strip()
     if form.is_valid():
         GarantiaComentario.objects.create(
             garantia=garantia,
@@ -270,22 +440,28 @@ def agregar_comentario(request, pk):
             comentario=form.cleaned_data["comentario"].strip(),
         )
         if _es_ajax(request):
-            comentario = garantia.comentarios.select_related("usuario").order_by("-fecha", "-id").first()
+            garantia = get_object_or_404(_garantia_queryset(), pk=pk)
             return JsonResponse(
                 {
                     "status": "ok",
                     "id": garantia.pk,
-                    "comentario": {
-                        "usuario": comentario.usuario.get_full_name() or comentario.usuario.username,
-                        "fecha": comentario.fecha.isoformat(),
-                        "texto": comentario.comentario,
-                    },
+                    "html": _render_comentarios_section(request, garantia, layout=layout),
+                    "comentarios_count": garantia.comentarios.count(),
                 }
             )
         messages.success(request, "Comentario agregado.")
     else:
         if _es_ajax(request):
-            return JsonResponse({"status": "error", "error": "Comentario inválido."}, status=400)
+            garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "errors": form.errors.get_json_data(escape_html=True),
+                    "html": _render_comentarios_section(request, garantia, form=form, layout=layout),
+                    "comentarios_count": garantia.comentarios.count(),
+                },
+                status=400,
+            )
         messages.error(request, "No se pudo agregar el comentario.")
 
     return redirect(f"{reverse('garantias:panel_garantias')}#garantia-{garantia.pk}")
@@ -295,9 +471,11 @@ def agregar_comentario(request, pk):
 @admin_required
 def detalle_garantia(request, pk):
     garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    layout = (request.GET.get("layout") or "modal").strip()
     contexto = _contexto_modal_garantia(garantia)
+    contexto["layout"] = layout
     if _es_ajax(request):
-        return render(request, "garantias/_detalle_modal_content.html", contexto)
+        return render(request, _detalle_template_name(layout), contexto)
     return render(request, "garantias/detalle_garantia.html", contexto)
 
 
@@ -305,7 +483,10 @@ def detalle_garantia(request, pk):
 @admin_required
 def detalle_garantia_parcial(request, pk):
     garantia = get_object_or_404(_garantia_queryset(), pk=pk)
-    return render(request, "garantias/_detalle_modal_content.html", _contexto_modal_garantia(garantia))
+    layout = (request.GET.get("layout") or "modal").strip()
+    contexto = _contexto_modal_garantia(garantia)
+    contexto["layout"] = layout
+    return render(request, _detalle_template_name(layout), contexto)
 
 
 def _preservar_vacios_garantia(form, objeto):
@@ -328,6 +509,7 @@ def _preservar_vacios_garantia(form, objeto):
 @admin_required
 def editar_garantia(request, pk):
     garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    layout = (request.POST.get("layout") or request.GET.get("layout") or "modal").strip()
     if request.method == "POST":
         form = GarantiaEditarForm(request.POST, instance=garantia)
         archivos_form = GarantiaArchivosForm(request.POST, request.FILES)
@@ -349,12 +531,14 @@ def editar_garantia(request, pk):
             garantia = get_object_or_404(_garantia_queryset(), pk=pk)
             messages.success(request, "Garantía actualizada.")
             if _es_ajax(request):
+                contexto = _contexto_modal_garantia(garantia)
+                contexto["layout"] = layout
                 return JsonResponse(
                     {
                         "status": "ok",
                         "html": render_to_string(
-                            "garantias/_detalle_modal_content.html",
-                            _contexto_modal_garantia(garantia),
+                            _detalle_template_name(layout),
+                            contexto,
                             request=request,
                         ),
                         "card_html": _render_card_html(request, garantia),
@@ -368,8 +552,9 @@ def editar_garantia(request, pk):
         enlace_form = GarantiaEnlaceForm()
 
     contexto = _contexto_modal_garantia(garantia, form=form, archivos_form=archivos_form, enlace_form=enlace_form)
+    contexto["layout"] = layout
     if _es_ajax(request):
-        return render(request, "garantias/_detalle_modal_content.html", contexto, status=400 if request.method == "POST" else 200)
+        return render(request, _detalle_template_name(layout), contexto, status=400 if request.method == "POST" else 200)
     return render(request, "garantias/editar_garantia.html", contexto)
 
 
@@ -405,13 +590,16 @@ def eliminar_archivo(request, pk, archivo_id):
     archivo.delete()
     messages.success(request, "Archivo eliminado.")
     if _es_ajax(request):
+        layout = (request.POST.get("layout") or "modal").strip()
         garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+        contexto = _contexto_modal_garantia(garantia)
+        contexto["layout"] = layout
         return JsonResponse(
             {
                 "status": "ok",
                 "html": render_to_string(
-                    "garantias/_detalle_modal_content.html",
-                    _contexto_modal_garantia(garantia),
+                    _detalle_template_name(layout),
+                    contexto,
                     request=request,
                 ),
                 "card_html": _render_card_html(request, garantia),
@@ -430,13 +618,16 @@ def eliminar_enlace(request, pk, enlace_id):
     enlace.delete()
     messages.success(request, "Enlace eliminado.")
     if _es_ajax(request):
+        layout = (request.POST.get("layout") or "modal").strip()
         garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+        contexto = _contexto_modal_garantia(garantia)
+        contexto["layout"] = layout
         return JsonResponse(
             {
                 "status": "ok",
                 "html": render_to_string(
-                    "garantias/_detalle_modal_content.html",
-                    _contexto_modal_garantia(garantia),
+                    _detalle_template_name(layout),
+                    contexto,
                     request=request,
                 ),
                 "card_html": _render_card_html(request, garantia),

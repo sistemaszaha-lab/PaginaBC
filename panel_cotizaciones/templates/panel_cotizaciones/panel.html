@@ -1,8 +1,10 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Panel de Cotizaciones{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="{% static 'panel_cotizaciones/css/panel_cotizaciones.css' %}">
 {% include "garantias/_asignados_tags_assets.html" %}
 <h2 class="mb-4">Panel de Cotizaciones</h2>
 <div style="display:none;">{% csrf_token %}</div>
@@ -10,14 +12,19 @@
 <div class="mb-3 d-flex gap-2 flex-wrap align-items-end">
   <a href="{% url 'panel_cotizaciones:crear' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva cotizacion</a>
 
-  <div class="ms-auto" style="min-width: 220px;">
+  <div class="ms-auto panel-cotizacion-filter-box">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
-    {{ usuario_filter_form.usuario }}
+    <div class="d-flex gap-2 align-items-start">
+      <div class="flex-grow-1">
+        {{ usuario_filter_form.usuario }}
+      </div>
+      <button type="button" class="btn btn-light btn-sm" id="panelCotizacionesFilterReset">Todos</button>
+    </div>
   </div>
 </div>
 
-<div id="panelCotizacionesBoard">
-  {% include "panel_cotizaciones/_tablero.html" with columnas_kanban=columnas_kanban only %}
+<div id="panelCotizacionesBoard" class="panel-cotizaciones-board">
+  {% include "panel_cotizaciones/_tablero.html" with columnas_kanban=columnas_kanban inline_form=inline_form only %}
 </div>
 
 <div class="modal fade" id="panelCotizacionDetalleModal" tabindex="-1" aria-hidden="true">
@@ -25,6 +32,12 @@
     <div class="modal-content" id="panelCotizacionDetalleModalContent">
       <div class="modal-body p-4 text-center text-muted">Cargando...</div>
     </div>
+  </div>
+</div>
+
+<div class="offcanvas offcanvas-end panel-cotizacion-drawer" tabindex="-1" id="panelCotizacionDrawer" aria-labelledby="panelCotizacionDrawerLabel">
+  <div id="panelCotizacionDrawerContent">
+    <div class="offcanvas-body p-4 text-center text-muted">Cargando...</div>
   </div>
 </div>
 
@@ -53,13 +66,19 @@
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
     const updateUrl = '{{ estado_update_url }}';
     const boardUrl = '{% url "panel_cotizaciones:tablero_partial" %}';
+    const inlineCreateUrl = '{% url "panel_cotizaciones:crear_inline" %}';
 
     const modalElement = document.getElementById('panelCotizacionDetalleModal');
     const modalContent = document.getElementById('panelCotizacionDetalleModalContent');
     const modalInstance = modalElement && window.bootstrap ? new bootstrap.Modal(modalElement) : null;
+    const drawerElement = document.getElementById('panelCotizacionDrawer');
+    const drawerContent = document.getElementById('panelCotizacionDrawerContent');
+    const drawerInstance = drawerElement && window.bootstrap ? new bootstrap.Offcanvas(drawerElement) : null;
     const confirmModalElement = document.getElementById('panelCotizacionEliminarConfirmModal');
     const confirmModalInstance = confirmModalElement && window.bootstrap ? new bootstrap.Modal(confirmModalElement) : null;
     let panelCotizacionDeleteUrl = null;
+    const pendingCardIds = new Set();
+    let currentDetailUrl = '';
 
     function postForm(url, formData) {
       return fetch(url, {
@@ -87,11 +106,213 @@
       let empty = column.querySelector('.panel-cotizacion-empty');
       if (!cards.length && !empty) {
         empty = document.createElement('div');
-        empty.className = 'text-muted small panel-cotizacion-empty';
+        empty.className = 'panel-cotizacion-empty';
         empty.textContent = 'Sin cotizaciones.';
         column.appendChild(empty);
       }
       if (cards.length && empty) empty.remove();
+    }
+
+    function updateColumnCount(column, value) {
+      const countNode = column.closest('.panel-cotizacion-column')?.querySelector('[data-panel-cotizacion-column-count="1"]');
+      if (countNode) {
+        countNode.textContent = String(value);
+      }
+    }
+
+    function updateColumnCountFromDom(column) {
+      if (!column) return;
+      updateColumnCount(column, column.querySelectorAll('[data-panel-cotizacion-card="1"]').length);
+    }
+
+    function getEstadoLabel(value) {
+      if (value === 'REQUERIMIENTO') return 'Requerimiento';
+      if (value === 'EN_PROGRESO') return 'En progreso';
+      if (value === 'ENVIADA') return 'Enviada';
+      return value || '';
+    }
+
+    function syncCardStateUI(card, estado, estadoLabel) {
+      if (!card) return;
+      const select = card.querySelector('[data-panel-cotizacion-state-select="1"]');
+      const badge = card.querySelector('[data-panel-cotizacion-state-badge="1"]');
+      if (select) {
+        select.value = estado;
+      }
+      if (badge) {
+        badge.textContent = estadoLabel || getEstadoLabel(estado);
+      }
+    }
+
+    function updateCardCommentCount(cardId, count) {
+      const card = document.querySelector(`[data-panel-cotizacion-id="${cardId}"]`);
+      const countNode = card?.querySelector('[data-panel-cotizacion-comentarios-count="1"]');
+      if (countNode) {
+        countNode.textContent = String(count);
+      }
+    }
+
+    function getCardId(card) {
+      return card?.getAttribute('data-panel-cotizacion-id') || '';
+    }
+
+    function isCardPending(card) {
+      return pendingCardIds.has(getCardId(card));
+    }
+
+    function setCardPending(card, isPending) {
+      if (!card) return;
+      const cardId = getCardId(card);
+      if (!cardId) return;
+
+      if (isPending) {
+        pendingCardIds.add(cardId);
+        card.dataset.pending = '1';
+      } else {
+        pendingCardIds.delete(cardId);
+        delete card.dataset.pending;
+      }
+
+      const stateSelect = card.querySelector('[data-panel-cotizacion-state-select="1"]');
+      if (stateSelect) {
+        stateSelect.disabled = isPending;
+      }
+    }
+
+    function moveCardToColumn(card, targetColumn) {
+      if (!card || !targetColumn) return;
+      const emptyState = targetColumn.querySelector('.panel-cotizacion-empty');
+      if (emptyState) emptyState.remove();
+      targetColumn.prepend(card);
+      ensureEmptyState(targetColumn);
+      updateColumnCountFromDom(targetColumn);
+    }
+
+    function persistCardState(card, sourceColumn, targetColumn, nuevoEstado, previousSelectValue) {
+      if (!card || isCardPending(card)) {
+        return Promise.reject(new Error('La tarjeta ya se esta actualizando'));
+      }
+
+      setCardPending(card, true);
+      const fd = new FormData();
+      fd.set('cotizacion_id', getCardId(card));
+      fd.set('nuevo_estado', nuevoEstado);
+
+      return postForm(updateUrl, fd)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Error ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          if (data.status !== 'ok') {
+            throw new Error('Estado no actualizado');
+          }
+
+          syncCardStateUI(card, data.estado || nuevoEstado, data.estado_display);
+          if (sourceColumn && targetColumn && sourceColumn !== targetColumn) {
+            updateColumnCountFromDom(sourceColumn);
+            updateColumnCountFromDom(targetColumn);
+          } else if (targetColumn) {
+            updateColumnCountFromDom(targetColumn);
+          }
+          return data;
+        })
+        .catch((error) => {
+          if (sourceColumn && targetColumn && sourceColumn !== targetColumn) {
+            sourceColumn.prepend(card);
+            ensureEmptyState(sourceColumn);
+            ensureEmptyState(targetColumn);
+            updateColumnCountFromDom(sourceColumn);
+            updateColumnCountFromDom(targetColumn);
+          }
+          syncCardStateUI(card, previousSelectValue, getEstadoLabel(previousSelectValue));
+          throw error;
+        })
+        .finally(() => {
+          setCardPending(card, false);
+        });
+    }
+
+    function closeInlineForms(exceptContainer) {
+      document.querySelectorAll('[data-panel-cotizacion-inline-container="1"]').forEach((container) => {
+        if (exceptContainer && container === exceptContainer) return;
+        container.classList.add('d-none');
+      });
+    }
+
+    function getInlineEditorTemplate(fieldName, cardId) {
+      const templates = {
+        titulo: `{% filter escapejs %}{% include "panel_cotizaciones/_inline_editor_form.html" with c=inline_fake_c field_name="titulo" bound_field=inline_titulo_form.titulo only %}{% endfilter %}`,
+        cliente: `{% filter escapejs %}{% include "panel_cotizaciones/_inline_editor_form.html" with c=inline_fake_c field_name="cliente" bound_field=inline_cliente_form.cliente only %}{% endfilter %}`,
+        prioridad: `{% filter escapejs %}{% include "panel_cotizaciones/_inline_editor_form.html" with c=inline_fake_c field_name="prioridad" bound_field=inline_prioridad_form.prioridad only %}{% endfilter %}`,
+        fecha_vencimiento: `{% filter escapejs %}{% include "panel_cotizaciones/_inline_editor_form.html" with c=inline_fake_c field_name="fecha_vencimiento" bound_field=inline_vencimiento_form.fecha_vencimiento only %}{% endfilter %}`,
+        asignados: `{% filter escapejs %}{% include "panel_cotizaciones/_inline_editor_form.html" with c=inline_fake_c field_name="asignados" bound_field=inline_asignados_form.asignados only %}{% endfilter %}`,
+      };
+      return (templates[fieldName] || '').replaceAll('__PK__', cardId);
+    }
+
+    function restoreInlineSlot(slot) {
+      if (!slot || typeof slot.dataset.previousHtml === 'undefined') return;
+      slot.innerHTML = slot.dataset.previousHtml;
+      delete slot.dataset.previousHtml;
+    }
+
+    function openInlineEditor(slot, fieldName, card, updateUrl) {
+      const selectedIdsSnapshot = slot.querySelector('[data-selected-ids]')?.dataset.selectedIds || '';
+      const editorHtml = getInlineEditorTemplate(fieldName, getCardId(card));
+      if (!editorHtml) return null;
+      slot.dataset.previousHtml = slot.innerHTML;
+      slot.innerHTML = editorHtml;
+      const form = slot.querySelector('[data-panel-cotizacion-inline-editor="1"]');
+      if (!form) return null;
+      form.dataset.updateUrl = updateUrl || '';
+
+      if (fieldName === 'titulo') {
+        const input = form.querySelector('[name="titulo"]');
+        const currentValue = card.querySelector('.panel-cotizacion-card__title')?.textContent?.trim() || '';
+        if (input) {
+          input.value = /^Cotizacion\s+#/.test(currentValue) ? '' : currentValue;
+          input.focus();
+          input.select();
+        }
+      } else if (fieldName === 'cliente') {
+        const currentText = card.querySelector('[data-panel-cotizacion-inline-slot="cliente"] .panel-cotizacion-card__client')?.textContent?.trim() || '';
+        const select = form.querySelector('[name="cliente"]');
+        if (select) {
+          const option = Array.from(select.options).find((item) => item.text.trim() === currentText);
+          if (option) select.value = option.value;
+          select.focus();
+        }
+      } else if (fieldName === 'prioridad') {
+        const currentText = card.querySelector('[data-panel-cotizacion-inline-slot="prioridad"] .badge')?.textContent?.trim() || '';
+        const select = form.querySelector('[name="prioridad"]');
+        if (select) {
+          const option = Array.from(select.options).find((item) => item.text.trim() === currentText);
+          if (option) select.value = option.value;
+          select.focus();
+        }
+      } else if (fieldName === 'fecha_vencimiento') {
+        const input = form.querySelector('[name="fecha_vencimiento"]');
+        if (input) input.focus();
+      } else if (fieldName === 'asignados') {
+        const select = form.querySelector('[name="asignados"]');
+        const selectedIds = selectedIdsSnapshot
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean);
+        if (select) {
+          Array.from(select.options).forEach((option) => {
+            option.selected = selectedIds.includes(option.value);
+          });
+        }
+        if (window.initGarantiaSelects) {
+          window.initGarantiaSelects(form);
+        }
+      }
+
+      return form;
     }
 
     function initSortable() {
@@ -104,37 +325,33 @@
           animation: 150,
           ghostClass: 'panel-cotizacion-ghost',
           dragClass: 'panel-cotizacion-drag',
+          chosenClass: 'panel-cotizacion-chosen',
+          onMove: function (evt) {
+            if (isCardPending(evt.dragged)) {
+              return false;
+            }
+            return true;
+          },
           onEnd: function (evt) {
             const card = evt.item;
             const target = evt.to;
             const source = evt.from;
             const id = card.getAttribute('data-panel-cotizacion-id');
             const nuevoEstado = target.getAttribute('data-estado');
-            if (!id || !nuevoEstado || source === target) {
+            if (!id || !nuevoEstado || source === target || isCardPending(card)) {
               ensureEmptyState(source);
               ensureEmptyState(target);
+              if (isCardPending(card) && source !== target) {
+                source.prepend(card);
+              }
               return;
             }
 
-            const fd = new FormData();
-            fd.set('cotizacion_id', id);
-            fd.set('nuevo_estado', nuevoEstado);
+            const previousState = source.dataset.estado;
 
-            postForm(updateUrl, fd)
-              .then((response) => {
-                if (!response.ok) {
-                  throw new Error(`Error ${response.status}`);
-                }
-                return response.json();
-              })
-              .then((data) => {
-                if (data.status !== 'ok') {
-                  source.appendChild(card);
-                }
-              })
+            persistCardState(card, source, target, nuevoEstado, previousState)
               .catch((error) => {
                 console.error('No se pudo mover la cotizacion:', error);
-                source.appendChild(card);
               })
               .finally(() => {
                 ensureEmptyState(source);
@@ -168,6 +385,34 @@
         });
     }
 
+    function loadDrawer(url) {
+      if (!drawerContent || !drawerInstance) return;
+      const detailUrl = url.includes('?') ? `${url}&layout=drawer` : `${url}?layout=drawer`;
+      currentDetailUrl = detailUrl;
+      drawerContent.innerHTML = '<div class="offcanvas-body p-4 text-center text-muted">Cargando...</div>';
+      drawerInstance.show();
+      getHtml(detailUrl)
+        .then((html) => {
+          drawerContent.innerHTML = html;
+          initPanelCotizacionModalContent(drawerContent);
+        })
+        .catch((error) => {
+          console.error('No se pudo cargar el detalle de la cotizacion:', error);
+          drawerContent.innerHTML = '<div class="offcanvas-body p-4 text-center text-danger">No se pudo cargar el detalle.</div>';
+        });
+    }
+
+    function replaceDrawerSection(selector, html) {
+      if (!drawerContent) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const nextSection = wrapper.firstElementChild;
+      const currentSection = drawerContent.querySelector(selector);
+      if (nextSection && currentSection) {
+        currentSection.replaceWith(nextSection);
+      }
+    }
+
     function showDeleteConfirm(url) {
       panelCotizacionDeleteUrl = url;
       if (confirmModalInstance) {
@@ -192,6 +437,12 @@
         })
         .then((data) => {
           if (data.status === 'ok') {
+            if (drawerInstance && drawerElement?.classList.contains('show')) {
+              drawerInstance.hide();
+            }
+            if (modalInstance && modalElement?.classList.contains('show')) {
+              modalInstance.hide();
+            }
             refreshBoard();
           }
         })
@@ -205,8 +456,12 @@
 
     function refreshBoard() {
       const select = document.getElementById('panelCotizacionesUserFilter');
-      const usuario = select ? (select.value || '') : '';
-      const url = usuario ? `${boardUrl}?usuario=${encodeURIComponent(usuario)}` : boardUrl;
+      const selectedUsuarios = select
+        ? Array.from(select.selectedOptions).map((option) => option.value).filter(Boolean)
+        : [];
+      const params = new URLSearchParams();
+      selectedUsuarios.forEach((usuarioId) => params.append('usuario', usuarioId));
+      const url = params.toString() ? `${boardUrl}?${params.toString()}` : boardUrl;
       getHtml(url)
         .then((html) => {
           const board = document.getElementById('panelCotizacionesBoard');
@@ -221,9 +476,149 @@
 
     document.addEventListener('change', (e) => {
       if (e.target && e.target.id === 'panelCotizacionesUserFilter') refreshBoard();
+
+      const stateSelect = e.target.closest('[data-panel-cotizacion-state-select="1"]');
+      if (!stateSelect) return;
+
+      const card = stateSelect.closest('[data-panel-cotizacion-card="1"]');
+      const sourceColumn = card?.closest('.panel-cotizaciones-col');
+      const previousState = sourceColumn?.dataset.estado || stateSelect.dataset.previousValue || stateSelect.value;
+      const nuevoEstado = stateSelect.value;
+      if (!card || !sourceColumn || !nuevoEstado || previousState === nuevoEstado) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
+      }
+
+      if (isCardPending(card)) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
+      }
+
+      const targetColumn = document.querySelector(`.panel-cotizaciones-col[data-estado="${nuevoEstado}"]`);
+      if (!targetColumn) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
+      }
+
+      moveCardToColumn(card, targetColumn);
+      persistCardState(card, sourceColumn, targetColumn, nuevoEstado, previousState)
+        .catch((error) => {
+          console.error('No se pudo actualizar el estado de la cotizacion:', error);
+        })
+        .finally(() => {
+          ensureEmptyState(sourceColumn);
+          ensureEmptyState(targetColumn);
+        });
     });
 
     document.addEventListener('click', (e) => {
+      const inlineOpenButton = e.target.closest('[data-panel-cotizacion-inline-open="1"]');
+      if (inlineOpenButton) {
+        e.preventDefault();
+        const column = inlineOpenButton.closest('.panel-cotizacion-column');
+        const container = column?.querySelector('[data-panel-cotizacion-inline-container="1"]');
+        if (!container) return;
+        closeInlineForms(container);
+        container.classList.remove('d-none');
+        const firstInput = container.querySelector('input, select, textarea');
+        if (firstInput) firstInput.focus();
+        return;
+      }
+
+      const inlineCancelButton = e.target.closest('[data-panel-cotizacion-inline-cancel="1"]');
+      if (inlineCancelButton) {
+        e.preventDefault();
+        const container = inlineCancelButton.closest('[data-panel-cotizacion-inline-container="1"]');
+        if (container) {
+          container.classList.add('d-none');
+        }
+        return;
+      }
+
+      const inlineFieldValue = e.target.closest('[data-panel-cotizacion-inline-field]');
+      if (inlineFieldValue) {
+        e.preventDefault();
+        const card = inlineFieldValue.closest('[data-panel-cotizacion-card="1"]');
+        const slot = inlineFieldValue.closest('[data-panel-cotizacion-inline-slot]');
+        const fieldName = inlineFieldValue.dataset.panelCotizacionInlineField;
+        const updateUrl = inlineFieldValue.dataset.updateUrl || '';
+        if (!card || !slot || !fieldName || isCardPending(card)) return;
+        if (slot.querySelector('[data-panel-cotizacion-inline-editor="1"]')) return;
+        openInlineEditor(slot, fieldName, card, updateUrl);
+        return;
+      }
+
+      const inlineFieldCancelButton = e.target.closest('[data-panel-cotizacion-inline-field-cancel="1"]');
+      if (inlineFieldCancelButton) {
+        e.preventDefault();
+        const slot = inlineFieldCancelButton.closest('[data-panel-cotizacion-inline-slot]');
+        restoreInlineSlot(slot);
+        return;
+      }
+
+      const closeDrawerButton = e.target.closest('[data-panel-cotizacion-close-drawer="1"]');
+      if (closeDrawerButton) {
+        e.preventDefault();
+        if (drawerInstance) drawerInstance.hide();
+        return;
+      }
+
+      const deleteArchivoButton = e.target.closest('[data-panel-cotizacion-archivo-delete="1"]');
+      if (deleteArchivoButton) {
+        e.preventDefault();
+        const url = deleteArchivoButton.dataset.deleteUrl;
+        if (!url || !window.confirm('Deseas eliminar este archivo?')) return;
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (data.ok && data.html) {
+              replaceDrawerSection('[data-panel-cotizacion-archivos-section="1"]', data.html);
+            }
+          })
+          .catch((error) => {
+            console.error('No se pudo eliminar el archivo:', error);
+          });
+        return;
+      }
+
+      const deleteEnlaceButton = e.target.closest('[data-panel-cotizacion-enlace-delete="1"]');
+      if (deleteEnlaceButton) {
+        e.preventDefault();
+        const url = deleteEnlaceButton.dataset.deleteUrl;
+        if (!url || !window.confirm('Deseas eliminar este enlace?')) return;
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (data.ok && data.html) {
+              replaceDrawerSection('[data-panel-cotizacion-enlaces-section="1"]', data.html);
+            }
+          })
+          .catch((error) => {
+            console.error('No se pudo eliminar el enlace:', error);
+          });
+        return;
+      }
+
       const deleteButton = e.target.closest('[data-panel-cotizacion-delete="1"]');
       if (deleteButton) {
         e.preventDefault();
@@ -243,10 +638,174 @@
       if (!link) return;
       e.preventDefault();
       const url = link.getAttribute('data-modal-url') || link.getAttribute('href');
-      if (url) loadModal(url);
+      if (!url) return;
+      if (drawerInstance) {
+        loadDrawer(url);
+      } else {
+        currentDetailUrl = url;
+        loadModal(url);
+      }
     });
 
     document.addEventListener('submit', (e) => {
+      const inlineEditor = e.target.closest('[data-panel-cotizacion-inline-editor="1"]');
+      if (inlineEditor) {
+        e.preventDefault();
+        const slot = inlineEditor.closest('[data-panel-cotizacion-inline-slot]');
+        const card = inlineEditor.closest('[data-panel-cotizacion-card="1"]');
+        const fieldName = inlineEditor.dataset.field;
+        if (!slot || !card || !fieldName || isCardPending(card)) return;
+
+        const fd = new FormData(inlineEditor);
+        setCardPending(card, true);
+        postForm(inlineEditor.dataset.updateUrl, fd)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (!data.ok) return;
+            slot.innerHTML = data.html;
+            delete slot.dataset.previousHtml;
+            if (fieldName === 'asignados') {
+              refreshBoard();
+            }
+          })
+          .catch((error) => {
+            const errorNode = inlineEditor.querySelector('[data-panel-cotizacion-inline-error="1"]');
+            if (error && error.errors && errorNode) {
+              const fieldErrors = error.errors[fieldName] || error.errors.__all__ || [];
+              errorNode.textContent = fieldErrors.map((item) => item.message).join(' ');
+              return;
+            }
+            restoreInlineSlot(slot);
+          })
+          .finally(() => {
+            setCardPending(card, false);
+          });
+        return;
+      }
+
+      const archivoForm = e.target.closest('[data-panel-cotizacion-archivo-form="1"]');
+      if (archivoForm) {
+        e.preventDefault();
+        const submitButton = archivoForm.querySelector('[data-panel-cotizacion-archivo-submit="1"]');
+        const errorNode = archivoForm.querySelector('[data-panel-cotizacion-archivo-error="1"]');
+        if (submitButton?.disabled) return;
+        if (errorNode) errorNode.textContent = '';
+        if (submitButton) submitButton.disabled = true;
+
+        const fd = new FormData(archivoForm);
+        postForm(archivoForm.getAttribute('action'), fd)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (data.ok && data.html) {
+              replaceDrawerSection('[data-panel-cotizacion-archivos-section="1"]', data.html);
+            }
+          })
+          .catch((error) => {
+            if (error?.html) {
+              replaceDrawerSection('[data-panel-cotizacion-archivos-section="1"]', error.html);
+            } else if (errorNode) {
+              const fieldErrors = error?.errors?.archivos || error?.errors?.__all__ || [];
+              errorNode.textContent = fieldErrors.map((item) => item.message).join(' ') || 'No se pudieron agregar los archivos.';
+            }
+          })
+          .finally(() => {
+            if (submitButton) submitButton.disabled = false;
+          });
+        return;
+      }
+
+      const enlaceForm = e.target.closest('[data-panel-cotizacion-enlace-form="1"]');
+      if (enlaceForm) {
+        e.preventDefault();
+        const submitButton = enlaceForm.querySelector('[data-panel-cotizacion-enlace-submit="1"]');
+        const errorNode = enlaceForm.querySelector('[data-panel-cotizacion-enlace-error="1"]');
+        if (submitButton?.disabled) return;
+        if (errorNode) errorNode.textContent = '';
+        if (submitButton) submitButton.disabled = true;
+
+        const fd = new FormData(enlaceForm);
+        postForm(enlaceForm.getAttribute('action'), fd)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (data.ok && data.html) {
+              replaceDrawerSection('[data-panel-cotizacion-enlaces-section="1"]', data.html);
+            }
+          })
+          .catch((error) => {
+            if (error?.html) {
+              replaceDrawerSection('[data-panel-cotizacion-enlaces-section="1"]', error.html);
+            } else if (errorNode) {
+              const fieldErrors = error?.errors?.url || error?.errors?.titulo || error?.errors?.__all__ || [];
+              errorNode.textContent = fieldErrors.map((item) => item.message).join(' ') || 'No se pudo agregar el enlace.';
+            }
+          })
+          .finally(() => {
+            if (submitButton) submitButton.disabled = false;
+          });
+        return;
+      }
+
+      const inlineForm = e.target.closest('[data-panel-cotizacion-inline-form="1"]');
+      if (inlineForm) {
+        e.preventDefault();
+        const container = inlineForm.closest('[data-panel-cotizacion-inline-container="1"]');
+        const column = container?.closest('.panel-cotizacion-column')?.querySelector('.panel-cotizaciones-col');
+        if (!container || !column) return;
+
+        const fd = new FormData(inlineForm);
+        postForm(inlineCreateUrl, fd)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (!data.ok) return;
+            const activeFilterSelect = document.getElementById('panelCotizacionesUserFilter');
+            const hasActiveFilter = activeFilterSelect
+              ? Array.from(activeFilterSelect.selectedOptions).some((option) => !!option.value)
+              : false;
+
+            if (hasActiveFilter) {
+              refreshBoard();
+            } else {
+              const wrapper = document.createElement('div');
+              wrapper.innerHTML = data.html;
+              const card = wrapper.firstElementChild;
+              if (!card) return;
+
+              const emptyState = column.querySelector('.panel-cotizacion-empty');
+              if (emptyState) emptyState.remove();
+              column.prepend(card);
+              updateColumnCount(column, data.column_count);
+            }
+
+            container.classList.add('d-none');
+            container.innerHTML = `{% filter escapejs %}{% include "panel_cotizaciones/_inline_create_form.html" with form=inline_form estado="__ESTADO__" only %}{% endfilter %}`.replaceAll('__ESTADO__', data.estado);
+          })
+          .catch((error) => {
+            if (error && error.html) {
+              container.innerHTML = error.html;
+              container.classList.remove('d-none');
+              return;
+            }
+            console.error('No se pudo crear la cotizacion:', error);
+          });
+        return;
+      }
+
       const modalForm = e.target.closest('[data-panel-cotizacion-modal-form="1"]');
       if (modalForm) {
         e.preventDefault();
@@ -264,13 +823,15 @@
             return { status: 'error', html: await response.text() };
           })
           .then((data) => {
+            if ((modalForm.querySelector('[name="layout"]')?.value || '') === 'drawer' && drawerContent) {
+              drawerContent.innerHTML = data.html;
+              initPanelCotizacionModalContent(drawerContent);
+            } else {
+              modalContent.innerHTML = data.html;
+              initPanelCotizacionModalContent(modalContent);
+            }
             if (data.status === 'ok') {
-              modalContent.innerHTML = data.html;
-              initPanelCotizacionModalContent(modalContent);
               refreshBoard();
-            } else if (data.html) {
-              modalContent.innerHTML = data.html;
-              initPanelCotizacionModalContent(modalContent);
             }
           })
           .catch((error) => {
@@ -285,39 +846,86 @@
       const url = commentForm.getAttribute('action');
       const id = commentForm.getAttribute('data-panel-cotizacion-id');
       if (!url || !id) return;
+      const submitButton = commentForm.querySelector('[data-panel-cotizacion-comment-submit="1"]');
+      if (submitButton?.disabled) return;
       const textarea = commentForm.querySelector('textarea[name="texto"]');
+      const errorNode = commentForm.querySelector('[data-panel-cotizacion-comment-error="1"]');
       const text = (textarea?.value || '').trim();
-      if (!text) return;
+      if (errorNode) errorNode.textContent = '';
+      if (!text) {
+        if (errorNode) errorNode.textContent = 'Escribe un comentario.';
+        return;
+      }
       const fd = new FormData();
       fd.set('texto', text);
+      if (submitButton) submitButton.disabled = true;
       postForm(url, fd)
-        .then((response) => {
+        .then(async (response) => {
+          const data = await response.json();
           if (!response.ok) {
-            throw new Error(`Error ${response.status}`);
+            throw data;
           }
-          return response.json();
+          return data;
         })
         .then((data) => {
           if (data.status !== 'ok') return;
           if (textarea) textarea.value = '';
-          refreshBoard();
+          const commentsList = commentForm.closest('.panel-cotizacion-detail-body')?.querySelector('[data-panel-cotizacion-comentarios="1"]');
+          if (commentsList && data.html) {
+            const emptyState = commentsList.querySelector('[data-panel-cotizacion-comments-empty="1"]');
+            if (emptyState) emptyState.remove();
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = data.html;
+            const commentNode = wrapper.firstElementChild;
+            if (commentNode) commentsList.prepend(commentNode);
+          }
+          updateCardCommentCount(id, data.comentarios_count || 0);
         })
         .catch((error) => {
-          console.error('No se pudo agregar el comentario:', error);
+          const fieldErrors = error?.errors?.texto || error?.errors?.__all__ || [];
+          if (errorNode && fieldErrors.length) {
+            errorNode.textContent = fieldErrors.map((item) => item.message).join(' ');
+          } else if (errorNode) {
+            errorNode.textContent = 'No se pudo agregar el comentario.';
+          } else {
+            console.error('No se pudo agregar el comentario:', error);
+          }
+        })
+        .finally(() => {
+          if (submitButton) submitButton.disabled = false;
         });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      const editor = e.target.closest('[data-panel-cotizacion-inline-editor="1"]');
+      if (!editor) return;
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        const slot = editor.closest('[data-panel-cotizacion-inline-slot]');
+        restoreInlineSlot(slot);
+        return;
+      }
+
+      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && !e.shiftKey) {
+        e.preventDefault();
+        editor.requestSubmit();
+      }
+    });
+
+    document.getElementById('panelCotizacionesFilterReset')?.addEventListener('click', () => {
+      const select = document.getElementById('panelCotizacionesUserFilter');
+      if (!select) return;
+      Array.from(select.options).forEach((option) => {
+        option.selected = false;
+      });
+      if (select.tomselect) {
+        select.tomselect.clear();
+      }
+      refreshBoard();
     });
 
     initSortable();
   })();
 </script>
-
-<style>
-  .panel-cotizaciones-col { min-height: 240px; }
-  .panel-cotizacion-drag { opacity: 0.85; }
-  .panel-cotizacion-ghost {
-    opacity: 0.45;
-    background: rgba(1, 107, 107, 0.08);
-    border: 1px dashed #3e9fa2;
-  }
-</style>
 {% endblock %}

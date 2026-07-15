@@ -77,6 +77,10 @@ class PanelCotizacionArchivo(models.Model):
     def __str__(self) -> str:
         return self.archivo.name
 
+    @property
+    def nombre_archivo(self) -> str:
+        return self.archivo.name.rsplit("/", 1)[-1]
+
 
 class PanelCotizacionEnlace(models.Model):
     cotizacion = models.ForeignKey(

@@ -1,0 +1,24 @@
+{% load garantias_extras %}
+<div class="garantia-drawer__panel">
+  <header class="garantia-drawer__header">
+    <div class="garantia-drawer__header-main">
+      <h2 class="garantia-drawer__title" id="garantia-drawer-title">{{ garantia.titulo|default:"Garantia" }}</h2>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        {% if garantia.prioridad == 'BAJA' %}
+          <span class="badge bg-secondary">{{ garantia.get_prioridad_display|upper }}</span>
+        {% elif garantia.prioridad == 'MEDIA' %}
+          <span class="badge bg-warning text-dark">{{ garantia.get_prioridad_display|upper }}</span>
+        {% elif garantia.prioridad == 'ALTA' %}
+          <span class="badge bg-danger">{{ garantia.get_prioridad_display|upper }}</span>
+        {% endif %}
+        <span class="badge bg-info text-dark">{{ garantia.get_estado_display|upper }}</span>
+        <span class="small text-muted">{{ asignados_count }} asignados</span>
+      </div>
+    </div>
+    <button type="button" class="btn-close" data-garantia-drawer-close="1" aria-label="Cerrar"></button>
+  </header>
+
+  <div class="garantia-drawer__content">
+    {% include "garantias/_detalle_panel_content.html" with garantia=garantia form=form archivos_form=archivos_form enlace_form=enlace_form comentario_form=comentario_form layout="drawer" only %}
+  </div>
+</div>

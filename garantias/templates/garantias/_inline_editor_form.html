@@ -1,0 +1,13 @@
+<form
+  method="post"
+  data-garantia-inline-editor="1"
+  data-field="{{ field_name }}">
+  {% csrf_token %}
+  <input type="hidden" name="field" value="{{ field_name }}">
+  {{ bound_field }}
+  <div class="text-danger small mt-1" data-garantia-inline-error="1"></div>
+  <div class="d-flex gap-2 justify-content-end mt-2">
+    <button type="button" class="btn btn-light btn-sm" data-garantia-inline-field-cancel="1">Cancelar</button>
+    <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+  </div>
+</form>

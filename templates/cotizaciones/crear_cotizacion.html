@@ -15,10 +15,11 @@
 </form>
 
 <datalist id="clientes_datalist">
+    <option value="Registrar cliente nuevo"></option>
     {% for cliente in clientes %}
         <option value="{{ cliente }}"></option>
     {% endfor %}
-    <option value="Registrar cliente nuevo"></option>
+    
 </datalist>
 
 <script>

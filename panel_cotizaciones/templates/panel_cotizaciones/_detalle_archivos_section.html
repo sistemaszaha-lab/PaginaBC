@@ -1,0 +1,23 @@
+<div class="panel-cotizacion-detail-section mt-4" data-panel-cotizacion-archivos-section="1">
+  <div class="fw-semibold mb-2">Archivos</div>
+  <form
+    method="post"
+    enctype="multipart/form-data"
+    action="{% url 'panel_cotizaciones:archivo_agregar' c.id %}"
+    data-panel-cotizacion-archivo-form="1">
+    {% csrf_token %}
+    {{ archivos_form.archivos }}
+    <div class="text-danger small mt-2" data-panel-cotizacion-archivo-error="1"></div>
+    <div class="mt-2 d-flex justify-content-end">
+      <button type="submit" class="btn btn-sm btn-outline-secondary" data-panel-cotizacion-archivo-submit="1">Agregar archivos</button>
+    </div>
+  </form>
+
+  <div class="list-group list-group-flush mt-3" data-panel-cotizacion-archivos-list="1">
+    {% for archivo in c.archivos.all %}
+      {% include "panel_cotizaciones/_archivo_item.html" with archivo=archivo only %}
+    {% empty %}
+      <div class="small text-muted" data-panel-cotizacion-archivos-empty="1">No hay archivos adjuntos.</div>
+    {% endfor %}
+  </div>
+</div>

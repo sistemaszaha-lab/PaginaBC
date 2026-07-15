@@ -1,0 +1,16 @@
+<div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3" data-panel-cotizacion-enlace-item="1">
+  <div class="min-w-0">
+    <div class="fw-semibold text-break">{{ enlace.titulo|default:"Enlace" }}</div>
+    <a href="{{ enlace.url }}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none text-break">{{ enlace.url }}</a>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <a href="{{ enlace.url }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer">Abrir</a>
+    <button
+      type="button"
+      class="btn btn-sm btn-outline-danger"
+      data-panel-cotizacion-enlace-delete="1"
+      data-delete-url="{% url 'panel_cotizaciones:enlace_eliminar' enlace.cotizacion_id enlace.id %}">
+      Eliminar
+    </button>
+  </div>
+</div>

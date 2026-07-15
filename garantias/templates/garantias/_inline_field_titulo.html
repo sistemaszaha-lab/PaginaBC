@@ -1,0 +1,8 @@
+<div
+  class="garantia-inline-value garantia-inline-value--title"
+  data-garantia-inline-field="titulo"
+  data-update-url="{% url 'garantias:actualizar_garantia_inline' g.id %}">
+  <h3 class="garantia-card__title mb-0">
+    {% if g.titulo %}{{ g.titulo }}{% else %}Garantia #{{ g.id }}{% endif %}
+  </h3>
+</div>

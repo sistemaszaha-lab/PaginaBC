@@ -1,0 +1,25 @@
+<div class="panel-cotizacion-detail-section mt-4" data-panel-cotizacion-enlaces-section="1">
+  <div class="fw-semibold mb-2">Enlaces</div>
+  <form
+    method="post"
+    action="{% url 'panel_cotizaciones:enlace_agregar' c.id %}"
+    data-panel-cotizacion-enlace-form="1">
+    {% csrf_token %}
+    <div class="row g-2">
+      <div class="col-12 col-md-4">{{ enlace_form.titulo }}</div>
+      <div class="col-12 col-md-8">{{ enlace_form.url }}</div>
+    </div>
+    <div class="text-danger small mt-2" data-panel-cotizacion-enlace-error="1"></div>
+    <div class="mt-2 d-flex justify-content-end">
+      <button type="submit" class="btn btn-sm btn-outline-secondary" data-panel-cotizacion-enlace-submit="1">Agregar enlace</button>
+    </div>
+  </form>
+
+  <div class="list-group list-group-flush mt-3" data-panel-cotizacion-enlaces-list="1">
+    {% for enlace in c.enlaces.all %}
+      {% include "panel_cotizaciones/_enlace_item.html" with enlace=enlace only %}
+    {% empty %}
+      <div class="small text-muted" data-panel-cotizacion-enlaces-empty="1">No hay enlaces registrados.</div>
+    {% endfor %}
+  </div>
+</div>

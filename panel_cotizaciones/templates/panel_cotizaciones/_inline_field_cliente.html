@@ -1,0 +1,11 @@
+<div
+  class="panel-cotizacion-inline-value"
+  data-panel-cotizacion-inline-field="cliente"
+  data-update-url="{% url 'panel_cotizaciones:inline_update' c.id %}">
+  <span class="panel-cotizacion-card__editable-label">Cliente</span>
+  {% if c.cliente %}
+    <p class="panel-cotizacion-card__client mb-0">{{ c.cliente }}</p>
+  {% else %}
+    <span class="panel-cotizacion-card__placeholder">Sin cliente</span>
+  {% endif %}
+</div>
