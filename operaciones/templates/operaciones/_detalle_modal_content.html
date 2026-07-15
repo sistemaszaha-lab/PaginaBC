@@ -132,9 +132,10 @@
           </div>
           <div class="d-flex gap-2 flex-wrap">
             <a class="btn btn-sm btn-outline-primary" href="{{ archivo.archivo.url }}" target="_blank">Descargar</a>
-            <form method="post" action="{% url 'operaciones:eliminar_archivo' operacion.id archivo.id %}"
+            <form method="post" action="{% url 'operaciones:eliminar_archivo' operacion.id %}"
               data-operacion-modal-refresh="1" class="d-inline">
               {% csrf_token %}
+              <input type="hidden" name="archivo_id" value="{{ archivo.id }}">
               <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
             </form>
           </div>
@@ -154,9 +155,10 @@
             <div class="fw-semibold">{{ enlace.titulo }}</div>
             <a href="{{ enlace.url }}" target="_blank" rel="noopener" class="text-decoration-none">{{ enlace.url }}</a>
           </div>
-          <form method="post" action="{% url 'operaciones:eliminar_enlace' operacion.id enlace.id %}"
+          <form method="post" action="{% url 'operaciones:eliminar_enlace' operacion.id %}"
             data-operacion-modal-refresh="1" class="d-inline">
             {% csrf_token %}
+            <input type="hidden" name="enlace_id" value="{{ enlace.id }}">
             <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
           </form>
         </div>

@@ -1,15 +1,19 @@
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .decorators import admin_required
 from .forms import GarantiaArchivosForm, GarantiaComentarioForm, GarantiaEditarForm, GarantiaEnlaceForm, GarantiaForm
 from .models import Garantia, GarantiaArchivo, GarantiaComentario, GarantiaEnlace
+
+User = get_user_model()
 
 
 def _estado_label(estado):
@@ -56,6 +60,36 @@ def _garantia_queryset():
     )
 
 
+def _get_usuario_filter(request):
+    usuario_id = (request.GET.get("usuario") or "").strip()
+    if not usuario_id.isdigit():
+        return None
+    return User.objects.filter(pk=int(usuario_id)).first()
+
+
+def _usuarios_filtro(selected_user_id=None):
+    usuarios = User.objects.filter(is_active=True).order_by("first_name", "last_name", "username", "id")
+    return [
+        {
+            "id": usuario.id,
+            "nombre": usuario.first_name or usuario.get_full_name() or usuario.username,
+            "seleccionado": usuario.id == selected_user_id,
+        }
+        for usuario in usuarios
+    ]
+
+
+def _safe_next_url(request):
+    next_url = (request.POST.get("next") or request.GET.get("next") or "").strip()
+    if next_url and url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return None
+
+
 def _contexto_modal_garantia(garantia, form=None, archivos_form=None, enlace_form=None, comentario_form=None):
     asignados = [usuario for usuario in garantia.asignados.all() if _nombre_corto_usuario(usuario)]
     return {
@@ -93,6 +127,9 @@ def _render_card_html(request, garantia):
 @admin_required
 def panel_garantias(request):
     garantias = _garantia_queryset()
+    usuario = _get_usuario_filter(request)
+    if usuario:
+        garantias = garantias.filter(asignados__id=usuario.id).distinct()
     columnas = {
         Garantia.Estado.SOLICITUD_NAVIERA: [],
         Garantia.Estado.EN_PROCESO: [],
@@ -133,6 +170,7 @@ def panel_garantias(request):
             ],
             "comentario_form": GarantiaComentarioForm(),
             "estado_update_url": reverse("garantias:actualizar_estado_garantia"),
+            "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
         },
     )
 
@@ -140,6 +178,7 @@ def panel_garantias(request):
 @login_required
 @admin_required
 def crear_garantia(request):
+    next_url = _safe_next_url(request)
     if request.method == "POST":
         form = GarantiaForm(request.POST)
         archivos_form = GarantiaArchivosForm(request.POST, request.FILES)
@@ -152,6 +191,8 @@ def crear_garantia(request):
             form.save_m2m()
             _guardar_adjuntos_enlaces(request, garantia, enlace_form)
             messages.success(request, "Garantía creada.")
+            if next_url:
+                return redirect(next_url)
             return redirect("garantias:panel_garantias")
     else:
         form = GarantiaForm()
@@ -161,7 +202,7 @@ def crear_garantia(request):
     return render(
         request,
         "garantias/crear_garantia.html",
-        {"form": form, "archivos_form": archivos_form, "enlace_form": enlace_form},
+        {"form": form, "archivos_form": archivos_form, "enlace_form": enlace_form, "next_url": next_url},
     )
 
 

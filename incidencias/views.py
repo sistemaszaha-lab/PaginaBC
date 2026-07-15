@@ -42,6 +42,7 @@ def panel_incidencias(request):
             "current": "panel_incidencias",
             "incidencias_json": json.dumps(table_data, ensure_ascii=False),
             "incidencia_form": IncidenciaForm(),
+            "q": (request.GET.get("q") or "").strip(),
         },
     )
 

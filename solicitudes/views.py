@@ -17,6 +17,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook
 from openpyxl.styles import Font
@@ -158,6 +159,17 @@ def _contexto_clientes(request):
     clientes = Cliente.objects.all().order_by("nombre", "empresa")
     cliente_nuevo_url = f"{reverse('cliente_crear')}?{urlencode({'next': request.path})}"
     return {"clientes": clientes, "cliente_nuevo_url": cliente_nuevo_url}
+
+
+def _safe_next_url(request, default_name):
+    next_url = (request.POST.get("next") or request.GET.get("next") or "").strip()
+    if next_url and url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return reverse(default_name)
 
 
 def _normalizar_texto(valor):
@@ -766,6 +778,7 @@ def exportar_solicitudes_excel(request):
 
 @login_required
 def crear_solicitud(request):
+    next_url = _safe_next_url(request, "lista_solicitudes")
     if request.method == "POST":
         form = SolicitudForm(request.POST)
         if form.is_valid():
@@ -785,20 +798,20 @@ def crear_solicitud(request):
                                     request,
                                     f"Esta solicitud ya fue registrada ({existente.sg}).",
                                 )
-                                return redirect("editar_solicitud", pk=existente.pk)
+                                return redirect(f"{reverse('editar_solicitud', args=[existente.pk])}?next={next_url}")
                         elif _solicitud_duplicada_reciente(solicitud):
                             messages.warning(
                                 request,
                                 "Se detectó un envío duplicado reciente. No se creó un nuevo registro.",
                             )
-                            return redirect("lista_solicitudes")
+                            return redirect(next_url)
 
                         if not solicitud.pk:
                             solicitud.sg = form._generar_sg(solicitud.anio)
                         solicitud.save()
 
                     messages.success(request, f"Solicitud {solicitud.sg} registrada.")
-                    return redirect("lista_solicitudes")
+                    return redirect(next_url)
                 except IntegrityError:
                     if idempotency_key:
                         existente = Solicitud.objects.filter(
@@ -809,7 +822,7 @@ def crear_solicitud(request):
                                 request,
                                 f"Esta solicitud ya fue registrada ({existente.sg}).",
                             )
-                            return redirect("editar_solicitud", pk=existente.pk)
+                            return redirect(f"{reverse('editar_solicitud', args=[existente.pk])}?next={next_url}")
                     if intento == 2:
                         messages.error(
                             request,
@@ -821,13 +834,14 @@ def crear_solicitud(request):
         if cliente_param:
             form.fields["cliente"].initial = cliente_param
 
-    context = {"form": form}
+    context = {"form": form, "next_url": next_url}
     context.update(_contexto_clientes(request))
     return render(request, "solicitudes/crear_solicitud.html", context)
 
 
 @login_required
 def editar_solicitud(request, pk):
+    next_url = _safe_next_url(request, "lista_solicitudes")
     solicitud = get_object_or_404(Solicitud, pk=pk)
     form = SolicitudForm(request.POST or None, instance=solicitud)
 
@@ -836,36 +850,38 @@ def editar_solicitud(request, pk):
             solicitud = form.save(commit=False)
             _asignar_estados_por_transporte(solicitud)
             solicitud.save()
-            return redirect("lista_solicitudes")
+            return redirect(next_url)
     else:
         cliente_param = request.GET.get("cliente")
         if cliente_param:
             form.fields["cliente"].initial = cliente_param
 
-    context = {"form": form, "modo_edicion": True}
+    context = {"form": form, "modo_edicion": True, "next_url": next_url}
     context.update(_contexto_clientes(request))
     return render(request, "solicitudes/crear_solicitud.html", context)
 
 
 @login_required
 def eliminar_solicitud(request, pk):
+    next_url = _safe_next_url(request, "lista_solicitudes")
     solicitud = get_object_or_404(Solicitud, pk=pk)
     _requiere_admin(request.user)
 
     if request.method == "POST":
         solicitud.delete()
-        return redirect("lista_solicitudes")
+        return redirect(next_url)
 
     return render(
         request,
         "solicitudes/eliminar_solicitud.html",
-        {"solicitud": solicitud},
+        {"solicitud": solicitud, "next_url": next_url},
     )
 
 
 @login_required
 @require_POST
 def cambiar_estado(request, pk, tipo):
+    next_url = _safe_next_url(request, "lista_solicitudes")
     if tipo not in TIPOS_TRANSPORTE:
         raise PermissionDenied("Tipo de transporte no permitido.")
 
@@ -888,12 +904,13 @@ def cambiar_estado(request, pk, tipo):
         solicitud.fecha_cumplido = timezone.now()
 
     solicitud.save()
-    return redirect("lista_solicitudes")
+    return redirect(next_url)
 
 
 @login_required
 @require_POST
 def marcar_cumplido(request, pk, tipo):
+    next_url = _safe_next_url(request, "lista_solicitudes")
     if tipo not in TIPOS_TRANSPORTE:
         raise PermissionDenied("Tipo de transporte no permitido.")
 
@@ -916,12 +933,13 @@ def marcar_cumplido(request, pk, tipo):
         solicitud.fecha_cumplido = timezone.now()
         solicitud.save()
 
-    return redirect("lista_solicitudes")
+    return redirect(next_url)
 
 
 @login_required
 @require_POST
 def cambiar_ejecutivo(request, pk):
+    next_url = _safe_next_url(request, "lista_solicitudes")
     _requiere_admin(request.user)
     solicitud = get_object_or_404(Solicitud, pk=pk)
 
@@ -929,7 +947,7 @@ def cambiar_ejecutivo(request, pk):
     solicitud.ejecutivo = get_object_or_404(User, id=user_id) if user_id else None
     solicitud.save()
 
-    return redirect("lista_solicitudes")
+    return redirect(next_url)
 
 
 @login_required
@@ -1172,6 +1190,7 @@ def exportar_cotizaciones_excel(request):
 
 @login_required
 def crear_cotizacion(request):
+    next_url = _safe_next_url(request, "lista_cotizaciones")
     if request.method == "POST":
         form = CotizacionForm(request.POST)
         if form.is_valid():
@@ -1190,13 +1209,13 @@ def crear_cotizacion(request):
                                     request,
                                     f"Esta cotización ya fue registrada ({existente.consecutivo}).",
                                 )
-                                return redirect("editar_cotizacion", pk=existente.pk)
+                                return redirect(f"{reverse('editar_cotizacion', args=[existente.pk])}?next={next_url}")
                         elif _cotizacion_duplicada_reciente(cotizacion):
                             messages.warning(
                                 request,
                                 "Se detectó un envío duplicado reciente. No se creó un nuevo registro.",
                             )
-                            return redirect("lista_cotizaciones")
+                            return redirect(next_url)
 
                         if not cotizacion.pk:
                             cotizacion.consecutivo = form._generar_consecutivo(cotizacion.anio)
@@ -1206,7 +1225,7 @@ def crear_cotizacion(request):
                         request,
                         f"Cotización {cotizacion.consecutivo} registrada.",
                     )
-                    return redirect("lista_cotizaciones")
+                    return redirect(next_url)
                 except IntegrityError:
                     if idempotency_key:
                         existente = Cotizacion.objects.filter(
@@ -1217,7 +1236,7 @@ def crear_cotizacion(request):
                                 request,
                                 f"Esta cotización ya fue registrada ({existente.consecutivo}).",
                             )
-                            return redirect("editar_cotizacion", pk=existente.pk)
+                            return redirect(f"{reverse('editar_cotizacion', args=[existente.pk])}?next={next_url}")
                     if intento == 2:
                         messages.error(
                             request,
@@ -1229,26 +1248,27 @@ def crear_cotizacion(request):
         if cliente_param:
             form.fields["cliente"].initial = cliente_param
 
-    context = {"form": form}
+    context = {"form": form, "next_url": next_url}
     context.update(_contexto_clientes(request))
     return render(request, "cotizaciones/crear_cotizacion.html", context)
 
 
 @login_required
 def editar_cotizacion(request, pk):
+    next_url = _safe_next_url(request, "lista_cotizaciones")
     cotizacion = get_object_or_404(Cotizacion, pk=pk)
     form = CotizacionForm(request.POST or None, instance=cotizacion)
 
     if request.method == "POST":
         if form.is_valid():
             form.save()
-            return redirect("lista_cotizaciones")
+            return redirect(next_url)
     else:
         cliente_param = request.GET.get("cliente")
         if cliente_param:
             form.fields["cliente"].initial = cliente_param
 
-    context = {"form": form}
+    context = {"form": form, "next_url": next_url}
     context.update(_contexto_clientes(request))
     return render(request, "cotizaciones/crear_cotizacion.html", context)
 
@@ -1256,25 +1276,24 @@ def editar_cotizacion(request, pk):
 @login_required
 @require_POST
 def eliminar_cotizacion(request, pk):
+    next_url = _safe_next_url(request, "lista_cotizaciones")
     _requiere_admin(request.user)
     cotizacion = get_object_or_404(Cotizacion, pk=pk)
     cotizacion.delete()
-    return redirect("lista_cotizaciones")
+    return redirect(next_url)
 
 
 @login_required
 @require_POST
 def cambiar_ejecutivo_cotizacion(request, pk):
+    next_url = _safe_next_url(request, "lista_cotizaciones")
     _requiere_admin(request.user)
     cotizacion = get_object_or_404(Cotizacion, pk=pk)
     user_id = request.POST.get("ejecutivo")
     cotizacion.ejecutivo = get_object_or_404(User, id=user_id) if user_id else None
     cotizacion.save()
 
-    anio = request.POST.get("anio")
-    if anio and anio.isdigit():
-        return redirect(f"{reverse('lista_cotizaciones')}?anio={anio}")
-    return redirect("lista_cotizaciones")
+    return redirect(next_url)
 
 
 @login_required
@@ -1382,6 +1401,7 @@ def exportar_referencias_excel(request):
 
 @login_required
 def crear_referencia(request):
+    next_url = _safe_next_url(request, "lista_referencias")
     if not puede_crear(request.user):
         raise PermissionDenied("No tienes permisos para crear referencias.")
 
@@ -1389,20 +1409,21 @@ def crear_referencia(request):
         form = ReferenciaForm(request.POST)
         if form.is_valid():
             form.save()
-            return redirect("lista_referencias")
+            return redirect(next_url)
     else:
         form = ReferenciaForm()
         cliente_param = request.GET.get("cliente")
         if cliente_param:
             form.fields["cliente"].initial = cliente_param
 
-    context = {"form": form}
+    context = {"form": form, "next_url": next_url}
     context.update(_contexto_clientes(request))
     return render(request, "referencias/crear_referencia.html", context)
 
 
 @login_required
 def editar_referencia(request, pk):
+    next_url = _safe_next_url(request, "lista_referencias")
     if not puede_crear(request.user):
         raise PermissionDenied("No tienes permisos para editar referencias.")
     referencia = get_object_or_404(Referencia, pk=pk)
@@ -1411,13 +1432,13 @@ def editar_referencia(request, pk):
     if request.method == "POST":
         if form.is_valid():
             form.save()
-            return redirect("lista_referencias")
+            return redirect(next_url)
     else:
         cliente_param = request.GET.get("cliente")
         if cliente_param:
             form.fields["cliente"].initial = cliente_param
 
-    context = {"form": form}
+    context = {"form": form, "next_url": next_url}
     context.update(_contexto_clientes(request))
     return render(request, "referencias/crear_referencia.html", context)
 
@@ -1425,18 +1446,20 @@ def editar_referencia(request, pk):
 @login_required
 @require_POST
 def eliminar_referencia(request, pk):
+    next_url = _safe_next_url(request, "lista_referencias")
     _requiere_admin(request.user)
     referencia = get_object_or_404(Referencia, pk=pk)
     referencia.delete()
-    return redirect("lista_referencias")
+    return redirect(next_url)
 
 
 @login_required
 @require_POST
 def cambiar_ejecutivo_referencia(request, pk):
+    next_url = _safe_next_url(request, "lista_referencias")
     _requiere_admin(request.user)
     referencia = get_object_or_404(Referencia, pk=pk)
     user_id = request.POST.get("ejecutivo")
     referencia.ejecutivo = get_object_or_404(User, id=user_id) if user_id else None
     referencia.save()
-    return redirect("lista_referencias")
+    return redirect(next_url)

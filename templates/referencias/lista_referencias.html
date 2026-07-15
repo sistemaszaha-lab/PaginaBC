@@ -19,7 +19,7 @@
 {% if puede_crear_referencia %}
     {% if user.rol == "admin" or user.rol == "ejecutivo" %}
     <div class="mb-3 d-flex gap-2 flex-wrap">
-        <a href="{% url 'crear_referencia' %}" class="btn btn-success">+ Nueva Referencia</a>
+        <a href="{% url 'crear_referencia' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva Referencia</a>
     </div>
     {% endif %}
 {% endif %}
@@ -78,4 +78,3 @@
     })();
 </script>
 {% endblock %}
-

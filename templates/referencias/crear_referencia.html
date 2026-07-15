@@ -7,10 +7,11 @@
 
 <form method="post">
     {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next_url }}">
     {{ form.as_p }}
 
     <button type="submit" class="btn btn-success">Guardar</button>
-    <a href="{% url 'lista_referencias' %}" class="btn btn-secondary">Cancelar</a>
+    <a href="{% if next_url %}{{ next_url }}{% else %}{% url 'lista_referencias' %}{% endif %}" class="btn btn-secondary">Cancelar</a>
 </form>
 
 <datalist id="clientes_datalist">

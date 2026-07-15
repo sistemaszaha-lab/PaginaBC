@@ -6,7 +6,7 @@
 <h2 class="mb-4">Solicitudes</h2>
 
 <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
-    <a href="{% url 'crear_solicitud' %}" class="btn btn-success">+ Nueva Solicitud</a>
+    <a href="{% url 'crear_solicitud' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva Solicitud</a>
     <a href="{% url 'exportar_solicitudes_excel' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}" class="btn btn-outline-success">
         Descargar Excel
     </a>

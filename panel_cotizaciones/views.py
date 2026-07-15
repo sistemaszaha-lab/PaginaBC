@@ -7,6 +7,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import (
@@ -25,6 +26,17 @@ from .models import (
 )
 
 User = get_user_model()
+
+
+def _safe_next_url(request: HttpRequest):
+    next_url = (request.POST.get("next") or request.GET.get("next") or "").strip()
+    if next_url and url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return None
 
 
 def _get_usuario_filter(request: HttpRequest):
@@ -109,6 +121,7 @@ def tablero_partial(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def crear_panel_cotizacion(request: HttpRequest) -> HttpResponse:
+    next_url = _safe_next_url(request)
     if request.method == "POST":
         form = PanelCotizacionCreateForm(request.POST, request.FILES)
         archivos_form = PanelCotizacionArchivosForm(request.POST, request.FILES)
@@ -120,6 +133,8 @@ def crear_panel_cotizacion(request: HttpRequest) -> HttpResponse:
             obj.save()
             form.save_m2m()
             _guardar_adjuntos_enlaces(request, obj, enlace_form)
+            if next_url:
+                return redirect(next_url)
             return redirect("panel_cotizaciones:panel_cotizaciones")
     else:
         form = PanelCotizacionCreateForm()
@@ -128,7 +143,7 @@ def crear_panel_cotizacion(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "panel_cotizaciones/crear.html",
-        {"form": form, "archivos_form": archivos_form, "enlace_form": enlace_form},
+        {"form": form, "archivos_form": archivos_form, "enlace_form": enlace_form, "next_url": next_url},
     )
 
 

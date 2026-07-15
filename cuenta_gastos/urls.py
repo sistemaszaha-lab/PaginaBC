@@ -60,18 +60,23 @@ urlpatterns = [
         name="agregar_archivo"
     ),
     path(
+        "<int:pk>/archivo/eliminar/",
+        views.eliminar_archivo,
+        name="eliminar_archivo"
+    ),
+    path(
         "<int:pk>/enlace/",
         views.agregar_enlace,
         name="agregar_enlace"
     ),
     path(
+        "<int:pk>/enlace/eliminar/",
+        views.eliminar_enlace,
+        name="eliminar_enlace"
+    ),
+    path(
         "<int:pk>/eliminar/",
         views.eliminar_cuenta,
         name="eliminar_cuenta"
-    ),
-    path(
-        "etiqueta/<int:id>/eliminar/",
-        views.eliminar_etiqueta,
-        name="eliminar_etiqueta"
     ),
 ]

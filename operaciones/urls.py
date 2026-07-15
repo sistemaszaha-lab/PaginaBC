@@ -16,6 +16,8 @@ urlpatterns = [
     path("<int:operacion_id>/editar/", views.editar_operacion, name="editar_operacion"),
     path("<int:operacion_id>/comentario/", views.agregar_comentario, name="agregar_comentario"),
     path("<int:operacion_id>/archivo/", views.agregar_archivo, name="agregar_archivo"),
+    path("<int:operacion_id>/archivo/eliminar/", views.eliminar_archivo, name="eliminar_archivo"),
+    path("<int:operacion_id>/enlace/eliminar/", views.eliminar_enlace, name="eliminar_enlace"),
     path("<int:operacion_id>/mover/", views.mover_operacion, name="mover_operacion"),
     path("<int:operacion_id>/eliminar/", views.eliminar_operacion, name="eliminar_operacion"),
 ]

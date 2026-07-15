@@ -1,10 +1,11 @@
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
-from django.db.models import Prefetch
+from django.utils.http import url_has_allowed_host_and_scheme
 
 
 from .models import (
@@ -56,28 +57,56 @@ def _cuenta_queryset():
         .prefetch_related(
             "asignados",
             "etiquetas",
-            "comentarios"
+            "comentarios",
+            "archivos",
+            "enlaces",
         )
+
+
+def _get_usuario_filter(request):
+    usuario_id = (request.GET.get("usuario") or "").strip()
+    if not usuario_id.isdigit():
+        return None
+    return User.objects.filter(pk=int(usuario_id)).first()
+
+
+def _usuarios_filtro(selected_user_id=None):
+    usuarios = User.objects.filter(is_active=True).order_by("first_name", "last_name", "username", "id")
+    return [
+        {
+            "id": usuario.id,
+            "nombre": usuario.first_name or usuario.get_full_name() or usuario.username,
+            "seleccionado": usuario.id == selected_user_id,
+        }
+        for usuario in usuarios
+    ]
+
+
+def _safe_next_url(request):
+    next_url = (request.POST.get("next") or request.GET.get("next") or "").strip()
+    if next_url and url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return None
+
+
+def _puede_modificar_cuenta(user, cuenta):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser or cuenta.creado_por_id == user.id:
+        return True
+    return cuenta.asignados.filter(id=user.id).exists()
 
 
 @login_required
 def panel_cuenta_gastos(request):
-
-    usuario=request.GET.get("usuarios")
-
-    cuentas=_cuenta_queryset()
-
-    if usuario and usuario.strip():
-
-        try:
-
-            cuentas=cuentas.filter(
-                asignados__id=int(usuario)
-            ).distinct()
-
-        except:
-
-            pass
+    usuario = _get_usuario_filter(request)
+    cuentas = _cuenta_queryset()
+    if usuario:
+        cuentas = cuentas.filter(asignados__id=usuario.id).distinct()
 
 
     columnas=[]
@@ -96,13 +125,6 @@ def panel_cuenta_gastos(request):
             )
 
         })
-
-
-    usuarios=User.objects\
-        .filter(is_active=True)\
-        .order_by("first_name")
-
-
     return render(
 
         request,
@@ -111,7 +133,7 @@ def panel_cuenta_gastos(request):
 
         {
             "columnas":columnas,
-            "usuarios":usuarios,
+            "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
             "current":"panel_cuenta_gastos"
         }
 
@@ -119,6 +141,7 @@ def panel_cuenta_gastos(request):
 
 @login_required
 def crear_cuenta_gastos(request):
+    next_url = _safe_next_url(request)
 
     if request.method=="POST":
 
@@ -141,6 +164,8 @@ def crear_cuenta_gastos(request):
 
             form.save_m2m()
 
+            if next_url:
+                return redirect(next_url)
             return redirect(
             "cuenta_gastos:panel_cuenta_gastos"
             )       
@@ -153,7 +178,8 @@ def crear_cuenta_gastos(request):
         request,
         "cuenta_gastos/crear_cuenta_gastos.html",
         {
-            "form":form
+            "form":form,
+            "next_url": next_url,
         }
     )
 
@@ -164,6 +190,8 @@ def editar_cuenta(request, pk):
         CuentaGastos,
         pk=pk
     )
+    if not _puede_modificar_cuenta(request.user, cuenta):
+        raise PermissionDenied("No tienes permisos para modificar esta cuenta de gastos.")
 
     form = CuentaGastosForm(
         request.POST or None,
@@ -308,6 +336,8 @@ def eliminar_etiqueta(request, etiqueta_id):
 @login_required
 def agregar_comentario(request, pk):
     cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    if not _puede_modificar_cuenta(request.user, cuenta):
+        raise PermissionDenied("No tienes permisos para comentar esta cuenta de gastos.")
     if request.method == "POST":
         form = CuentaGastosComentarioForm(request.POST)
         if form.is_valid():
@@ -323,6 +353,8 @@ def agregar_comentario(request, pk):
 @login_required
 def agregar_archivo(request, pk):
     cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    if not _puede_modificar_cuenta(request.user, cuenta):
+        raise PermissionDenied("No tienes permisos para modificar esta cuenta de gastos.")
     if request.method == "POST":
         archivos = request.FILES.getlist("archivos")
         if archivos:
@@ -337,8 +369,35 @@ def agregar_archivo(request, pk):
 
 
 @login_required
+@require_POST
+def eliminar_archivo(request, pk):
+    cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    if not _puede_modificar_cuenta(request.user, cuenta):
+        raise PermissionDenied("No tienes permisos para eliminar archivos de esta cuenta de gastos.")
+    archivo_id = request.POST.get("archivo_id")
+    archivo = get_object_or_404(CuentaGastosArchivo, id=archivo_id, cuenta_gasto=cuenta)
+    archivo.delete()
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
+    html = render_to_string(
+        "cuenta_gastos/_detalle_modal_content.html",
+        {
+            "cuenta": cuenta,
+            "form": CuentaGastosForm(instance=cuenta),
+            "comentario_form": CuentaGastosComentarioForm(),
+            "archivos_form": CuentaGastosArchivosForm(),
+            "enlace_form": CuentaGastosEnlaceForm(),
+        },
+        request=request,
+    )
+    card_html = render_to_string("cuenta_gastos/_card.html", {"cuenta": cuenta}, request=request)
+    return JsonResponse({"success": True, "html": html, "card_html": card_html, "id": cuenta.pk})
+
+
+@login_required
 def agregar_enlace(request, pk):
     cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    if not _puede_modificar_cuenta(request.user, cuenta):
+        raise PermissionDenied("No tienes permisos para modificar esta cuenta de gastos.")
     if request.method == "POST":
         form = CuentaGastosEnlaceForm(request.POST)
         if form.is_valid():
@@ -351,13 +410,40 @@ def agregar_enlace(request, pk):
 
 
 @login_required
+@require_POST
+def eliminar_enlace(request, pk):
+    cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    if not _puede_modificar_cuenta(request.user, cuenta):
+        raise PermissionDenied("No tienes permisos para eliminar enlaces de esta cuenta de gastos.")
+    enlace_id = request.POST.get("enlace_id")
+    enlace = get_object_or_404(CuentaGastosEnlace, id=enlace_id, cuenta_gasto=cuenta)
+    enlace.delete()
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
+    html = render_to_string(
+        "cuenta_gastos/_detalle_modal_content.html",
+        {
+            "cuenta": cuenta,
+            "form": CuentaGastosForm(instance=cuenta),
+            "comentario_form": CuentaGastosComentarioForm(),
+            "archivos_form": CuentaGastosArchivosForm(),
+            "enlace_form": CuentaGastosEnlaceForm(),
+        },
+        request=request,
+    )
+    card_html = render_to_string("cuenta_gastos/_card.html", {"cuenta": cuenta}, request=request)
+    return JsonResponse({"success": True, "html": html, "card_html": card_html, "id": cuenta.pk})
+
+
+@login_required
 def eliminar_cuenta(request, pk):
     cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    if not _puede_modificar_cuenta(request.user, cuenta):
+        raise PermissionDenied("No tienes permisos para eliminar esta cuenta de gastos.")
     if request.method == "POST":
         cuenta.delete()
         if request.headers.get("x-requested-with") == "XMLHttpRequest":
-            return JsonResponse({"success": True, "redirect": True})
-        return redirect("cuenta_gastos:panel")
+            return JsonResponse({"success": True, "redirect": True, "id": pk})
+        return redirect("cuenta_gastos:panel_cuenta_gastos")
     return JsonResponse({"success": False, "error": "Método no permitido."})
 
 
@@ -372,6 +458,8 @@ def mover_cuenta_gastos(
         CuentaGastos,
         pk=pk
     )
+    if not _puede_modificar_cuenta(request.user, cuenta):
+        raise PermissionDenied("No tienes permisos para mover esta cuenta de gastos.")
 
     estado=request.POST.get(
         "estado"

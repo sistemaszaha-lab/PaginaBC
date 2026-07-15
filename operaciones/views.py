@@ -1,10 +1,11 @@
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import FileResponse, JsonResponse
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
-from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST, require_http_methods
 
 # pyrefly: ignore [missing-import]
@@ -23,6 +24,8 @@ from .models import (
     OperacionEtiqueta,
     OperacionOpcion,
 )
+
+User = get_user_model()
 
 
 def _estado_label(estado):
@@ -57,6 +60,44 @@ def _operacion_queryset():
         .prefetch_related("asignados", "comentarios__usuario", "archivos", "enlaces", "etiquetas")
         .order_by("-fecha_creacion", "-id")
     )
+
+
+def _safe_next_url(request):
+    next_url = (request.POST.get("next") or request.GET.get("next") or "").strip()
+    if next_url and url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return None
+
+
+def _puede_modificar_operacion(user, operacion):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser or operacion.creado_por_id == user.id:
+        return True
+    return operacion.asignados.filter(id=user.id).exists()
+
+
+def _get_usuario_filter(request):
+    usuario_id = (request.GET.get("usuario") or "").strip()
+    if not usuario_id.isdigit():
+        return None
+    return User.objects.filter(pk=int(usuario_id)).first()
+
+
+def _usuarios_filtro(selected_user_id=None):
+    usuarios = User.objects.filter(is_active=True).order_by("first_name", "last_name", "username", "id")
+    return [
+        {
+            "nombre": usuario.first_name or usuario.get_full_name() or usuario.username,
+            "id": usuario.id,
+            "seleccionado": usuario.id == selected_user_id,
+        }
+        for usuario in usuarios
+    ]
 
 
 def _contexto_modal_operacion(operacion, form=None, archivos_form=None, enlace_form=None, comentario_form=None):
@@ -95,22 +136,16 @@ def _render_card_html(request, operacion):
 @login_required
 def panel_operaciones(request):
 
-    filtro_usuarios = request.GET.getlist("usuarios")
+    usuario = _get_usuario_filter(request)
 
     operaciones = _operacion_queryset()
 
     # limpiar vacíos y valores inválidos
-    filtro_usuarios = [
-        int(x)
-        for x in filtro_usuarios
-        if x and x.isdigit()
-    ]
-
-    if filtro_usuarios:
+    if usuario:
         operaciones = (
             operaciones
             .filter(
-                asignados__id__in=filtro_usuarios
+                asignados__id=usuario.id
             )
             .distinct()
         )
@@ -133,36 +168,28 @@ def panel_operaciones(request):
         if operacion.estado in columnas:
             columnas[operacion.estado].append(operacion)
     
-    # Obtener usuarios para filtros
-    from django.contrib.auth import get_user_model
-    User = get_user_model()
-    usuarios_sistema = User.objects.filter(
-        operaciones_asignadas__isnull=False
-    ).distinct().order_by("first_name")
-    
-    # Mapeo de valores para filtros (usando nombres)
-    usuarios_filtro = [
-        {"nombre": u.first_name, "id": u.id, "seleccionado": u.id in filtro_usuarios}
-        for u in usuarios_sistema
-    ]
-    
     return render(request, "operaciones/panel_operaciones.html", {
         "columnas": columnas,
         "estados": Operacion.Estado.choices,
-        "usuarios_filtro": usuarios_filtro,
+        "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
         "current": "panel_operaciones",
     })
 
 
 @login_required
 def crear_operacion(request):
+    next_url = _safe_next_url(request)
     if request.method == "POST":
         form = OperacionForm(request.POST)
+        archivos_form = OperacionArchivosForm(request.POST, request.FILES)
+        enlace_form = OperacionEnlaceForm(request.POST)
         if form.is_valid():
             operacion = form.save(commit=False)
             operacion.creado_por = request.user
             operacion.save()
             form.save_m2m()
+            if archivos_form.is_valid() and enlace_form.is_valid():
+                _guardar_adjuntos_enlaces(request, operacion, enlace_form)
             
             if _es_ajax(request):
                 return JsonResponse({
@@ -173,11 +200,19 @@ def crear_operacion(request):
                 })
             
             messages.success(request, "Operación creada exitosamente.")
+            if next_url:
+                return redirect(next_url)
             return redirect("operaciones:panel_operaciones")
     else:
         form = OperacionForm()
+        archivos_form = OperacionArchivosForm()
+        enlace_form = OperacionEnlaceForm()
     
-    return render(request, "operaciones/crear_operacion.html", {"form": form, "current": "crear_operacion"})
+    return render(
+        request,
+        "operaciones/crear_operacion.html",
+        {"form": form, "archivos_form": archivos_form, "enlace_form": enlace_form, "current": "crear_operacion", "next_url": next_url},
+    )
 
 
 @login_required
@@ -228,6 +263,8 @@ def detalle_operacion_modal(request, operacion_id):
 @require_http_methods(["POST"])
 def editar_operacion(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para modificar esta operación.")
     form = OperacionEditarForm(request.POST, request.FILES, instance=operacion)
 
     if form.is_valid():
@@ -266,6 +303,8 @@ def editar_operacion(request, operacion_id):
 @require_POST
 def agregar_comentario(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para comentar esta operación.")
     form = OperacionComentarioForm(request.POST)
     
     if form.is_valid():
@@ -299,6 +338,8 @@ def agregar_comentario(request, operacion_id):
 @require_POST
 def agregar_archivo(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para modificar esta operación.")
     form = OperacionArchivosForm(request.POST, request.FILES)
     enlace_form = OperacionEnlaceForm(request.POST)
     
@@ -314,6 +355,54 @@ def agregar_archivo(request, operacion_id):
             return JsonResponse({"success": True, "html": html, "id": operacion.id})
     
     return JsonResponse({"success": False})
+
+
+@login_required
+@require_POST
+def eliminar_archivo(request, operacion_id):
+    operacion = get_object_or_404(Operacion, id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para eliminar archivos de esta operación.")
+    archivo_id = request.POST.get("archivo_id")
+    archivo = get_object_or_404(OperacionArchivo, id=archivo_id, operacion=operacion)
+    archivo.delete()
+
+    if _es_ajax(request):
+        operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
+        html = render_to_string(
+            "operaciones/_detalle_modal_content.html",
+            _contexto_modal_operacion(operacion),
+            request=request,
+        )
+        card_html = _render_card_html(request, operacion)
+        return JsonResponse({"success": True, "html": html, "card_html": card_html, "id": operacion.id})
+
+    messages.success(request, "Archivo eliminado exitosamente.")
+    return redirect("operaciones:panel_operaciones")
+
+
+@login_required
+@require_POST
+def eliminar_enlace(request, operacion_id):
+    operacion = get_object_or_404(Operacion, id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para eliminar enlaces de esta operación.")
+    enlace_id = request.POST.get("enlace_id")
+    enlace = get_object_or_404(OperacionEnlace, id=enlace_id, operacion=operacion)
+    enlace.delete()
+
+    if _es_ajax(request):
+        operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
+        html = render_to_string(
+            "operaciones/_detalle_modal_content.html",
+            _contexto_modal_operacion(operacion),
+            request=request,
+        )
+        card_html = _render_card_html(request, operacion)
+        return JsonResponse({"success": True, "html": html, "card_html": card_html, "id": operacion.id})
+
+    messages.success(request, "Enlace eliminado exitosamente.")
+    return redirect("operaciones:panel_operaciones")
 
 
 @login_required
@@ -390,6 +479,8 @@ def mover_operacion(
            Operacion,
            id=operacion_id
         )
+        if not _puede_modificar_operacion(request.user, operacion):
+            raise PermissionDenied("No tienes permisos para mover esta operación.")
 
         estado=request.POST.get(
            "estado"
@@ -413,6 +504,8 @@ def mover_operacion(
 @require_POST
 def eliminar_operacion(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para eliminar esta operación.")
     operacion.delete()
     
     if _es_ajax(request):

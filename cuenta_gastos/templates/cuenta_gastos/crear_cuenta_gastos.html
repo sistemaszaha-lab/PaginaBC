@@ -17,6 +17,7 @@
                 <div class="card-body" style="padding: 20px;">
                     <form method="post">
                         {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ next_url }}">
 
                         <div class="mb-3">
                             <label for="id_titulo" class="form-label">Nombre *</label>
@@ -60,7 +61,7 @@
 
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary flex-grow-1">Crear Cuenta de Gastos</button>
-                            <a href="{% url 'cuenta_gastos:panel_cuenta_gastos' %}"
+                            <a href="{% if next_url %}{{ next_url }}{% else %}{% url 'cuenta_gastos:panel_cuenta_gastos' %}{% endif %}"
                                 class="btn btn-outline-secondary flex-grow-1">Cancelar</a>
                         </div>
                     </form>

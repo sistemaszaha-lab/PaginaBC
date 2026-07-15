@@ -6,30 +6,17 @@
 <h2 class="mb-0">Cuenta de Gastos</h2>
 <div style="display:none;">{% csrf_token %}</div>
 
-<div class="d-flex align-items-center gap-3 mb-4">
-    <a href="{% url 'cuenta_gastos:crear_cuenta_gastos' %}" class="btn btn-success">+ Nueva Cuenta</a>
-    <div class="ms-auto" style="min-width:220px;">
-
-        <label class="form-label small text-muted mb-1">
-            Filtro por usuario
-        </label>
-
-        <select id="CuentaGastosUserFilter" name="usuarios" class="form-select">
-
-            <option value="">
-                Todos
-            </option>
-
-            {% for usuario in usuarios %}
-
-            <option value="{{usuario.id}}" {% if usuario.seleccionado %} selected {% endif %}> {{usuario.nombre}}
-            </option>
-
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+    <a href="{% url 'cuenta_gastos:crear_cuenta_gastos' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva Cuenta</a>
+    <form method="get" class="ms-auto" style="min-width:220px;">
+        <label class="form-label small text-muted mb-1">Filtro por usuario</label>
+        <select id="CuentaGastosUserFilter" name="usuario" class="form-select">
+            <option value="">Todos</option>
+            {% for usuario in usuarios_filtro %}
+            <option value="{{ usuario.id }}" {% if usuario.seleccionado %}selected{% endif %}>{{ usuario.nombre }}</option>
             {% endfor %}
-
         </select>
-
-    </div>
+    </form>
 </div>
 
 <div class="d-flex gap-3 overflow-auto pb-3">
@@ -42,180 +29,192 @@
             {% for cuenta in columna.items %}
             {% include 'cuenta_gastos/_card.html' %}
             {% empty %}
-            <div class="text-muted"></div>
+            <div class="text-muted small">Sin registros.</div>
             {% endfor %}
         </div>
     </div>
     {% endfor %}
 </div>
-</div>
-
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
 
-    document.addEventListener('DOMContentLoaded', function () {
-        document.addEventListener('click', function (e) {
-            const btn = e.target.closest('[data-cuenta-modal-open="1"]');
-            if (!btn) return;
-            e.preventDefault();
+    function reloadBoard() {
+      window.location.reload();
+    }
 
-            const cuentaId = btn.dataset.id;
-            const url = btn.dataset.modalUrl || (cuentaId ? `/cuenta-gastos/detalle/${cuentaId}/` : null);
-            if (!url) return;
-
-            cargarDetalleCuenta(cuentaId, url);
-        });
-
-        document.querySelectorAll('.columna-drop').forEach(col => {
-            Sortable.create(col, {
-                group: 'cuentas',
-                animation: 150,
-                onEnd: function (evt) {
-                    const id = evt.item.dataset.id;
-                    const estado = evt.to.dataset.estado;
-                    fetch(`/cuenta-gastos/${id}/mover/`, {
-                        method: 'POST',
-                        headers: {
-                            'X-CSRFToken': '{{ csrf_token }}',
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
-                        body: `estado=${encodeURIComponent(estado)}`
-                    });
-                }
-            });
-        });
+    document.getElementById('CuentaGastosUserFilter')?.addEventListener('change', function () {
+      this.form.submit();
     });
 
-    function cargarDetalleCuenta(cuentaId, url) {
-        const modalEl = document.getElementById('cuentaModal');
-        const modalBody = document.getElementById('modalContent');
-        if (modalBody) modalBody.innerHTML = 'Cargando...';
-        if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-            bootstrap.Modal.getOrCreateInstance(modalEl).show();
-        }
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-cuenta-modal-open="1"]');
+      if (!btn) return;
+      e.preventDefault();
 
-        const finalUrl = url || `/cuenta-gastos/detalle/${cuentaId}/`;
-        return fetch(finalUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(response => response.json())
-            .then(data => {
-                modalBody.innerHTML = data.html || '';
-                if (typeof window.initcuentaSelects === 'function') window.initcuentaSelects(document.getElementById('modalContent'));
+      const cuentaId = btn.dataset.id;
+      const url = btn.dataset.modalUrl || (cuentaId ? `/cuenta-gastos/detalle/${cuentaId}/` : null);
+      if (!url) return;
+
+      cargarDetalleCuenta(cuentaId, url);
+    });
+
+    document.querySelectorAll('.columna-drop').forEach((col) => {
+      Sortable.create(col, {
+        group: 'cuentas',
+        animation: 150,
+        onEnd: function (evt) {
+          const id = evt.item.dataset.id;
+          const estado = evt.to.dataset.estado;
+          fetch(`/cuenta-gastos/${id}/mover/`, {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': csrfToken,
+              'X-Requested-With': 'XMLHttpRequest',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `estado=${encodeURIComponent(estado)}`
+          })
+            .then((response) => {
+              if (!response.ok) throw new Error(`Error ${response.status}`);
+              return response.json();
             })
-            .catch(() => {
-                modalBody.innerHTML = '<div class="alert alert-danger mb-0">No se pudo cargar el detalle.</div>';
+            .then((data) => {
+              if (!data.ok) {
+                reloadBoard();
+              }
+            })
+            .catch((error) => {
+              console.error('No se pudo mover la cuenta de gastos:', error);
+              reloadBoard();
             });
-    }
-
-    function actualizarCardDesdeModal() {
-        try {
-            const modal = document.getElementById('modalContent');
-            if (!modal) return;
-
-            // obtener id de la cuenta desde dataset o desde action del form
-            let cuentaId = document.querySelector('#modalContent .cuenta-detalle-modal')?.dataset.cuentaId;
-            if (!cuentaId) {
-                const form = modal.querySelector('form[data-cuenta-modal-form="1"]') || modal.querySelector('form');
-                if (form) {
-                    const m = form.action.match(/(\d+)\/?$/);
-                    if (m) cuentaId = m[1];
-                }
-            }
-            if (!cuentaId) return;
-
-            const card = document.getElementById(`cuenta-${cuentaId}`);
-            if (!card) return;
-
-            // Título
-            const modalTitle = modal.querySelector('.modal-title')?.textContent?.trim();
-            if (modalTitle) {
-                const cardTitle = card.querySelector('.fw-semibold');
-                if (cardTitle) cardTitle.textContent = modalTitle;
-            }
-
-            // Cliente
-            const modalCliente = modal.querySelector('.modal-header .text-muted')?.textContent?.trim();
-            if (modalCliente) {
-                const cardCliente = card.querySelector('.text-muted.small');
-                if (cardCliente) cardCliente.textContent = modalCliente;
-            }
-
-            // Asignados (badges)
-            const asignadosModal = Array.from(modal.querySelectorAll('.badge.bg-light.text-dark.border'));
-            const asignadosContainer = card.querySelector('.d-flex.gap-1.flex-wrap.ms-1');
-            if (asignadosContainer) {
-                asignadosContainer.innerHTML = asignadosModal.map(b => `<span class="badge bg-light text-dark border" title="${b.title}">${b.textContent.trim()}</span>`).join(' ');
-            }
-
-            // Vencimiento
-            const venceModalText = Array.from(modal.querySelectorAll('.small.text-muted')).map(n => n.textContent).find(t => t && t.includes('Vence'));
-            if (venceModalText) {
-                const cardVence = card.querySelector('.mt-2.small.text-muted');
-                if (cardVence) cardVence.textContent = venceModalText.replace(/^\s*/, '');
-            }
-
-            // Etiquetas
-            const etiquetasModal = Array.from(modal.querySelectorAll('#modalContent .badge')).filter(b => b && b.style && b.style.background);
-            const etiquetasContainer = card.querySelector('.d-flex.gap-1.flex-wrap:not(.ms-1)');
-            if (etiquetasContainer) {
-                etiquetasContainer.innerHTML = etiquetasModal.map(b => `<span class="badge" style="background: ${b.style.background}">${b.textContent.trim()}</span>`).join(' ');
-            }
-
-            // Comentarios count
-            const comentariosCount = modal.querySelectorAll('[data-cuenta-comentarios] .border').length || modal.querySelectorAll('[data-cuenta-comentarios] .small.border').length;
-            const cardComentarios = card.querySelector('.small.text-muted:last-child');
-            if (cardComentarios) cardComentarios.textContent = `Comentarios: ${comentariosCount}`;
-        } catch (e) {
-            console.error('Error actualizando tarjeta desde modal', e);
         }
-    }
+      });
+    });
+
+    window.cargarDetalleCuenta = function (cuentaId, url) {
+      const modalEl = document.getElementById('cuentaModal');
+      const modalBody = document.getElementById('modalContent');
+      if (modalBody) modalBody.innerHTML = 'Cargando...';
+      if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      }
+
+      const finalUrl = url || `/cuenta-gastos/detalle/${cuentaId}/`;
+      return fetch(finalUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then((response) => {
+          if (!response.ok) throw new Error(`Error ${response.status}`);
+          return response.json();
+        })
+        .then((data) => {
+          modalBody.innerHTML = data.html || '';
+          if (typeof window.initcuentaSelects === 'function') window.initcuentaSelects(document.getElementById('modalContent'));
+        })
+        .catch((error) => {
+          console.error('No se pudo cargar el detalle de la cuenta:', error);
+          modalBody.innerHTML = '<div class="alert alert-danger mb-0">No se pudo cargar el detalle.</div>';
+        });
+    };
 
     document.addEventListener('submit', function (e) {
-        const form = e.target.closest('#modalContent form');
-        if (!form) return;
-        e.preventDefault();
+      const form = e.target.closest('#modalContent form');
+      if (!form) return;
+      e.preventDefault();
 
-        if (form.dataset.confirmDelete === '1' && !confirm('¿Deseas eliminar esta cuenta de gastos?')) return;
-
-        const formData = new FormData(form);
-        fetch(form.action, {
-            method: form.method || 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            body: formData
+      const formData = new FormData(form);
+      fetch(form.action, {
+        method: form.method || 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+      })
+        .then(async (response) => {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          }
+          return { success: false, html: await response.text() };
         })
-            .then(async response => {
-                const contentType = response.headers.get('content-type') || '';
-                if (contentType.includes('application/json')) return response.json();
-                return { success: false, html: await response.text() };
-            })
-            .then(data => {
-                if (data.redirect) {
-                    const modalEl = document.getElementById('cuentaModal');
-                    if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
-                    }
-                    return;
-                }
-
-                if (data.success && data.html) {
-                    document.getElementById('modalContent').innerHTML = data.html;
-                    if (typeof window.initcuentaSelects === 'function') window.initcuentaSelects(document.getElementById('modalContent'));
-                    if (data.card_html && data.id) {
-                        const existing = document.getElementById(`cuenta-${data.id}`);
-                        if (existing) existing.outerHTML = data.card_html;
-                    }
-                    return;
-                }
-
-                if (data.success) {
-                    const currentId = document.querySelector('#modalContent .cuenta-detalle-modal')?.dataset.cuentaId;
-                    if (currentId) cargarDetalleCuenta(currentId, `/cuenta-gastos/detalle/${currentId}/`).then(actualizarCardDesdeModal);
-                }
-            })
-            .catch(() => { });
+        .then((data) => {
+          if (data.success) {
+            reloadBoard();
+          } else if (data.html) {
+            document.getElementById('modalContent').innerHTML = data.html;
+            if (typeof window.initcuentaSelects === 'function') window.initcuentaSelects(document.getElementById('modalContent'));
+          }
+        })
+        .catch((error) => {
+          console.error('No se pudo actualizar la cuenta de gastos:', error);
+        });
     });
 
+    document.addEventListener('submit', function (e) {
+      const formEtiqueta = e.target.closest('#form-crear-etiqueta');
+      if (!formEtiqueta) return;
+      e.preventDefault();
+      const nombre = document.getElementById('etiqueta_nombre')?.value || '';
+      const color = document.getElementById('etiqueta_color')?.value || '#3E9FA2';
+
+      fetch(formEtiqueta.action, {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrfToken,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'nombre=' + encodeURIComponent(nombre) + '&color=' + encodeURIComponent(color)
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error(`Error ${response.status}`);
+          return response.json();
+        })
+        .then((data) => {
+          if (!data.success) {
+            throw new Error(data.error || 'No se pudo crear la etiqueta');
+          }
+          if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(document.getElementById('crearEtiquetaModal')).hide();
+          reloadBoard();
+        })
+        .catch((error) => {
+          console.error('No se pudo crear la etiqueta:', error);
+        });
+    });
+
+    document.addEventListener('submit', function (e) {
+      const formOpcion = e.target.closest('#form-crear-opcion');
+      if (!formOpcion) return;
+      e.preventDefault();
+      const nombre = document.getElementById('opcion_nombre')?.value || '';
+
+      fetch(formOpcion.action, {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrfToken,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'nombre=' + encodeURIComponent(nombre)
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error(`Error ${response.status}`);
+          return response.json();
+        })
+        .then((data) => {
+          if (!data.success) {
+            throw new Error(data.error || 'No se pudo crear la opcion');
+          }
+          if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(document.getElementById('crearOpcionModal')).hide();
+          reloadBoard();
+        })
+        .catch((error) => {
+          console.error('No se pudo crear la opcion:', error);
+        });
+    });
+  });
 </script>
 
 <div class="modal fade" id="cuentaModal" tabindex="-1" aria-hidden="true">
@@ -226,7 +225,6 @@
     </div>
 </div>
 
-<!-- Modal crear etiqueta (Cuenta Gastos) -->
 <div class="modal fade" id="crearEtiquetaModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-sm">
         <div class="modal-content">
@@ -243,8 +241,7 @@
                     </div>
                     <div>
                         <label for="etiqueta_color" class="form-label">Color:</label>
-                        <input type="color" class="form-control form-control-color w-100" id="etiqueta_color"
-                            name="color" value="#3E9FA2" required>
+                        <input type="color" class="form-control form-control-color w-100" id="etiqueta_color" name="color" value="#3E9FA2" required>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -256,12 +253,11 @@
     </div>
 </div>
 
-<!-- Modal crear opción (Cuenta Gastos) -->
 <div class="modal fade" id="crearOpcionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-sm">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Nueva Opción</h5>
+                <h5 class="modal-title">Nueva Opcion</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="form-crear-opcion" method="post" action="{% url 'cuenta_gastos:crear_opcion' %}">
@@ -280,129 +276,4 @@
         </div>
     </div>
 </div>
-
-
-<script>
-    // Manejo de envíos AJAX para modales externos (crear etiqueta/opción)
-    document.addEventListener('submit', function (e) {
-        const formEtiqueta = e.target.closest('#form-crear-etiqueta');
-        if (formEtiqueta) {
-            e.preventDefault();
-            const nombre = document.getElementById('etiqueta_nombre')?.value || '';
-            const color = document.getElementById('etiqueta_color')?.value || '#3E9FA2';
-            const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-
-            fetch(formEtiqueta.action, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': csrf,
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'nombre=' + encodeURIComponent(nombre) + '&color=' + encodeURIComponent(color)
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (!data.success) { alert('Error: ' + (data.error || 'No se pudo crear')); return; }
-                    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(document.getElementById('crearEtiquetaModal')).hide();
-                    const currentId = document.querySelector('#modalContent .cuenta-detalle-modal')?.dataset.cuentaId;
-                    if (currentId) cargarDetalleCuenta(currentId, `/cuenta-gastos/detalle/${currentId}/`).then(actualizarCardDesdeModal);
-                })
-                .catch(() => { });
-            return;
-        }
-
-        const formOpcion = e.target.closest('#form-crear-opcion');
-        if (formOpcion) {
-            e.preventDefault();
-            const nombre = document.getElementById('opcion_nombre')?.value || '';
-            const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-
-            fetch(formOpcion.action, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': csrf,
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'nombre=' + encodeURIComponent(nombre)
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (!data.success) { alert('Error: ' + (data.error || 'No se pudo crear')); return; }
-                    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(document.getElementById('crearOpcionModal')).hide();
-                    const currentId = document.querySelector('#modalContent .cuenta-detalle-modal')?.dataset.cuentaId;
-                    if (currentId) cargarDetalleCuenta(currentId, `/cuenta-gastos/detalle/${currentId}/`).then(actualizarCardDesdeModal);
-                })
-                .catch(() => { });
-            return;
-        }
-    });
-</script>
-<script>
-
-    document.addEventListener(
-        'click',
-        function (e) {
-
-            const btn =
-                e.target.closest(
-                    '[data-delete-url]'
-                );
-
-            if (!btn) return;
-
-            e.preventDefault();
-
-            if (
-                !confirm(
-                    '¿Eliminar etiqueta?'
-                )
-            ) return;
-
-            fetch(
-                btn.dataset.deleteUrl,
-                {
-                    method: 'POST',
-
-                    headers: {
-                        'X-CSRFToken':
-                            document.querySelector(
-                                '[name=csrfmiddlewaretoken]'
-                            ).value,
-
-                        'X-Requested-With':
-                            'XMLHttpRequest'
-                    }
-
-                })
-
-                .then(r => r.json())
-
-                .then(data => {
-
-                    if (
-                        data.status === 'ok'
-                    ) {
-
-                        btn.closest(
-                            '.badge'
-                        ).remove();
-
-                    }
-
-                })
-
-                .catch(error => {
-
-                    console.error(
-                        'Error eliminando etiqueta',
-                        error
-                    );
-
-                });
-
-        });
-
-</script>
 {% endblock %}

@@ -1,9 +1,10 @@
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 
-from .models import Operacion
+from .models import Operacion, OperacionArchivo, OperacionEnlace
 
 
 @override_settings(
@@ -31,16 +32,17 @@ class OperacionesPanelFiltroUsuariosTests(TestCase):
         self.assertEqual(resp.status_code, 200)
 
     def test_panel_usuarios_param_vacio_no_explota(self):
-        resp = self.client.get(reverse("operaciones:panel_operaciones"), {"usuarios": ""})
+        resp = self.client.get(reverse("operaciones:panel_operaciones"), {"usuario": ""})
         self.assertEqual(resp.status_code, 200)
 
     def test_panel_usuarios_all_no_explota(self):
-        resp = self.client.get(reverse("operaciones:panel_operaciones"), {"usuarios": "all"})
+        resp = self.client.get(reverse("operaciones:panel_operaciones"), {"usuario": "all"})
         self.assertEqual(resp.status_code, 200)
 
     def test_panel_usuarios_ids_filtra(self):
-        resp = self.client.get(reverse("operaciones:panel_operaciones"), {"usuarios": str(self.asignado.id)})
+        resp = self.client.get(reverse("operaciones:panel_operaciones"), {"usuario": str(self.asignado.id)})
         self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Op 1")
 
 
 @override_settings(
@@ -100,3 +102,40 @@ class OperacionesDetalleModalTests(TestCase):
         # Verificar que los asignados y etiquetas se mantuvieron
         self.assertIn(usuario_2, self.operacion.asignados.all())
         self.assertIn(etiqueta, self.operacion.etiquetas.all())
+
+    def test_usuario_sin_permiso_no_puede_eliminar_archivo(self):
+        User = get_user_model()
+        otro = User.objects.create_user(username="otro_archivo", password="pass")
+        archivo = OperacionArchivo.objects.create(
+            operacion=self.operacion,
+            archivo=SimpleUploadedFile("evidencia.txt", b"hola"),
+            subido_por=self.user,
+        )
+
+        self.client.force_login(otro)
+        resp = self.client.post(
+            reverse("operaciones:eliminar_archivo", args=[self.operacion.id]),
+            {"archivo_id": archivo.id},
+        )
+
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(OperacionArchivo.objects.filter(id=archivo.id).exists())
+
+    def test_usuario_sin_permiso_no_puede_eliminar_enlace(self):
+        User = get_user_model()
+        otro = User.objects.create_user(username="otro_enlace", password="pass")
+        enlace = OperacionEnlace.objects.create(
+            operacion=self.operacion,
+            titulo="Documento",
+            url="https://example.com/doc",
+            creado_por=self.user,
+        )
+
+        self.client.force_login(otro)
+        resp = self.client.post(
+            reverse("operaciones:eliminar_enlace", args=[self.operacion.id]),
+            {"enlace_id": enlace.id},
+        )
+
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(OperacionEnlace.objects.filter(id=enlace.id).exists())

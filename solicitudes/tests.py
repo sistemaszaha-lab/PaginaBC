@@ -192,6 +192,41 @@ class SeguridadPermisosTests(TestCase):
         self.solicitud.refresh_from_db()
         self.assertEqual(self.solicitud.ejecutivo_id, self.otro.pk)
 
+    def test_acciones_preservan_next_en_listados(self):
+        self.client.login(username="admin", password="admin123")
+        next_url = "/solicitudes/?anio=2026&q=cliente&page=2"
+
+        response = self.client.post(
+            reverse("cambiar_ejecutivo", args=[self.solicitud.pk]),
+            {"ejecutivo": self.otro.pk, "next": next_url},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, next_url)
+
+        response = self.client.post(
+            reverse("cambiar_ejecutivo_cotizacion", args=[self.cotizacion.pk]),
+            {"ejecutivo": self.otro.pk, "next": "/cotizaciones/?anio=2026&q=demo"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/cotizaciones/?anio=2026&q=demo")
+
+    def test_acciones_rechazan_next_externo(self):
+        self.client.login(username="admin", password="admin123")
+
+        response = self.client.post(
+            reverse("cambiar_ejecutivo", args=[self.solicitud.pk]),
+            {"ejecutivo": self.otro.pk, "next": "//evil.test/phishing"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("lista_solicitudes"))
+
+        response = self.client.post(
+            reverse("cambiar_ejecutivo_cotizacion", args=[self.cotizacion.pk]),
+            {"ejecutivo": self.otro.pk, "next": "https://evil.test/phishing"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("lista_cotizaciones"))
+
     def test_cambiar_ejecutivo_cotizacion_y_referencia_solo_admin(self):
         url_cot = reverse("cambiar_ejecutivo_cotizacion", args=[self.cotizacion.pk])
         url_ref = reverse("cambiar_ejecutivo_referencia", args=[self.referencia.pk])

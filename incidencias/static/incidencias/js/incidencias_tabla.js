@@ -95,10 +95,16 @@
 
   function applyGlobalSearch(value) {
     const v = String(value || "").trim();
+    const url = new URL(window.location.href);
     if (!v) {
       table.clearFilter(true);
+      url.searchParams.delete("q");
+      history.replaceState(null, "", url.toString());
       return;
     }
+
+    url.searchParams.set("q", v);
+    history.replaceState(null, "", url.toString());
 
     const needle = v.toLowerCase();
     table.setFilter((rowData) => {
@@ -269,5 +275,8 @@
   table.on("pageLoaded", renderPager);
   table.on("dataFiltered", renderPager);
   table.on("dataLoaded", renderPager);
+  if (searchInput && searchInput.value) {
+    applyGlobalSearch(searchInput.value);
+  }
   renderPager();
 })();

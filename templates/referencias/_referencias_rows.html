@@ -6,6 +6,7 @@
     <td>
         <form method="post" action="{% url 'cambiar_ejecutivo_referencia' r.id %}">
             {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
             <select name="ejecutivo" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">-- Sin asignar --</option>
                 {% for u in usuarios %}
@@ -29,14 +30,15 @@
     <td>{{ r.fecha }}</td>
     <td>
         {% if request.user.is_superuser %}
-            <a href="{% url 'editar_referencia' r.id %}" class="btn btn-sm btn-primary">Editar</a>
+            <a href="{% url 'editar_referencia' r.id %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-primary">Editar</a>
             <form method="post" action="{% url 'eliminar_referencia' r.id %}" class="d-inline">
                 {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
                 <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
             </form>
         {% else %}
             {% if user.rol == "ejecutivo" %}
-                <a href="{% url 'editar_referencia' r.id %}" class="btn btn-sm btn-primary">
+                <a href="{% url 'editar_referencia' r.id %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-primary">
                     Editar
                 </a>
             {% else %}

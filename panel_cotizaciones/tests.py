@@ -1,7 +1,8 @@
 from datetime import date
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import Client, TestCase
+from django.urls import reverse
 
 from clientes.models import Cliente
 from .forms import PanelCotizacionCreateForm
@@ -50,3 +51,26 @@ class PanelCotizacionClienteNormalizacionTests(TestCase):
         panel.refresh_from_db()
 
         self.assertEqual(panel.cliente, "MÉXICO & CIA. - LOG / SUR")
+
+
+class PanelCotizacionFiltroTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="panel_admin", password="panel123", first_name="Panel")
+        self.asignado = User.objects.create_user(username="panel_asignado", password="panel123", first_name="Asignado")
+        self.client = Client()
+        self.client.force_login(self.user)
+
+        self.panel = PanelCotizacion.objects.create(
+            titulo="Cotizacion Visible",
+            descripcion="Descripcion",
+            cliente="CLIENTE UNO",
+            prioridad=PanelCotizacion.Prioridad.MEDIA,
+            estado=PanelCotizacion.Estado.REQUERIMIENTO,
+            creado_por=self.user,
+        )
+        self.panel.asignados.add(self.asignado)
+
+    def test_panel_filtra_por_usuario(self):
+        response = self.client.get(reverse("panel_cotizaciones:panel_cotizaciones"), {"usuario": str(self.asignado.id)})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Cotizacion Visible")

@@ -1,10 +1,11 @@
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 
 from clientes.models import Cliente
-from .models import CuentaGastos, CuentaGastosEtiqueta, CuentaGastosOpcion
+from .models import CuentaGastos, CuentaGastosArchivo, CuentaGastosEnlace, CuentaGastosEtiqueta, CuentaGastosOpcion
 
 
 @override_settings(
@@ -41,6 +42,11 @@ class CuentaGastosTests(TestCase):
         resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
         self.assertEqual(resp.status_code, 200)
 
+    def test_panel_filtra_por_usuario(self):
+        resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"), {"usuario": str(self.asignado.id)})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Laptop HP")
+
     def test_detalle_cuenta_gastos_view(self):
         resp = self.client.get(reverse("cuenta_gastos:detalle_cuenta_gastos", args=[self.cuenta.id]))
         self.assertEqual(resp.status_code, 200)
@@ -76,3 +82,40 @@ class CuentaGastosTests(TestCase):
         self.assertIn(self.asignado, self.cuenta.asignados.all())
         self.assertIn(self.etiqueta, self.cuenta.etiquetas.all())
         self.assertIn(self.opcion, self.cuenta.opciones.all())
+
+    def test_usuario_sin_permiso_no_puede_eliminar_archivo(self):
+        User = get_user_model()
+        otro = User.objects.create_user(username="otro_archivo_cg", password="pass")
+        archivo = CuentaGastosArchivo.objects.create(
+            cuenta_gasto=self.cuenta,
+            archivo=SimpleUploadedFile("factura.txt", b"contenido"),
+            subido_por=self.user,
+        )
+
+        self.client.force_login(otro)
+        resp = self.client.post(
+            reverse("cuenta_gastos:eliminar_archivo", args=[self.cuenta.id]),
+            {"archivo_id": archivo.id},
+        )
+
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(CuentaGastosArchivo.objects.filter(id=archivo.id).exists())
+
+    def test_usuario_sin_permiso_no_puede_eliminar_enlace(self):
+        User = get_user_model()
+        otro = User.objects.create_user(username="otro_enlace_cg", password="pass")
+        enlace = CuentaGastosEnlace.objects.create(
+            cuenta_gasto=self.cuenta,
+            titulo="Portal",
+            url="https://example.com/portal",
+            creado_por=self.user,
+        )
+
+        self.client.force_login(otro)
+        resp = self.client.post(
+            reverse("cuenta_gastos:eliminar_enlace", args=[self.cuenta.id]),
+            {"enlace_id": enlace.id},
+        )
+
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(CuentaGastosEnlace.objects.filter(id=enlace.id).exists())

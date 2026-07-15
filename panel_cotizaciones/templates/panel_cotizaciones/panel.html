@@ -8,7 +8,7 @@
 <div style="display:none;">{% csrf_token %}</div>
 
 <div class="mb-3 d-flex gap-2 flex-wrap align-items-end">
-  <a href="{% url 'panel_cotizaciones:crear' %}" class="btn btn-success">+ Nueva cotización</a>
+  <a href="{% url 'panel_cotizaciones:crear' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva cotizacion</a>
 
   <div class="ms-auto" style="min-width: 220px;">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
@@ -32,21 +32,20 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Confirmar eliminación</h5>
+        <h5 class="modal-title">Confirmar eliminacion</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body">
-        <p id="panelCotizacionEliminarConfirmMessage">¿Deseas eliminar esta cotización?</p>
+        <p id="panelCotizacionEliminarConfirmMessage">Deseas eliminar esta cotizacion?</p>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-light" data-bs-dismiss="modal" data-panel-cotizacion-cancel-delete="1">Cancelar</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
         <button type="button" class="btn btn-danger" data-panel-cotizacion-confirm-delete="1">Eliminar</button>
       </div>
     </div>
   </div>
 </div>
 
-{# Bootstrap JS sólo para este módulo (modals) #}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script>
@@ -75,7 +74,12 @@
 
     function getHtml(url) {
       return fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-        .then((response) => response.text());
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Error ${response.status}`);
+          }
+          return response.text();
+        });
     }
 
     function ensureEmptyState(column) {
@@ -88,15 +92,6 @@
         column.appendChild(empty);
       }
       if (cards.length && empty) empty.remove();
-    }
-
-    function replaceCard(cardHtml, id) {
-      if (!cardHtml || !id) return;
-      const wrapper = document.createElement('div');
-      wrapper.innerHTML = cardHtml.trim();
-      const newCard = wrapper.firstElementChild;
-      const currentCard = document.getElementById(`panel-cotizacion-${id}`);
-      if (newCard && currentCard) currentCard.replaceWith(newCard);
     }
 
     function initSortable() {
@@ -126,11 +121,19 @@
             fd.set('nuevo_estado', nuevoEstado);
 
             postForm(updateUrl, fd)
-              .then((response) => response.json())
-              .then((data) => {
-                if (data.status !== 'ok') source.appendChild(card);
+              .then((response) => {
+                if (!response.ok) {
+                  throw new Error(`Error ${response.status}`);
+                }
+                return response.json();
               })
-              .catch(() => {
+              .then((data) => {
+                if (data.status !== 'ok') {
+                  source.appendChild(card);
+                }
+              })
+              .catch((error) => {
+                console.error('No se pudo mover la cotizacion:', error);
                 source.appendChild(card);
               })
               .finally(() => {
@@ -159,8 +162,9 @@
           modalContent.innerHTML = html;
           initPanelCotizacionModalContent(modalContent);
         })
-        .catch(() => {
-          modalContent.innerHTML = '<div class="modal-body p-4 text-center text-danger">No se pudo cargar la cotización.</div>';
+        .catch((error) => {
+          console.error('No se pudo cargar la cotizacion:', error);
+          modalContent.innerHTML = '<div class="modal-body p-4 text-center text-danger">No se pudo cargar la cotizacion.</div>';
         });
     }
 
@@ -180,16 +184,22 @@
           'X-Requested-With': 'XMLHttpRequest',
         },
       })
-        .then((response) => response.json())
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Error ${response.status}`);
+          }
+          return response.json();
+        })
         .then((data) => {
           if (data.status === 'ok') {
-            if (modalInstance) modalInstance.hide();
-            if (confirmModalInstance) confirmModalInstance.hide();
             refreshBoard();
           }
         })
-        .catch(() => {
-          if (confirmModalInstance) confirmModalInstance.hide();
+        .catch((error) => {
+          console.error('No se pudo eliminar la cotizacion:', error);
+          if (confirmModalInstance) {
+            confirmModalInstance.hide();
+          }
         });
     }
 
@@ -204,7 +214,9 @@
           board.innerHTML = html;
           initSortable();
         })
-        .catch(() => {});
+        .catch((error) => {
+          console.error('No se pudo refrescar el tablero de cotizaciones:', error);
+        });
     }
 
     document.addEventListener('change', (e) => {
@@ -242,20 +254,28 @@
         postForm(modalForm.getAttribute('action'), fd)
           .then(async (response) => {
             const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) return response.json();
+            if (contentType.includes('application/json')) {
+              const data = await response.json();
+              if (!response.ok) {
+                throw data;
+              }
+              return data;
+            }
             return { status: 'error', html: await response.text() };
           })
           .then((data) => {
             if (data.status === 'ok') {
               modalContent.innerHTML = data.html;
               initPanelCotizacionModalContent(modalContent);
-              replaceCard(data.card_html, data.id);
+              refreshBoard();
             } else if (data.html) {
               modalContent.innerHTML = data.html;
               initPanelCotizacionModalContent(modalContent);
             }
           })
-          .catch(() => {});
+          .catch((error) => {
+            console.error('No se pudo guardar la cotizacion:', error);
+          });
         return;
       }
 
@@ -271,27 +291,20 @@
       const fd = new FormData();
       fd.set('texto', text);
       postForm(url, fd)
-        .then((response) => response.json())
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Error ${response.status}`);
+          }
+          return response.json();
+        })
         .then((data) => {
           if (data.status !== 'ok') return;
           if (textarea) textarea.value = '';
-          const lists = [
-            document.querySelector(`#panel-cotizacion-${id} [data-panel-cotizacion-comentarios="1"]`),
-            modalContent?.querySelector('[data-panel-cotizacion-comentarios="1"]'),
-          ];
-          lists.forEach((list) => {
-            if (!list) return;
-            const item = document.createElement('div');
-            const fecha = new Date(data.comentario.fecha);
-            item.className = 'small border rounded p-2 mb-2';
-            item.innerHTML = `<div class="fw-semibold">${data.comentario.usuario} <span class="text-muted fw-normal">• ${fecha.toLocaleString()}</span></div><div style="white-space: pre-wrap;"></div>`;
-            item.querySelector('div[style]')?.appendChild(document.createTextNode(data.comentario.texto));
-            list.prepend(item.cloneNode(true));
-          });
-          const counter = document.querySelector(`#panel-cotizacion-${id} [data-panel-cotizacion-comentarios-count="1"]`);
-          if (counter) counter.textContent = String((parseInt(counter.textContent || '0', 10) || 0) + 1);
+          refreshBoard();
         })
-        .catch(() => {});
+        .catch((error) => {
+          console.error('No se pudo agregar el comentario:', error);
+        });
     });
 
     initSortable();
@@ -308,4 +321,3 @@
   }
 </style>
 {% endblock %}
-

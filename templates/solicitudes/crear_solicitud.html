@@ -11,6 +11,7 @@
 
         <form method="post">
             {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next_url }}">
 
             {{ form.as_p }}
 
@@ -19,7 +20,7 @@
                     Guardar
                 </button>
 
-                <a href="{% url 'lista_solicitudes' %}"
+                <a href="{% if next_url %}{{ next_url }}{% else %}{% url 'lista_solicitudes' %}{% endif %}"
                    class="btn btn-secondary">
                     Cancelar
                 </a>
