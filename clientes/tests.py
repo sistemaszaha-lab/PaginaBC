@@ -150,6 +150,37 @@ class ClienteViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(MENSAJE_CLIENTE_DUPLICADO, contexto["form"].non_field_errors())
 
+    def test_crear_cliente_redirige_a_next_interno_y_agrega_cliente(self):
+        response = self.client.post(
+            reverse("cliente_crear"),
+            {
+                "nombre": "Empresa Vargas",
+                "empresa": "Logistica",
+                "estado": Cliente.ESTADO_ACTIVO,
+                "next": "/solicitudes/editar/1/?next=/solicitudes/?page=2",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url,
+            "/solicitudes/editar/1/?next=%2Fsolicitudes%2F%3Fpage%3D2&cliente=EMPRESA+VARGAS+%28LOGISTICA%29",
+        )
+
+    def test_crear_cliente_rechaza_next_externo(self):
+        response = self.client.post(
+            reverse("cliente_crear"),
+            {
+                "nombre": "Empresa Vargas",
+                "empresa": "Logistica",
+                "estado": Cliente.ESTADO_ACTIVO,
+                "next": "//evil.test/phishing",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("cliente_lista"))
+
 
 class CotizacionClienteConstraintTests(TestCase):
     def setUp(self):

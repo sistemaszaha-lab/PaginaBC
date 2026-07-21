@@ -1,0 +1,13 @@
+<div
+  class="cuenta-inline-value"
+  data-cuenta-inline-field="fecha_vencimiento"
+  data-date-value="{% if cuenta.fecha_vencimiento %}{{ cuenta.fecha_vencimiento|date:'Y-m-d' }}{% endif %}"
+  data-update-url="{% url 'cuenta_gastos:actualizar_cuenta_inline' cuenta.id %}">
+  <span class="cuenta-chip cuenta-chip--due">
+    {% if cuenta.fecha_vencimiento %}
+      Vence {{ cuenta.fecha_vencimiento|date:"d/m/Y" }}
+    {% else %}
+      Sin fecha
+    {% endif %}
+  </span>
+</div>

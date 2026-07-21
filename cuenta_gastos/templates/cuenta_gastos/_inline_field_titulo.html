@@ -1,0 +1,8 @@
+<div
+  class="cuenta-inline-value cuenta-inline-value--title"
+  data-cuenta-inline-field="titulo"
+  data-update-url="{% url 'cuenta_gastos:actualizar_cuenta_inline' cuenta.id %}">
+  <div class="cuenta-card__title">
+    {{ cuenta.titulo|default:"Sin título" }}
+  </div>
+</div>

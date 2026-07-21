@@ -1,0 +1,26 @@
+<form
+  method="post"
+  action="{% url 'cuenta_gastos:agregar_enlace' cuenta.id %}"
+  data-cuenta-enlace-form="1"
+  data-cuenta-id="{{ cuenta.id }}"
+  class="cuenta-section-form"
+>
+  {% csrf_token %}
+  <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
+  <div class="row g-2">
+    <div class="col-md-4">{{ enlace_form.titulo }}</div>
+    <div class="col-md-8">{{ enlace_form.url }}</div>
+  </div>
+  {% if enlace_form.titulo.errors %}
+    <div class="cuenta-section-error mt-2">{{ enlace_form.titulo.errors|join:" " }}</div>
+  {% endif %}
+  {% if enlace_form.url.errors %}
+    <div class="cuenta-section-error mt-2">{{ enlace_form.url.errors|join:" " }}</div>
+  {% endif %}
+  {% if enlace_form.non_field_errors %}
+    <div class="cuenta-section-error mt-2">{{ enlace_form.non_field_errors|join:" " }}</div>
+  {% endif %}
+  <div class="d-flex justify-content-end mt-2">
+    <button type="submit" class="btn btn-outline-primary btn-sm">Agregar enlace</button>
+  </div>
+</form>

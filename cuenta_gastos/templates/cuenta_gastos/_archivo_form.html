@@ -1,0 +1,27 @@
+<form
+  method="post"
+  enctype="multipart/form-data"
+  action="{% url 'cuenta_gastos:agregar_archivo' cuenta.id %}"
+  data-cuenta-archivo-form="1"
+  data-cuenta-id="{{ cuenta.id }}"
+  class="cuenta-section-form"
+>
+  {% csrf_token %}
+  <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
+  <div class="mb-2">
+    {{ archivos_form.archivos }}
+  </div>
+  {% if archivos_form.archivos.errors %}
+    <div class="cuenta-section-error" data-cuenta-archivo-error="1">
+      {{ archivos_form.archivos.errors|join:" " }}
+    </div>
+  {% endif %}
+  {% if archivos_form.non_field_errors %}
+    <div class="cuenta-section-error">
+      {{ archivos_form.non_field_errors|join:" " }}
+    </div>
+  {% endif %}
+  <div class="d-flex justify-content-end">
+    <button type="submit" class="btn btn-outline-primary btn-sm">Subir archivo</button>
+  </div>
+</form>

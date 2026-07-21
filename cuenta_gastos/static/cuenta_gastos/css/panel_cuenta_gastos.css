@@ -1,0 +1,678 @@
+:root {
+  --cuenta-board-bg: linear-gradient(180deg, #f4efe6 0%, #fbf8f2 100%);
+  --cuenta-column-bg: rgba(255, 252, 247, 0.92);
+  --cuenta-column-border: #e8dcc8;
+  --cuenta-card-bg: #fffdfa;
+  --cuenta-card-border: #eadfce;
+  --cuenta-text-main: #2b241d;
+  --cuenta-text-muted: #7b6d60;
+  --cuenta-accent: #0f766e;
+  --cuenta-shadow: 0 18px 40px rgba(69, 52, 35, 0.08);
+}
+
+.cuenta-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.cuenta-page-header__eyebrow {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a6f46;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.cuenta-page-header__summary {
+  max-width: 34rem;
+  color: var(--cuenta-text-muted);
+  line-height: 1.5;
+}
+
+.cuenta-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.cuenta-toolbar__filter {
+  margin-left: auto;
+  min-width: 240px;
+}
+
+.cuenta-board {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding: 1rem;
+  margin: 0 -0.25rem;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(180, 83, 9, 0.08), transparent 22%),
+    var(--cuenta-board-bg);
+}
+
+.cuenta-column {
+  width: 340px;
+  min-width: 340px;
+  border-radius: 22px;
+  background: var(--cuenta-column-bg);
+  border: 1px solid var(--cuenta-column-border);
+  overflow: hidden;
+}
+
+.cuenta-column__header {
+  padding: 1rem 1rem 0.9rem;
+  border-bottom: 1px solid rgba(148, 116, 72, 0.14);
+  background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(247,241,231,0.95) 100%);
+}
+
+.cuenta-column__eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9a7a4a;
+  margin-bottom: 0.45rem;
+}
+
+.cuenta-column__title {
+  font-size: 1rem;
+  line-height: 1.3;
+  color: var(--cuenta-text-main);
+  font-weight: 700;
+}
+
+.cuenta-column__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.65rem;
+  border-radius: 999px;
+  background: #f3e6d3;
+  color: #7b5d34;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.cuenta-column__body {
+  min-height: 12rem;
+  padding: 1rem;
+}
+
+.cuenta-column__add-btn {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px dashed #d2ba95;
+  background: rgba(255, 248, 237, 0.88);
+  color: #7a5e35;
+  font-weight: 700;
+}
+
+.cuenta-column__add-btn:hover {
+  background: #fff3df;
+  color: #624920;
+}
+
+.cuenta-inline-form {
+  border: 1px solid #e5d4bb;
+  border-radius: 16px;
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 24px rgba(92, 68, 36, 0.08);
+}
+
+.cuenta-column__empty {
+  padding: 1rem;
+  border: 1px dashed #d8c4a7;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--cuenta-text-muted);
+  font-size: 0.92rem;
+  text-align: center;
+}
+
+.cuenta-card {
+  position: relative;
+  border: 1px solid var(--cuenta-card-border);
+  border-radius: 18px;
+  background: var(--cuenta-card-bg);
+  box-shadow: var(--cuenta-shadow);
+  overflow: hidden;
+  transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cuenta-card[data-pending="1"] {
+  opacity: 0.68;
+  transform: scale(0.992);
+  pointer-events: none;
+}
+
+.cuenta-card__accent {
+  height: 5px;
+  background: #94a3b8;
+}
+
+.cuenta-card__accent--alta {
+  background: linear-gradient(90deg, #dc2626, #f97316);
+}
+
+.cuenta-card__accent--media {
+  background: linear-gradient(90deg, #d97706, #facc15);
+}
+
+.cuenta-card__accent--baja {
+  background: linear-gradient(90deg, #0f766e, #22c55e);
+}
+
+.cuenta-card__body {
+  padding: 1rem;
+}
+
+.cuenta-card__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--cuenta-text-main);
+  line-height: 1.35;
+}
+
+.cuenta-card__client {
+  margin-top: 0.3rem;
+  color: #5f564d;
+  font-size: 0.92rem;
+}
+
+.cuenta-card__client--muted {
+  color: #9b8f82;
+}
+
+.cuenta-card__detail-btn {
+  border-radius: 999px;
+  border: 1px solid #d9c9b3;
+  background: #fff7ea;
+  color: #6f5228;
+  font-weight: 600;
+}
+
+.cuenta-card__detail-btn:hover {
+  background: #f8ecd7;
+  color: #5a431f;
+}
+
+.cuenta-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
+.cuenta-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.32rem 0.7rem;
+  font-size: 0.77rem;
+  font-weight: 700;
+}
+
+.cuenta-chip--priority.cuenta-chip--alta {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.cuenta-chip--priority.cuenta-chip--media {
+  background: #fef3c7;
+  color: #a16207;
+}
+
+.cuenta-chip--priority.cuenta-chip--baja {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.cuenta-chip--due {
+  background: #f4efe8;
+  color: #6d6256;
+}
+
+.cuenta-chip--state {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.cuenta-card__description {
+  margin-top: 0.9rem;
+  color: var(--cuenta-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.cuenta-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+}
+
+.cuenta-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--tag-bg, #3e9fa2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.cuenta-card__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(148, 116, 72, 0.16);
+}
+
+.cuenta-card__avatars {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.cuenta-avatar {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f766e, #155e75);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.cuenta-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 0.6rem;
+}
+
+.cuenta-card__state-control {
+  margin-top: 0.95rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.cuenta-card__state-label {
+  color: #8a7763;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cuenta-card__state-select {
+  border-radius: 12px;
+  border-color: #dccab0;
+  background-color: #fffaf2;
+  color: #5f4c31;
+  font-size: 0.88rem;
+}
+
+.cuenta-card__stat,
+.cuenta-card__footer-note {
+  color: var(--cuenta-text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.cuenta-inline-value {
+  border-radius: 12px;
+  padding: 0.18rem 0.22rem;
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.cuenta-inline-value:hover {
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.cuenta-inline-value--title {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.cuenta-inline-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.15rem;
+}
+
+.cuenta-inline-editor__actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+body.cuenta-drawer-open {
+  overflow: hidden;
+}
+
+.cuenta-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cuenta-detail-modal-body {
+  background:
+    radial-gradient(circle at top right, rgba(15, 118, 110, 0.06), transparent 28%),
+    linear-gradient(180deg, #fffdf8 0%, #f7f2e8 100%);
+}
+
+.cuenta-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  pointer-events: none;
+}
+
+.cuenta-drawer.is-open {
+  pointer-events: auto;
+}
+
+.cuenta-drawer__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 20, 12, 0.4);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.cuenta-drawer.is-open .cuenta-drawer__backdrop {
+  opacity: 1;
+}
+
+.cuenta-drawer__dialog {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(760px, 100vw);
+  height: 100%;
+  background: #fffdfa;
+  box-shadow: -20px 0 48px rgba(41, 30, 18, 0.18);
+  transform: translateX(100%);
+  transition: transform 0.22s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.cuenta-drawer.is-open .cuenta-drawer__dialog {
+  transform: translateX(0);
+}
+
+.cuenta-drawer__content-shell {
+  height: 100%;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.06), transparent 26%),
+    linear-gradient(180deg, #fffdf8 0%, #f7f2e8 100%);
+}
+
+.cuenta-drawer__panel {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.cuenta-drawer__header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.35rem 1.4rem 1rem;
+  border-bottom: 1px solid rgba(148, 116, 72, 0.16);
+  background: rgba(255, 252, 247, 0.96);
+  backdrop-filter: blur(10px);
+}
+
+.cuenta-drawer__header-main {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.cuenta-drawer__title {
+  margin: 0;
+  font-size: 1.3rem;
+  line-height: 1.3;
+  color: var(--cuenta-text-main);
+}
+
+.cuenta-drawer__content {
+  padding: 1.2rem 1.4rem 1.5rem;
+}
+
+.cuenta-drawer__loading {
+  padding: 1.5rem;
+  color: var(--cuenta-text-muted);
+  text-align: center;
+}
+
+.cuenta-detail-section {
+  position: relative;
+  border: 1px solid rgba(148, 116, 72, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 1rem;
+}
+
+.cuenta-detail-section[data-pending="1"] {
+  opacity: 0.72;
+}
+
+.cuenta-section-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.cuenta-section-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.cuenta-section-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #e7dbc8;
+  border-radius: 14px;
+  background: rgba(255, 253, 250, 0.92);
+}
+
+.cuenta-section-empty {
+  padding: 0.9rem 1rem;
+  border: 1px dashed #d8c4a7;
+  border-radius: 14px;
+  color: var(--cuenta-text-muted);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.cuenta-section-error {
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.88rem;
+}
+
+.cuenta-section-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cuenta-section-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.45rem 0.32rem 0.7rem;
+  border-radius: 999px;
+  background: var(--tag-bg, #3e9fa2);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.cuenta-section-chip form {
+  margin: 0;
+}
+
+.cuenta-section-chip__remove {
+  border: 0;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border-radius: 999px;
+  line-height: 1;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  padding: 0;
+}
+
+.cuenta-section-option-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #e7dbc8;
+  border-radius: 14px;
+  background: rgba(255, 253, 250, 0.92);
+}
+
+.cuenta-options-checkboxes ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.cuenta-options-checkboxes li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cuenta-options-checkboxes input[type="checkbox"] {
+  margin-top: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cuenta-drawer__dialog,
+  .cuenta-drawer__content-shell,
+  .cuenta-detail-modal-body {
+    background: linear-gradient(180deg, #191714 0%, #11100e 100%);
+  }
+
+  .cuenta-drawer__header {
+    background: rgba(28, 25, 22, 0.96);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .cuenta-drawer__title,
+  .cuenta-detail-section h5 {
+    color: #f5efe6;
+  }
+
+  .cuenta-detail-section {
+    background: rgba(28, 25, 22, 0.88);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .cuenta-section-item {
+    background: rgba(36, 33, 29, 0.94);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #eee5d8;
+  }
+
+  .cuenta-section-empty {
+    background: rgba(36, 33, 29, 0.7);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #d8c9b5;
+  }
+
+  .cuenta-section-option-item {
+    background: rgba(36, 33, 29, 0.94);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #eee5d8;
+  }
+}
+
+@media (max-width: 768px) {
+  .cuenta-page-header {
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .cuenta-toolbar__filter {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .cuenta-column {
+    width: 300px;
+    min-width: 300px;
+  }
+
+  .cuenta-card__footer {
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .cuenta-card__stats {
+    justify-content: start;
+  }
+
+  .cuenta-drawer__dialog {
+    width: 100vw;
+  }
+
+  .cuenta-drawer__header,
+  .cuenta-drawer__content {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .cuenta-section-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

@@ -1,0 +1,19 @@
+{% load garantias_extras %}
+<div
+  class="cuenta-inline-value"
+  data-cuenta-inline-field="asignados"
+  data-selected-ids="{% for u in cuenta.asignados.all %}{{ u.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
+  data-update-url="{% url 'cuenta_gastos:actualizar_cuenta_inline' cuenta.id %}">
+  <div class="cuenta-card__avatars">
+    {% for u in cuenta.asignados.all|slice:":4" %}
+      <span
+        class="cuenta-avatar"
+        title="{{ u.first_name|default:u.get_full_name|default:u.username }}"
+      >
+        {{ u.first_name|default:u.username|iniciales_nombre }}
+      </span>
+    {% empty %}
+      <span class="cuenta-card__footer-note">Sin asignados</span>
+    {% endfor %}
+  </div>
+</div>

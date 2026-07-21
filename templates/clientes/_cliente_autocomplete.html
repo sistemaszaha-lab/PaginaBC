@@ -1,0 +1,53 @@
+<datalist id="clientes_datalist">
+    <option
+        value="{{ cliente_nuevo_value }}"
+        label="{{ cliente_nuevo_label }}"
+        data-cliente-nuevo="1"
+    ></option>
+    {% for cliente in clientes %}
+        <option value="{{ cliente }}"></option>
+    {% endfor %}
+</datalist>
+
+<script>
+(() => {
+    const input = document.getElementById("id_cliente");
+    if (!input) return;
+
+    const nuevoLabel = "{{ cliente_nuevo_label|escapejs }}";
+    const nuevoValue = "{{ cliente_nuevo_value|escapejs }}";
+    const nuevoUrl = "{{ cliente_nuevo_url|escapejs }}";
+    const form = input.closest("form");
+
+    const esOpcionNuevo = () => {
+        const valor = (input.value || "").trim().toLowerCase();
+        return valor === nuevoValue.toLowerCase() || valor === nuevoLabel.toLowerCase();
+    };
+
+    const redirigirANuevoCliente = () => {
+        if (!esOpcionNuevo() || !nuevoUrl) {
+            return false;
+        }
+        input.value = "";
+        window.location.assign(nuevoUrl);
+        return true;
+    };
+
+    input.addEventListener("input", redirigirANuevoCliente);
+    input.addEventListener("change", redirigirANuevoCliente);
+
+    if (form) {
+        form.addEventListener("submit", (event) => {
+            if (redirigirANuevoCliente()) {
+                event.preventDefault();
+                return;
+            }
+
+            const btn = form.querySelector("button[type=submit]");
+            if (btn) {
+                btn.disabled = true;
+            }
+        });
+    }
+})();
+</script>

@@ -1,0 +1,12 @@
+<div
+  class="cuenta-inline-value"
+  data-cuenta-inline-field="cliente"
+  data-update-url="{% url 'cuenta_gastos:actualizar_cuenta_inline' cuenta.id %}">
+  <div class="cuenta-card__client {% if not cuenta.cliente %}cuenta-card__client--muted{% endif %}">
+    {% if cuenta.cliente %}
+      {{ cuenta.cliente }}
+    {% else %}
+      Sin cliente asignado
+    {% endif %}
+  </div>
+</div>

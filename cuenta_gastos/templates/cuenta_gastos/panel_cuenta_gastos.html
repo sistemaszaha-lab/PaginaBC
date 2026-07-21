@@ -1,14 +1,27 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Cuenta de Gastos{% endblock %}
 
 {% block content %}
-<h2 class="mb-0">Cuenta de Gastos</h2>
+<link rel="stylesheet" href="{% static 'cuenta_gastos/css/panel_cuenta_gastos.css' %}">
+{% include "garantias/_asignados_tags_assets.html" %}
+
+<div class="cuenta-page-header">
+    <div>
+        <p class="cuenta-page-header__eyebrow mb-2"></p>
+        <h2 class="mb-0">Cuenta de Gastos</h2>
+    </div>
+    <p class="cuenta-page-header__summary mb-0">
+
+    </p>
+</div>
+
 <div style="display:none;">{% csrf_token %}</div>
 
-<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+<div class="cuenta-toolbar">
     <a href="{% url 'cuenta_gastos:crear_cuenta_gastos' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva Cuenta</a>
-    <form method="get" class="ms-auto" style="min-width:220px;">
+    <form method="get" class="cuenta-toolbar__filter">
         <label class="form-label small text-muted mb-1">Filtro por usuario</label>
         <select id="CuentaGastosUserFilter" name="usuario" class="form-select">
             <option value="">Todos</option>
@@ -19,38 +32,747 @@
     </form>
 </div>
 
-<div class="d-flex gap-3 overflow-auto pb-3">
-    {% for columna in columnas %}
-    <div class="card flex-shrink-0 shadow-sm" style="min-width: 330px;">
-        <div class="card-header fw-bold bg-body-secondary">
-            {{ columna.titulo }} ({{ columna.items.count }})
-        </div>
-        <div class="card-body columna-drop d-flex flex-column gap-3" data-estado="{{ columna.estado }}">
-            {% for cuenta in columna.items %}
-            {% include 'cuenta_gastos/_card.html' %}
-            {% empty %}
-            <div class="text-muted small">Sin registros.</div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endfor %}
-</div>
+{% include "cuenta_gastos/_tablero.html" with columnas=columnas estados_ui=estados_ui inline_form=inline_form only %}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-
-    function reloadBoard() {
-      window.location.reload();
-    }
+    const pendingCardIds = new Set();
+    const inlineCreateUrl = '{% url "cuenta_gastos:crear_cuenta_gastos_inline" %}';
+    window.initcuentaSelects = window.initcuentaSelects || window.initGarantiaSelects;
+    const modalEl = document.getElementById('cuentaModal');
+    const modalContent = document.getElementById('modalContent');
+    const drawerEl = document.getElementById('cuentaDrawer');
+    const drawerContent = document.getElementById('cuentaDrawerContent');
+    const drawerSupported = Boolean(drawerEl && drawerContent);
+    const detailState = {
+      id: null,
+      url: null,
+      layout: drawerSupported ? 'drawer' : 'modal',
+    };
 
     document.getElementById('CuentaGastosUserFilter')?.addEventListener('change', function () {
       this.form.submit();
     });
 
+    function getCardElement(cardId) {
+      return cardId ? document.getElementById(`cuenta-${cardId}`) : null;
+    }
+
+    function getDetailCardIdFromAction(action) {
+      const match = (action || '').match(/\/(\d+)\/(?:editar\/|eliminar\/|agregar-|eliminar-|inline-update\/|mover\/)?$/);
+      return match ? match[1] : detailState.id;
+    }
+
+    function buildDetailUrl(url, layout) {
+      const detailUrl = new URL(url, window.location.origin);
+      detailUrl.searchParams.set('layout', layout);
+      return `${detailUrl.pathname}${detailUrl.search}`;
+    }
+
+    function getCurrentDetailContainer() {
+      return detailState.layout === 'drawer' ? drawerContent : modalContent;
+    }
+
+    function setDetailState(cuentaId, url, layout) {
+      detailState.id = cuentaId ? String(cuentaId) : null;
+      detailState.url = url || null;
+      detailState.layout = layout;
+    }
+
+    function openDrawer() {
+      if (!drawerSupported) return;
+      drawerEl.hidden = false;
+      drawerEl.classList.add('is-open');
+      drawerEl.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('cuenta-drawer-open');
+    }
+
+    function closeDrawer() {
+      if (!drawerSupported) return;
+      drawerEl.classList.remove('is-open');
+      drawerEl.setAttribute('aria-hidden', 'true');
+      drawerContent.innerHTML = '<div class="cuenta-drawer__loading">Selecciona una cuenta.</div>';
+      document.body.classList.remove('cuenta-drawer-open');
+      window.setTimeout(() => {
+        if (!drawerEl.classList.contains('is-open')) {
+          drawerEl.hidden = true;
+        }
+      }, 220);
+    }
+
+    function renderDetailHtml(layout, html) {
+      const target = layout === 'drawer' ? drawerContent : modalContent;
+      if (!target) return;
+      target.innerHTML = html || '';
+      if (typeof window.initcuentaSelects === 'function') {
+        window.initcuentaSelects(target);
+      }
+    }
+
+    function renderDetailError(layout, message) {
+      const target = layout === 'drawer' ? drawerContent : modalContent;
+      if (!target) return;
+      target.innerHTML = `<div class="alert alert-danger m-3 mb-0">${message}</div>`;
+    }
+
+    function replaceCardFromHtml(cardId, cardHtml) {
+      if (!cardId || !cardHtml) return;
+      const existing = getCardElement(cardId);
+      if (!existing) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = cardHtml;
+      const nextCard = wrapper.firstElementChild;
+      if (!nextCard) return;
+      existing.replaceWith(nextCard);
+    }
+
+    function removeCardFromBoard(cardId) {
+      const existing = getCardElement(cardId);
+      if (!existing) return;
+      const column = existing.closest('.columna-drop');
+      existing.remove();
+      ensureEmptyState(column);
+      updateColumnCountFromDom(column);
+    }
+
+    function replaceCommentsSection(cardId, commentsHtml) {
+      if (!commentsHtml) return;
+      const currentContainer = getCurrentDetailContainer();
+      const currentSection = currentContainer?.querySelector('[data-cuenta-comments-section="1"]');
+      if (!currentSection) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = commentsHtml;
+      const nextSection = wrapper.firstElementChild;
+      if (!nextSection) return;
+      currentSection.replaceWith(nextSection);
+    }
+
+    function syncCommentsCount(cardId, commentsCount) {
+      const detailSection = getCurrentDetailContainer()?.querySelector('[data-cuenta-detail-comments-count="1"]');
+      if (detailSection) {
+        detailSection.textContent = String(commentsCount);
+      }
+      const card = getCardElement(cardId);
+      const cardCounter = card?.querySelector('[data-cuenta-card-comments-count="1"]');
+      if (cardCounter) {
+        cardCounter.textContent = `${commentsCount} comentarios`;
+      }
+    }
+
+    function replaceArchivosSection(html) {
+      if (!html) return;
+      const currentContainer = getCurrentDetailContainer();
+      const currentSection = currentContainer?.querySelector('[data-cuenta-files-section="1"]');
+      if (!currentSection) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const nextSection = wrapper.firstElementChild;
+      if (!nextSection) return;
+      currentSection.replaceWith(nextSection);
+    }
+
+    function replaceEnlacesSection(html) {
+      if (!html) return;
+      const currentContainer = getCurrentDetailContainer();
+      const currentSection = currentContainer?.querySelector('[data-cuenta-links-section="1"]');
+      if (!currentSection) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const nextSection = wrapper.firstElementChild;
+      if (!nextSection) return;
+      currentSection.replaceWith(nextSection);
+    }
+
+    function getArchivosSection() {
+      return getCurrentDetailContainer()?.querySelector('[data-cuenta-files-section="1"]');
+    }
+
+    function getEnlacesSection() {
+      return getCurrentDetailContainer()?.querySelector('[data-cuenta-links-section="1"]');
+    }
+
+    function setArchivoPending(isPending) {
+      const section = getArchivosSection();
+      if (!section) return;
+      section.dataset.pending = isPending ? '1' : '0';
+      const controls = section.querySelectorAll('input, button, textarea, select');
+      controls.forEach((control) => {
+        control.disabled = isPending;
+      });
+    }
+
+    function setEnlacePending(isPending) {
+      const section = getEnlacesSection();
+      if (!section) return;
+      section.dataset.pending = isPending ? '1' : '0';
+      const controls = section.querySelectorAll('input, button, textarea, select');
+      controls.forEach((control) => {
+        control.disabled = isPending;
+      });
+    }
+
+    function updateFileCount(cardId, filesCount) {
+      const detailCounter = getCurrentDetailContainer()?.querySelector('[data-cuenta-detail-files-count="1"]');
+      if (detailCounter) {
+        detailCounter.textContent = String(filesCount);
+      }
+      const cardCounter = getCardElement(cardId)?.querySelector('[data-cuenta-card-files-count="1"]');
+      if (cardCounter) {
+        cardCounter.textContent = `${filesCount} archivos`;
+      }
+    }
+
+    function updateLinkCount(cardId, linksCount) {
+      const detailCounter = getCurrentDetailContainer()?.querySelector('[data-cuenta-detail-links-count="1"]');
+      if (detailCounter) {
+        detailCounter.textContent = String(linksCount);
+      }
+    }
+
+    function replaceEtiquetasSection(html) {
+      if (!html) return;
+      const currentSection = getCurrentDetailContainer()?.querySelector('[data-cuenta-tags-section="1"]');
+      if (!currentSection) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const nextSection = wrapper.firstElementChild;
+      if (!nextSection) return;
+      currentSection.replaceWith(nextSection);
+      if (typeof window.initcuentaSelects === 'function') {
+        window.initcuentaSelects(nextSection);
+      }
+    }
+
+    function replaceOpcionesSection(html) {
+      if (!html) return;
+      const currentSection = getCurrentDetailContainer()?.querySelector('[data-cuenta-options-section="1"]');
+      if (!currentSection) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const nextSection = wrapper.firstElementChild;
+      if (!nextSection) return;
+      currentSection.replaceWith(nextSection);
+    }
+
+    function getEtiquetasSection() {
+      return getCurrentDetailContainer()?.querySelector('[data-cuenta-tags-section="1"]');
+    }
+
+    function getOpcionesSection() {
+      return getCurrentDetailContainer()?.querySelector('[data-cuenta-options-section="1"]');
+    }
+
+    function setEtiquetaPending(isPending) {
+      const section = getEtiquetasSection();
+      if (!section) return;
+      section.dataset.pending = isPending ? '1' : '0';
+      section.querySelectorAll('input, button, textarea, select').forEach((control) => {
+        control.disabled = isPending;
+      });
+    }
+
+    function setOpcionPending(isPending) {
+      const section = getOpcionesSection();
+      if (!section) return;
+      section.dataset.pending = isPending ? '1' : '0';
+      section.querySelectorAll('input, button, textarea, select').forEach((control) => {
+        control.disabled = isPending;
+      });
+    }
+
+    function showSectionError(sectionName, message) {
+      const section =
+        sectionName === 'files' ? getArchivosSection() :
+        sectionName === 'links' ? getEnlacesSection() :
+        sectionName === 'tags' ? getEtiquetasSection() :
+        getOpcionesSection();
+      if (!section) return;
+      let errorNode = section.querySelector('[data-cuenta-section-network-error="1"]');
+      if (!errorNode) {
+        errorNode = document.createElement('div');
+        errorNode.className = 'cuenta-section-error mt-2';
+        errorNode.setAttribute('data-cuenta-section-network-error', '1');
+        section.prepend(errorNode);
+      }
+      errorNode.textContent = message;
+    }
+
+    function clearSectionError(sectionName) {
+      const section =
+        sectionName === 'files' ? getArchivosSection() :
+        sectionName === 'links' ? getEnlacesSection() :
+        sectionName === 'tags' ? getEtiquetasSection() :
+        getOpcionesSection();
+      const errorNode = section?.querySelector('[data-cuenta-section-network-error="1"]');
+      if (errorNode) errorNode.remove();
+    }
+
+    function submitCuentaArchivoForm(form) {
+      const cardId = form.dataset.cuentaId || getDetailCardIdFromAction(form.action);
+      if (form.dataset.submitting === '1') return;
+      form.dataset.submitting = '1';
+      clearSectionError('files');
+      setArchivoPending(true);
+
+      fetch(form.action, {
+        method: form.method || 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(form)
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw data;
+          return data;
+        })
+        .then((data) => {
+          replaceArchivosSection(data.html);
+          updateFileCount(cardId, data.files_count ?? 0);
+        })
+        .catch((error) => {
+          if (error && error.html) {
+            replaceArchivosSection(error.html);
+            updateFileCount(cardId, error.files_count ?? 0);
+            return;
+          }
+          console.error('No se pudo actualizar la seccion de archivos:', error);
+          showSectionError('files', 'No se pudo actualizar la sección de archivos.');
+        })
+        .finally(() => {
+          delete form.dataset.submitting;
+          setArchivoPending(false);
+        });
+    }
+
+    function submitCuentaLinkForm(form) {
+      const cardId = form.dataset.cuentaId || getDetailCardIdFromAction(form.action);
+      if (form.dataset.submitting === '1') return;
+      form.dataset.submitting = '1';
+      clearSectionError('links');
+      setEnlacePending(true);
+
+      fetch(form.action, {
+        method: form.method || 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(form)
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw data;
+          return data;
+        })
+        .then((data) => {
+          replaceEnlacesSection(data.html);
+          updateLinkCount(cardId, data.links_count ?? 0);
+        })
+        .catch((error) => {
+          if (error && error.html) {
+            replaceEnlacesSection(error.html);
+            updateLinkCount(cardId, error.links_count ?? 0);
+            return;
+          }
+          console.error('No se pudo actualizar la seccion de enlaces:', error);
+          showSectionError('links', 'No se pudo actualizar la sección de enlaces.');
+        })
+        .finally(() => {
+          delete form.dataset.submitting;
+          setEnlacePending(false);
+        });
+    }
+
+    function submitCuentaEtiquetasForm(form) {
+      const cardId = form.dataset.cuentaId || getDetailCardIdFromAction(form.action);
+      if (form.dataset.submitting === '1') return;
+      form.dataset.submitting = '1';
+      clearSectionError('tags');
+      setEtiquetaPending(true);
+
+      fetch(form.action, {
+        method: form.method || 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(form)
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw data;
+          return data;
+        })
+        .then((data) => {
+          replaceEtiquetasSection(data.html);
+          if (data.card_html && data.id) {
+            replaceCardFromHtml(data.id, data.card_html);
+          }
+        })
+        .catch((error) => {
+          if (error && error.html) {
+            replaceEtiquetasSection(error.html);
+            return;
+          }
+          console.error('No se pudo actualizar la sección de etiquetas:', error);
+          showSectionError('tags', 'No se pudo actualizar la sección de etiquetas.');
+        })
+        .finally(() => {
+          delete form.dataset.submitting;
+          setEtiquetaPending(false);
+        });
+    }
+
+    function submitCuentaOpcionesForm(form) {
+      const cardId = form.dataset.cuentaId || getDetailCardIdFromAction(form.action);
+      if (form.dataset.submitting === '1') return;
+      form.dataset.submitting = '1';
+      clearSectionError('options');
+      setOpcionPending(true);
+
+      fetch(form.action, {
+        method: form.method || 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(form)
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw data;
+          return data;
+        })
+        .then((data) => {
+          replaceOpcionesSection(data.html);
+          if (data.card_html && data.id) {
+            replaceCardFromHtml(data.id, data.card_html);
+          }
+        })
+        .catch((error) => {
+          if (error && error.html) {
+            replaceOpcionesSection(error.html);
+            return;
+          }
+          console.error('No se pudo actualizar la sección de opciones:', error);
+          showSectionError('options', 'No se pudo actualizar la sección de opciones.');
+        })
+        .finally(() => {
+          delete form.dataset.submitting;
+          setOpcionPending(false);
+        });
+    }
+
+    function ensureEmptyState(column) {
+      if (!column) return;
+      const cards = column.querySelectorAll('[data-cuenta-card="1"]');
+      let empty = column.querySelector('.cuenta-column__empty');
+      if (!cards.length && !empty) {
+        empty = document.createElement('div');
+        empty.className = 'cuenta-column__empty';
+        empty.textContent = 'Sin registros.';
+        column.appendChild(empty);
+      }
+      if (cards.length && empty) empty.remove();
+    }
+
+    function closeInlineForms(exceptContainer) {
+      document.querySelectorAll('[data-cuenta-inline-container="1"]').forEach((container) => {
+        if (exceptContainer && container === exceptContainer) return;
+        container.classList.add('d-none');
+      });
+    }
+
+    function updateColumnCount(column, value) {
+      const countNode = column.closest('[data-cuenta-column="1"]')?.querySelector('.cuenta-column__count');
+      if (countNode) countNode.textContent = String(value);
+    }
+
+    function updateColumnCountFromDom(column) {
+      if (!column) return;
+      updateColumnCount(column, column.querySelectorAll('[data-cuenta-card="1"]').length);
+    }
+
+    function insertCardAt(column, card, index) {
+      if (!column || !card) return;
+      const cards = Array.from(column.querySelectorAll('[data-cuenta-card="1"]')).filter((node) => node !== card);
+      if (typeof index !== 'number' || index < 0 || index >= cards.length) {
+        column.appendChild(card);
+        return;
+      }
+      column.insertBefore(card, cards[index]);
+    }
+
+    function moveCardToColumn(card, targetColumn, index) {
+      if (!card || !targetColumn) return;
+      const emptyState = targetColumn.querySelector('.cuenta-column__empty');
+      if (emptyState) emptyState.remove();
+      const cards = Array.from(targetColumn.querySelectorAll('[data-cuenta-card="1"]')).filter((node) => node !== card);
+      if (typeof index !== 'number' || index <= 0) {
+        targetColumn.prepend(card);
+        return;
+      }
+      if (index >= cards.length) {
+        targetColumn.appendChild(card);
+        return;
+      }
+      targetColumn.insertBefore(card, cards[index]);
+    }
+
+    function getEstadoLabel(value) {
+      const option = document.querySelector(`[data-cuenta-state-select="1"] option[value="${value}"]`);
+      return option ? option.textContent.trim() : value || '';
+    }
+
+    function getCardId(card) {
+      return card?.getAttribute('data-id') || '';
+    }
+
+    function isCardPending(card) {
+      return pendingCardIds.has(getCardId(card));
+    }
+
+    function setCardPendingById(cardId, isPending) {
+      if (!cardId) return;
+      if (isPending) {
+        pendingCardIds.add(String(cardId));
+      } else {
+        pendingCardIds.delete(String(cardId));
+      }
+      const card = getCardElement(cardId);
+      if (card) {
+        setCardPending(card, isPending);
+      }
+    }
+
+    function setCardPending(card, isPending) {
+      if (!card) return;
+      const cardId = getCardId(card);
+      if (!cardId) return;
+
+      if (isPending) {
+        pendingCardIds.add(cardId);
+        card.dataset.pending = '1';
+      } else {
+        pendingCardIds.delete(cardId);
+        delete card.dataset.pending;
+      }
+
+      const stateSelect = card.querySelector('[data-cuenta-state-select="1"]');
+      const detailButton = card.querySelector('[data-cuenta-modal-open="1"]');
+      if (stateSelect) stateSelect.disabled = isPending;
+      if (detailButton) detailButton.disabled = isPending;
+    }
+
+    function syncCardStateUI(card, estado, estadoLabel) {
+      if (!card) return;
+      card.dataset.cuentaState = estado;
+      const stateSelect = card.querySelector('[data-cuenta-state-select="1"]');
+      const stateBadge = card.querySelector('[data-cuenta-state-badge="1"]');
+      if (stateSelect) stateSelect.value = estado;
+      if (stateBadge) stateBadge.textContent = estadoLabel || getEstadoLabel(estado);
+    }
+
+    function rollbackCuentaGastosCard({ card, sourceColumn, targetColumn, sourceIndex, previousState }) {
+      if (!card || !sourceColumn) return;
+      insertCardAt(sourceColumn, card, sourceIndex);
+      syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+      ensureEmptyState(sourceColumn);
+      ensureEmptyState(targetColumn);
+      updateColumnCountFromDom(sourceColumn);
+      if (targetColumn && targetColumn !== sourceColumn) {
+        updateColumnCountFromDom(targetColumn);
+      }
+    }
+
+    function getInlineEditorTemplate(fieldName, cardId) {
+      const templates = {
+        titulo: `{% filter escapejs %}{% include "cuenta_gastos/_inline_editor_form.html" with cuenta=inline_fake_cuenta field_name="titulo" bound_field=inline_titulo_form.titulo only %}{% endfilter %}`,
+        cliente: `{% filter escapejs %}{% include "cuenta_gastos/_inline_editor_form.html" with cuenta=inline_fake_cuenta field_name="cliente" bound_field=inline_cliente_form.cliente only %}{% endfilter %}`,
+        prioridad: `{% filter escapejs %}{% include "cuenta_gastos/_inline_editor_form.html" with cuenta=inline_fake_cuenta field_name="prioridad" bound_field=inline_prioridad_form.prioridad only %}{% endfilter %}`,
+        fecha_vencimiento: `{% filter escapejs %}{% include "cuenta_gastos/_inline_editor_form.html" with cuenta=inline_fake_cuenta field_name="fecha_vencimiento" bound_field=inline_vencimiento_form.fecha_vencimiento only %}{% endfilter %}`,
+        asignados: `{% filter escapejs %}{% include "cuenta_gastos/_inline_editor_form.html" with cuenta=inline_fake_cuenta field_name="asignados" bound_field=inline_asignados_form.asignados only %}{% endfilter %}`,
+      };
+      return (templates[fieldName] || '').replaceAll('__PK__', cardId);
+    }
+
+    function restoreInlineSlot(slot) {
+      if (!slot || typeof slot.dataset.previousHtml === 'undefined') return;
+      slot.innerHTML = slot.dataset.previousHtml;
+      delete slot.dataset.previousHtml;
+    }
+
+    function openInlineEditor(slot, fieldName, card, updateUrlValue) {
+      const selectedIdsSnapshot = slot.querySelector('[data-selected-ids]')?.dataset.selectedIds || '';
+      const editorHtml = getInlineEditorTemplate(fieldName, getCardId(card));
+      if (!editorHtml) return null;
+      slot.dataset.previousHtml = slot.innerHTML;
+      slot.innerHTML = editorHtml;
+      const form = slot.querySelector('[data-cuenta-inline-editor="1"]');
+      if (!form) return null;
+      form.dataset.updateUrl = updateUrlValue || '';
+
+      if (fieldName === 'titulo') {
+        const input = form.querySelector('[name="titulo"]');
+        const currentValue = card.querySelector('[data-cuenta-inline-slot="titulo"] .cuenta-card__title')?.textContent?.trim() || '';
+        if (input) {
+          input.value = /^Sin título$/.test(currentValue) ? '' : currentValue;
+          input.focus();
+          input.select();
+        }
+      } else if (fieldName === 'cliente') {
+        const currentText = card.querySelector('[data-cuenta-inline-slot="cliente"] .cuenta-card__client')?.textContent?.trim() || '';
+        const select = form.querySelector('[name="cliente"]');
+        if (select) {
+          const option = Array.from(select.options).find((item) => item.text.trim() === currentText);
+          if (option) select.value = option.value;
+          select.focus();
+        }
+      } else if (fieldName === 'prioridad') {
+        const currentText = card.querySelector('[data-cuenta-inline-slot="prioridad"] .cuenta-chip')?.textContent?.trim() || '';
+        const select = form.querySelector('[name="prioridad"]');
+        if (select) {
+          const option = Array.from(select.options).find((item) => item.text.trim() === currentText);
+          if (option) select.value = option.value;
+          select.focus();
+        }
+      } else if (fieldName === 'fecha_vencimiento') {
+        const input = form.querySelector('[name="fecha_vencimiento"]');
+        const currentValue = slot.querySelector('[data-date-value]')?.dataset.dateValue || '';
+        if (input) {
+          input.value = currentValue;
+          input.focus();
+        }
+      } else if (fieldName === 'asignados') {
+        const select = form.querySelector('[name="asignados"]');
+        const selectedIds = selectedIdsSnapshot.split(',').map((value) => value.trim()).filter(Boolean);
+        if (select) {
+          Array.from(select.options).forEach((option) => {
+            option.selected = selectedIds.includes(option.value);
+          });
+        }
+        if (window.initcuentaSelects) {
+          window.initcuentaSelects(form);
+        }
+      }
+
+      return form;
+    }
+
+    async function moveCuentaGastosCard({
+      card,
+      targetState,
+      sourceColumn,
+      targetColumn,
+      sourceIndex,
+      targetIndex,
+      trigger,
+    }) {
+      if (!card || !sourceColumn || !targetColumn || !targetState) {
+        throw new Error('Movimiento invalido');
+      }
+
+      if (isCardPending(card)) {
+        throw new Error('La cuenta ya se esta actualizando');
+      }
+
+      const previousState = card.dataset.cuentaState || sourceColumn.dataset.estado || '';
+      const sameColumn = sourceColumn === targetColumn;
+
+      if (sameColumn && previousState === targetState && trigger === 'drag') {
+        insertCardAt(sourceColumn, card, sourceIndex);
+        ensureEmptyState(sourceColumn);
+        updateColumnCountFromDom(sourceColumn);
+        return { ok: true, skipped: true };
+      }
+
+      setCardPending(card, true);
+
+      try {
+        const response = await fetch(`/cuenta-gastos/${getCardId(card)}/mover/`, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: `estado=${encodeURIComponent(targetState)}`
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.ok) {
+          throw new Error('Estado no actualizado');
+        }
+
+        syncCardStateUI(card, data.estado || targetState, data.estado_label || getEstadoLabel(targetState));
+        ensureEmptyState(sourceColumn);
+        ensureEmptyState(targetColumn);
+        updateColumnCountFromDom(sourceColumn);
+        updateColumnCountFromDom(targetColumn);
+        return data;
+      } catch (error) {
+        rollbackCuentaGastosCard({
+          card,
+          sourceColumn,
+          targetColumn,
+          sourceIndex,
+          previousState,
+        });
+        throw error;
+      } finally {
+        setCardPending(card, false);
+      }
+    }
+
     document.addEventListener('click', function (e) {
+      const inlineOpenButton = e.target.closest('[data-cuenta-inline-open="1"]');
+      if (inlineOpenButton) {
+        e.preventDefault();
+        const column = inlineOpenButton.closest('[data-cuenta-column="1"]');
+        const container = column?.querySelector('[data-cuenta-inline-container="1"]');
+        if (!container) return;
+        closeInlineForms(container);
+        container.classList.remove('d-none');
+        const firstInput = container.querySelector('input, select, textarea');
+        if (firstInput) firstInput.focus();
+        return;
+      }
+
+      const inlineCancelButton = e.target.closest('[data-cuenta-inline-cancel="1"]');
+      if (inlineCancelButton) {
+        e.preventDefault();
+        const container = inlineCancelButton.closest('[data-cuenta-inline-container="1"]');
+        if (container) {
+          container.classList.add('d-none');
+        }
+        return;
+      }
+
+      const inlineFieldValue = e.target.closest('[data-cuenta-inline-field]');
+      if (inlineFieldValue) {
+        e.preventDefault();
+        const card = inlineFieldValue.closest('[data-cuenta-card="1"]');
+        const slot = inlineFieldValue.closest('[data-cuenta-inline-slot]');
+        const fieldName = inlineFieldValue.dataset.cuentaInlineField;
+        const updateUrlValue = inlineFieldValue.dataset.updateUrl || '';
+        if (!card || !slot || !fieldName || isCardPending(card)) return;
+        if (slot.querySelector('[data-cuenta-inline-editor="1"]')) return;
+        openInlineEditor(slot, fieldName, card, updateUrlValue);
+        return;
+      }
+
+      const inlineFieldCancelButton = e.target.closest('[data-cuenta-inline-field-cancel="1"]');
+      if (inlineFieldCancelButton) {
+        e.preventDefault();
+        const slot = inlineFieldCancelButton.closest('[data-cuenta-inline-slot]');
+        restoreInlineSlot(slot);
+        return;
+      }
+
+      const drawerCloseButton = e.target.closest('[data-cuenta-drawer-close="1"]');
+      if (drawerCloseButton) {
+        e.preventDefault();
+        closeDrawer();
+        return;
+      }
+
       const btn = e.target.closest('[data-cuenta-modal-open="1"]');
       if (!btn) return;
       e.preventDefault();
@@ -59,71 +781,355 @@
       const url = btn.dataset.modalUrl || (cuentaId ? `/cuenta-gastos/detalle/${cuentaId}/` : null);
       if (!url) return;
 
-      cargarDetalleCuenta(cuentaId, url);
+      cargarDetalleCuentaDrawer(cuentaId, url);
     });
 
     document.querySelectorAll('.columna-drop').forEach((col) => {
+      ensureEmptyState(col);
+      updateColumnCountFromDom(col);
       Sortable.create(col, {
         group: 'cuentas',
         animation: 150,
+        onMove: function (evt) {
+          if (isCardPending(evt.dragged)) return false;
+          return true;
+        },
         onEnd: function (evt) {
-          const id = evt.item.dataset.id;
-          const estado = evt.to.dataset.estado;
-          fetch(`/cuenta-gastos/${id}/mover/`, {
-            method: 'POST',
-            headers: {
-              'X-CSRFToken': csrfToken,
-              'X-Requested-With': 'XMLHttpRequest',
-              'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: `estado=${encodeURIComponent(estado)}`
-          })
-            .then((response) => {
-              if (!response.ok) throw new Error(`Error ${response.status}`);
-              return response.json();
-            })
-            .then((data) => {
-              if (!data.ok) {
-                reloadBoard();
-              }
-            })
-            .catch((error) => {
-              console.error('No se pudo mover la cuenta de gastos:', error);
-              reloadBoard();
-            });
+          const card = evt.item;
+          const sourceColumn = evt.from;
+          const targetColumn = evt.to;
+          const targetState = targetColumn?.dataset.estado;
+          const sourceIndex = evt.oldIndex;
+          const targetIndex = evt.newIndex;
+
+          if (!card || !sourceColumn || !targetColumn || !targetState) return;
+
+          moveCuentaGastosCard({
+            card,
+            targetState,
+            sourceColumn,
+            targetColumn,
+            sourceIndex,
+            targetIndex,
+            trigger: 'drag',
+          }).catch((error) => {
+            console.error('No se pudo mover la cuenta de gastos:', error);
+          });
         }
       });
     });
 
-    window.cargarDetalleCuenta = function (cuentaId, url) {
-      const modalEl = document.getElementById('cuentaModal');
-      const modalBody = document.getElementById('modalContent');
-      if (modalBody) modalBody.innerHTML = 'Cargando...';
-      if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    document.addEventListener('change', function (e) {
+      const stateSelect = e.target.closest('[data-cuenta-state-select="1"]');
+      if (!stateSelect) return;
+
+      const card = stateSelect.closest('[data-cuenta-card="1"]');
+      const sourceColumn = card?.closest('.columna-drop');
+      const previousState = card?.dataset.cuentaState || sourceColumn?.dataset.estado || '';
+      const targetState = stateSelect.value;
+
+      if (!card || !sourceColumn || !targetState || previousState === targetState) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
       }
 
+      if (isCardPending(card)) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
+      }
+
+      const targetColumn = document.querySelector(`.columna-drop[data-estado="${targetState}"]`);
+      if (!targetColumn) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
+      }
+
+      const sourceIndex = Array.from(sourceColumn.querySelectorAll('[data-cuenta-card="1"]')).indexOf(card);
+      moveCardToColumn(card, targetColumn, 0);
+      ensureEmptyState(sourceColumn);
+      ensureEmptyState(targetColumn);
+      updateColumnCountFromDom(sourceColumn);
+      updateColumnCountFromDom(targetColumn);
+
+      moveCuentaGastosCard({
+        card,
+        targetState,
+        sourceColumn,
+        targetColumn,
+        sourceIndex,
+        targetIndex: 0,
+        trigger: 'select',
+      }).catch((error) => {
+        console.error('No se pudo actualizar el estado de la cuenta de gastos:', error);
+      });
+    });
+
+    function loadCuentaDetalle(cuentaId, url, preferredLayout) {
+      const layout = preferredLayout === 'drawer' && drawerSupported ? 'drawer' : 'modal';
       const finalUrl = url || `/cuenta-gastos/detalle/${cuentaId}/`;
-      return fetch(finalUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      setDetailState(cuentaId, finalUrl, layout);
+
+      if (layout === 'drawer') {
+        renderDetailHtml(layout, '<div class="cuenta-drawer__loading">Cargando detalle...</div>');
+        openDrawer();
+      } else {
+        if (modalContent) {
+          modalContent.innerHTML = '<div class="modal-body p-4 text-center text-muted">Cargando...</div>';
+        }
+        if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+          bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+      }
+
+      return fetch(buildDetailUrl(finalUrl, layout), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then((response) => {
           if (!response.ok) throw new Error(`Error ${response.status}`);
           return response.json();
         })
         .then((data) => {
-          modalBody.innerHTML = data.html || '';
-          if (typeof window.initcuentaSelects === 'function') window.initcuentaSelects(document.getElementById('modalContent'));
+          renderDetailHtml(layout, data.html || '');
         })
         .catch((error) => {
           console.error('No se pudo cargar el detalle de la cuenta:', error);
-          modalBody.innerHTML = '<div class="alert alert-danger mb-0">No se pudo cargar el detalle.</div>';
+          renderDetailError(layout, 'No se pudo cargar el detalle.');
         });
+    }
+
+    window.cargarDetalleCuenta = function (cuentaId, url) {
+      return loadCuentaDetalle(cuentaId, url, 'modal');
+    };
+
+    window.cargarDetalleCuentaDrawer = function (cuentaId, url) {
+      return loadCuentaDetalle(cuentaId, url, 'drawer');
     };
 
     document.addEventListener('submit', function (e) {
-      const form = e.target.closest('#modalContent form');
+      const inlineEditor = e.target.closest('[data-cuenta-inline-editor="1"]');
+      if (inlineEditor) {
+        e.preventDefault();
+        const slot = inlineEditor.closest('[data-cuenta-inline-slot]');
+        const card = inlineEditor.closest('[data-cuenta-card="1"]');
+        const fieldName = inlineEditor.dataset.field;
+        if (!slot || !card || !fieldName || isCardPending(card)) return;
+
+        const formData = new FormData(inlineEditor);
+        setCardPending(card, true);
+        fetch(inlineEditor.dataset.updateUrl, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          body: formData
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (!data.ok) return;
+            slot.innerHTML = data.html;
+            delete slot.dataset.previousHtml;
+          })
+          .catch((error) => {
+            const errorNode = inlineEditor.querySelector('[data-cuenta-inline-error="1"]');
+            if (error && error.errors && errorNode) {
+              const fieldErrors = error.errors[fieldName] || error.errors.__all__ || [];
+              errorNode.textContent = fieldErrors.map((item) => item.message).join(' ');
+              return;
+            }
+            restoreInlineSlot(slot);
+          })
+          .finally(() => {
+            setCardPending(card, false);
+          });
+        return;
+      }
+
+      const inlineForm = e.target.closest('[data-cuenta-inline-form="1"]');
+      if (inlineForm) {
+        e.preventDefault();
+        const container = inlineForm.closest('[data-cuenta-inline-container="1"]');
+        const column = container?.closest('[data-cuenta-column="1"]')?.querySelector('.columna-drop');
+        if (!container || !column) return;
+
+        const submitButton = inlineForm.querySelector('button[type="submit"]');
+        if (submitButton?.disabled) return;
+        if (submitButton) submitButton.disabled = true;
+
+        const formData = new FormData(inlineForm);
+        fetch(inlineCreateUrl, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          body: formData
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (!data.ok) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = data.html;
+            const card = wrapper.firstElementChild;
+            if (!card) return;
+
+            const emptyState = column.querySelector('.cuenta-column__empty');
+            if (emptyState) emptyState.remove();
+            column.prepend(card);
+            updateColumnCount(column, data.column_count);
+
+            container.classList.add('d-none');
+            container.innerHTML = `{% filter escapejs %}{% include "cuenta_gastos/_inline_create_form.html" with form=inline_form estado="__ESTADO__" only %}{% endfilter %}`.replaceAll('__ESTADO__', data.estado);
+          })
+          .catch((error) => {
+            if (error && error.html) {
+              container.innerHTML = error.html;
+              container.classList.remove('d-none');
+              return;
+            }
+            console.error('No se pudo crear la cuenta de gastos:', error);
+          })
+          .finally(() => {
+            if (submitButton) submitButton.disabled = false;
+        });
+        return;
+      }
+
+      const commentForm = e.target.closest('[data-cuenta-comentario-form="1"]');
+      if (commentForm) {
+        e.preventDefault();
+        if (commentForm.dataset.submitting === '1') return;
+
+        const cardId = commentForm.dataset.cuentaId || getDetailCardIdFromAction(commentForm.action);
+        const activeCard = getCardElement(cardId);
+        if (activeCard && isCardPending(activeCard)) return;
+
+        commentForm.dataset.submitting = '1';
+        setCardPendingById(cardId, true);
+
+        fetch(commentForm.action, {
+          method: commentForm.method || 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          body: new FormData(commentForm)
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            replaceCommentsSection(cardId, data.comments_html);
+            syncCommentsCount(cardId, data.comments_count ?? 0);
+          })
+          .catch((error) => {
+            if (error && error.comments_html) {
+              replaceCommentsSection(cardId, error.comments_html);
+              syncCommentsCount(cardId, error.comments_count ?? 0);
+              return;
+            }
+            console.error('No se pudo guardar el comentario:', error);
+          })
+          .finally(() => {
+            delete commentForm.dataset.submitting;
+            setCardPendingById(cardId, false);
+          });
+        return;
+      }
+
+      const archivoForm = e.target.closest('[data-cuenta-archivo-form="1"]');
+      if (archivoForm) {
+        e.preventDefault();
+        submitCuentaArchivoForm(archivoForm);
+        return;
+      }
+
+      const archivoDeleteForm = e.target.closest('[data-cuenta-archivo-delete="1"]');
+      if (archivoDeleteForm) {
+        e.preventDefault();
+        if (!window.confirm('¿Eliminar este archivo?')) return;
+        submitCuentaArchivoForm(archivoDeleteForm);
+        return;
+      }
+
+      const enlaceForm = e.target.closest('[data-cuenta-enlace-form="1"]');
+      if (enlaceForm) {
+        e.preventDefault();
+        submitCuentaLinkForm(enlaceForm);
+        return;
+      }
+
+      const enlaceDeleteForm = e.target.closest('[data-cuenta-enlace-delete="1"]');
+      if (enlaceDeleteForm) {
+        e.preventDefault();
+        if (!window.confirm('¿Eliminar este enlace?')) return;
+        submitCuentaLinkForm(enlaceDeleteForm);
+        return;
+      }
+
+      const etiquetasForm = e.target.closest('[data-cuenta-etiquetas-form="1"]');
+      if (etiquetasForm) {
+        e.preventDefault();
+        submitCuentaEtiquetasForm(etiquetasForm);
+        return;
+      }
+
+      const etiquetaCreateForm = e.target.closest('[data-cuenta-etiqueta-create-form="1"]');
+      if (etiquetaCreateForm) {
+        e.preventDefault();
+        submitCuentaEtiquetasForm(etiquetaCreateForm);
+        return;
+      }
+
+      const etiquetaRemoveForm = e.target.closest('[data-cuenta-etiqueta-remove="1"]');
+      if (etiquetaRemoveForm) {
+        e.preventDefault();
+        submitCuentaEtiquetasForm(etiquetaRemoveForm);
+        return;
+      }
+
+      const opcionesForm = e.target.closest('[data-cuenta-opciones-form="1"]');
+      if (opcionesForm) {
+        e.preventDefault();
+        submitCuentaOpcionesForm(opcionesForm);
+        return;
+      }
+
+      const opcionCreateForm = e.target.closest('[data-cuenta-opcion-create-form="1"]');
+      if (opcionCreateForm) {
+        e.preventDefault();
+        submitCuentaOpcionesForm(opcionCreateForm);
+        return;
+      }
+
+      const opcionRemoveForm = e.target.closest('[data-cuenta-opcion-remove="1"]');
+      if (opcionRemoveForm) {
+        e.preventDefault();
+        submitCuentaOpcionesForm(opcionRemoveForm);
+        return;
+      }
+
+      const form = e.target.closest('#modalContent form, #cuentaDrawerContent form');
       if (!form) return;
       e.preventDefault();
 
+      if (form.dataset.submitting === '1') return;
+      form.dataset.submitting = '1';
+
+      const cardId = getDetailCardIdFromAction(form.action);
+      const activeCard = getCardElement(cardId);
+      if (activeCard && isCardPending(activeCard)) {
+        delete form.dataset.submitting;
+        return;
+      }
+
+      setCardPendingById(cardId, true);
       const formData = new FormData(form);
       fetch(form.action, {
         method: form.method || 'POST',
@@ -141,138 +1147,76 @@
         })
         .then((data) => {
           if (data.success) {
-            reloadBoard();
+            if (data.card_html && data.id) {
+              replaceCardFromHtml(data.id, data.card_html);
+            }
+            if (data.redirect && data.id) {
+              removeCardFromBoard(data.id);
+              if (detailState.layout === 'drawer') {
+                closeDrawer();
+              } else if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+              }
+              detailState.id = null;
+              detailState.url = null;
+            } else if (data.html) {
+              renderDetailHtml(detailState.layout, data.html);
+            }
           } else if (data.html) {
-            document.getElementById('modalContent').innerHTML = data.html;
-            if (typeof window.initcuentaSelects === 'function') window.initcuentaSelects(document.getElementById('modalContent'));
+            renderDetailHtml(detailState.layout, data.html);
           }
         })
         .catch((error) => {
           console.error('No se pudo actualizar la cuenta de gastos:', error);
+          renderDetailError(detailState.layout, 'No se pudo actualizar la cuenta.');
+        })
+        .finally(() => {
+          delete form.dataset.submitting;
+          setCardPendingById(cardId, false);
         });
     });
 
-    document.addEventListener('submit', function (e) {
-      const formEtiqueta = e.target.closest('#form-crear-etiqueta');
-      if (!formEtiqueta) return;
-      e.preventDefault();
-      const nombre = document.getElementById('etiqueta_nombre')?.value || '';
-      const color = document.getElementById('etiqueta_color')?.value || '#3E9FA2';
+    document.addEventListener('keydown', function (e) {
+      const editor = e.target.closest('[data-cuenta-inline-editor="1"]');
+      if (!editor) return;
 
-      fetch(formEtiqueta.action, {
-        method: 'POST',
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRFToken': csrfToken,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: 'nombre=' + encodeURIComponent(nombre) + '&color=' + encodeURIComponent(color)
-      })
-        .then((response) => {
-          if (!response.ok) throw new Error(`Error ${response.status}`);
-          return response.json();
-        })
-        .then((data) => {
-          if (!data.success) {
-            throw new Error(data.error || 'No se pudo crear la etiqueta');
-          }
-          if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(document.getElementById('crearEtiquetaModal')).hide();
-          reloadBoard();
-        })
-        .catch((error) => {
-          console.error('No se pudo crear la etiqueta:', error);
-        });
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        const slot = editor.closest('[data-cuenta-inline-slot]');
+        restoreInlineSlot(slot);
+        return;
+      }
+
+      if (editor.dataset.field !== 'asignados' && e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && !e.shiftKey) {
+        e.preventDefault();
+        editor.requestSubmit();
+      }
     });
 
-    document.addEventListener('submit', function (e) {
-      const formOpcion = e.target.closest('#form-crear-opcion');
-      if (!formOpcion) return;
-      e.preventDefault();
-      const nombre = document.getElementById('opcion_nombre')?.value || '';
-
-      fetch(formOpcion.action, {
-        method: 'POST',
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRFToken': csrfToken,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: 'nombre=' + encodeURIComponent(nombre)
-      })
-        .then((response) => {
-          if (!response.ok) throw new Error(`Error ${response.status}`);
-          return response.json();
-        })
-        .then((data) => {
-          if (!data.success) {
-            throw new Error(data.error || 'No se pudo crear la opcion');
-          }
-          if (typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(document.getElementById('crearOpcionModal')).hide();
-          reloadBoard();
-        })
-        .catch((error) => {
-          console.error('No se pudo crear la opcion:', error);
-        });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && drawerSupported && drawerEl.classList.contains('is-open')) {
+        const activeInlineEditor = document.activeElement?.closest?.('[data-cuenta-inline-editor="1"]');
+        if (!activeInlineEditor) {
+          closeDrawer();
+        }
+      }
     });
   });
 </script>
+
+<div class="cuenta-drawer" id="cuentaDrawer" hidden aria-hidden="true">
+    <div class="cuenta-drawer__backdrop" data-cuenta-drawer-close="1"></div>
+    <aside class="cuenta-drawer__dialog" role="dialog" aria-modal="true" aria-labelledby="cuenta-drawer-title">
+        <div class="cuenta-drawer__content-shell" id="cuentaDrawerContent">
+            <div class="cuenta-drawer__loading">Selecciona una cuenta.</div>
+        </div>
+    </aside>
+</div>
 
 <div class="modal fade" id="cuentaModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content" id="modalContent">
             <div class="modal-body p-4 text-center text-muted">Cargando...</div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="crearEtiquetaModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Nueva Etiqueta</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="form-crear-etiqueta" method="post" action="{% url 'cuenta_gastos:crear_etiqueta' %}">
-                {% csrf_token %}
-                <div class="modal-body">
-                    <div class="mb-2">
-                        <label for="etiqueta_nombre" class="form-label">Nombre:</label>
-                        <input type="text" class="form-control" id="etiqueta_nombre" name="nombre" required>
-                    </div>
-                    <div>
-                        <label for="etiqueta_color" class="form-label">Color:</label>
-                        <input type="color" class="form-control form-control-color w-100" id="etiqueta_color" name="color" value="#3E9FA2" required>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Crear</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="crearOpcionModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Nueva Opcion</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="form-crear-opcion" method="post" action="{% url 'cuenta_gastos:crear_opcion' %}">
-                {% csrf_token %}
-                <div class="modal-body">
-                    <div class="mb-2">
-                        <label for="opcion_nombre" class="form-label">Nombre:</label>
-                        <input type="text" class="form-control" id="opcion_nombre" name="nombre" required>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Crear</button>
-                </div>
-            </form>
         </div>
     </div>
 </div>

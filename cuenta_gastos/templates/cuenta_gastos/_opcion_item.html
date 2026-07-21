@@ -1,0 +1,13 @@
+<div class="cuenta-section-option-item">
+  <span>{{ opcion.nombre }}</span>
+  <form
+    method="post"
+    action="{% url 'cuenta_gastos:quitar_opcion_cuenta' cuenta.id opcion.id %}"
+    data-cuenta-opcion-remove="1"
+    data-cuenta-id="{{ cuenta.id }}"
+  >
+    {% csrf_token %}
+    <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
+    <button type="submit" class="btn btn-sm btn-outline-danger">Quitar</button>
+  </form>
+</div>

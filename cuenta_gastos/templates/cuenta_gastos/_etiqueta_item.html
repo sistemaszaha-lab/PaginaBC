@@ -1,0 +1,13 @@
+<div class="cuenta-section-chip" style="--tag-bg: {{ etiqueta.color }};">
+  <span>{{ etiqueta.nombre }}</span>
+  <form
+    method="post"
+    action="{% url 'cuenta_gastos:quitar_etiqueta_cuenta' cuenta.id etiqueta.id %}"
+    data-cuenta-etiqueta-remove="1"
+    data-cuenta-id="{{ cuenta.id }}"
+  >
+    {% csrf_token %}
+    <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
+    <button type="submit" class="btn btn-sm cuenta-section-chip__remove" aria-label="Quitar etiqueta">×</button>
+  </form>
+</div>

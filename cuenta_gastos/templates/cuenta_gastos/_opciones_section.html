@@ -1,0 +1,57 @@
+<div data-cuenta-options-section="1" data-cuenta-id="{{ cuenta.id }}" class="cuenta-detail-section">
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+    <h5 class="mb-0">Opciones</h5>
+    <span class="badge text-bg-light">{{ opciones_count }}</span>
+  </div>
+
+  <div class="cuenta-section-list mb-3">
+    {% for opcion in opciones %}
+      {% include "cuenta_gastos/_opcion_item.html" with cuenta=cuenta opcion=opcion layout=layout only %}
+    {% empty %}
+      {% include "cuenta_gastos/_opciones_empty.html" %}
+    {% endfor %}
+  </div>
+
+  <form
+    method="post"
+    action="{% url 'cuenta_gastos:actualizar_opciones_cuenta' cuenta.id %}"
+    data-cuenta-opciones-form="1"
+    data-cuenta-id="{{ cuenta.id }}"
+    class="cuenta-section-form"
+  >
+    {% csrf_token %}
+    <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
+    <label class="form-label fw-semibold">Asignar opciones existentes</label>
+    <div class="cuenta-options-checkboxes">
+      {{ opciones_form.opciones }}
+    </div>
+    {% if opciones_form.opciones.errors %}
+      <div class="cuenta-section-error">{{ opciones_form.opciones.errors|join:" " }}</div>
+    {% endif %}
+    <div class="d-flex justify-content-end">
+      <button type="submit" class="btn btn-outline-primary btn-sm">Guardar opciones</button>
+    </div>
+  </form>
+
+  <form
+    method="post"
+    action="{% url 'cuenta_gastos:crear_opcion_cuenta' cuenta.id %}"
+    data-cuenta-opcion-create-form="1"
+    data-cuenta-id="{{ cuenta.id }}"
+    class="cuenta-section-form mt-3"
+  >
+    {% csrf_token %}
+    <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
+    <label class="form-label fw-semibold">Crear opción nueva</label>
+    {{ opcion_create_form.nombre }}
+    {% if opcion_create_form.nombre.errors %}
+      <div class="cuenta-section-error">{{ opcion_create_form.nombre.errors|join:" " }}</div>
+    {% endif %}
+    {% if opcion_create_form.non_field_errors %}
+      <div class="cuenta-section-error">{{ opcion_create_form.non_field_errors|join:" " }}</div>
+    {% endif %}
+    <div class="d-flex justify-content-end">
+      <button type="submit" class="btn btn-outline-secondary btn-sm">Crear y asignar</button>
+    </div>
+  </form>
+</div>

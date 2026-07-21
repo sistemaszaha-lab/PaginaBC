@@ -1,4 +1,4 @@
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError
@@ -6,19 +6,38 @@ from django.db.utils import OperationalError, ProgrammingError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from .forms import ClienteForm, MENSAJE_CLIENTE_DUPLICADO
 from .models import Cliente, es_integrity_error_duplicado_cliente
 
 
-def _next_url_valida(next_url):
+def _next_url_valida(request, next_url):
     if not next_url:
         return None
-    if "://" in next_url:
-        return None
-    if not next_url.startswith("/"):
-        return None
-    return next_url
+    next_url = next_url.strip()
+    if url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return None
+
+
+def _agregar_parametros_url(url, **params):
+    partes = urlsplit(url)
+    query_actual = dict(parse_qsl(partes.query, keep_blank_values=True))
+    query_actual.update(params)
+    return urlunsplit(
+        (
+            partes.scheme,
+            partes.netloc,
+            partes.path,
+            urlencode(query_actual),
+            partes.fragment,
+        )
+    )
 
 
 @login_required
@@ -57,7 +76,7 @@ def cliente_lista(request):
 
 @login_required
 def cliente_crear(request):
-    next_url = _next_url_valida(request.GET.get("next")) or _next_url_valida(request.POST.get("next"))
+    next_url = _next_url_valida(request, request.GET.get("next")) or _next_url_valida(request, request.POST.get("next"))
     if request.method == "POST":
         form = ClienteForm(request.POST)
         if form.is_valid():
@@ -69,8 +88,7 @@ def cliente_crear(request):
                 form.add_error(None, MENSAJE_CLIENTE_DUPLICADO)
             else:
                 if next_url:
-                    params = urlencode({"cliente": str(cliente)})
-                    return redirect(f"{next_url}?{params}")
+                    return redirect(_agregar_parametros_url(next_url, cliente=str(cliente)))
                 return redirect("cliente_lista")
     else:
         form = ClienteForm()

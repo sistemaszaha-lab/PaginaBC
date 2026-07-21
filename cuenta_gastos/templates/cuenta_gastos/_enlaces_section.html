@@ -1,0 +1,16 @@
+<div data-cuenta-links-section="1" data-cuenta-id="{{ cuenta.id }}" class="cuenta-detail-section">
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+    <h5 class="mb-0">Enlaces</h5>
+    <span class="badge text-bg-light" data-cuenta-detail-links-count="1">{{ links_count }}</span>
+  </div>
+
+  {% include "cuenta_gastos/_enlace_form.html" with cuenta=cuenta enlace_form=enlace_form layout=layout only %}
+
+  <div class="cuenta-section-list mt-3">
+    {% for enlace in enlaces %}
+      {% include "cuenta_gastos/_enlace_item.html" with cuenta=cuenta enlace=enlace layout=layout only %}
+    {% empty %}
+      {% include "cuenta_gastos/_enlaces_empty.html" %}
+    {% endfor %}
+  </div>
+</div>

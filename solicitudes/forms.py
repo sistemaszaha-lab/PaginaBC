@@ -10,11 +10,21 @@ from clientes.models import normalizar_texto_cliente
 from .models import Cotizacion, Referencia, Solicitud, UserProfile
 
 CLIENTE_NUEVO_LABEL = "Registrar cliente nuevo"
+CLIENTE_NUEVO_VALUE = "Registrar cliente nuevo"
+MENSAJE_CLIENTE_NUEVO_INVALIDO = "Selecciona un cliente valido o registra uno nuevo."
+
+
+def es_opcion_cliente_nuevo(valor):
+    valor_normalizado = (valor or "").strip().lower()
+    return valor_normalizado in {
+        CLIENTE_NUEVO_LABEL.strip().lower(),
+        CLIENTE_NUEVO_VALUE.strip().lower(),
+    }
 
 
 def _validar_cliente(valor):
-    if (valor or "").strip().lower() == CLIENTE_NUEVO_LABEL.lower():
-        raise forms.ValidationError("Selecciona un cliente valido o registra uno nuevo.")
+    if es_opcion_cliente_nuevo(valor):
+        raise forms.ValidationError(MENSAJE_CLIENTE_NUEVO_INVALIDO)
     return valor
 
 

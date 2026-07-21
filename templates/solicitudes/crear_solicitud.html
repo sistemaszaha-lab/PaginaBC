@@ -30,44 +30,6 @@
     </div>
 </div>
 
-<datalist id="clientes_datalist">
-    {% for cliente in clientes %}
-        <option value="{{ cliente }}"></option>
-    {% endfor %}
-    <option value="Registrar cliente nuevo"></option>
-</datalist>
-
-<script>
-(() => {
-    const input = document.getElementById("id_cliente");
-    if (!input) return;
-    const nuevoLabel = "Registrar cliente nuevo";
-    const nuevoUrl = "{{ cliente_nuevo_url }}";
-    const form = input.closest("form");
-
-    const handleNuevo = () => {
-        if (input.value === nuevoLabel) {
-            window.location.href = nuevoUrl;
-            return true;
-        }
-        return false;
-    };
-
-    input.addEventListener("change", handleNuevo);
-    if (form) {
-        form.addEventListener("submit", (event) => {
-            if (handleNuevo()) {
-                event.preventDefault();
-                return;
-            }
-
-            const btn = form.querySelector("button[type=submit]");
-            if (btn) {
-                btn.disabled = true;
-            }
-        });
-    }
-})();
-</script>
+{% include "clientes/_cliente_autocomplete.html" %}
 
 {% endblock %}

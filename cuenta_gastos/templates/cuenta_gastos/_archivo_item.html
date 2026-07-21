@@ -1,0 +1,21 @@
+<div class="cuenta-section-item">
+  <div class="min-w-0">
+    <div class="fw-semibold text-truncate">{{ archivo.archivo.name }}</div>
+    <div class="text-muted small">{{ archivo.fecha|date:"Y-m-d H:i" }}</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-sm btn-outline-primary" href="{{ archivo.archivo.url }}" target="_blank" rel="noopener">Descargar</a>
+    <form
+      method="post"
+      action="{% url 'cuenta_gastos:eliminar_archivo' cuenta.id %}"
+      data-cuenta-archivo-delete="1"
+      data-cuenta-id="{{ cuenta.id }}"
+      class="d-inline"
+    >
+      {% csrf_token %}
+      <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
+      <input type="hidden" name="archivo_id" value="{{ archivo.id }}">
+      <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+    </form>
+  </div>
+</div>

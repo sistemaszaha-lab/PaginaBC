@@ -1,0 +1,5 @@
+<div class="cuenta-board" data-cuenta-board="1">
+  {% for columna in columnas %}
+    {% include "cuenta_gastos/_columna.html" with columna=columna estados_ui=estados_ui inline_form=inline_form only %}
+  {% endfor %}
+</div>

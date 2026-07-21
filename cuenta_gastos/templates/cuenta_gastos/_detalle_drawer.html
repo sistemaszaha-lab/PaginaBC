@@ -1,0 +1,23 @@
+<div class="cuenta-drawer__panel">
+  <header class="cuenta-drawer__header">
+    <div class="cuenta-drawer__header-main">
+      <h2 class="cuenta-drawer__title" id="cuenta-drawer-title">{{ cuenta.titulo|default:"Cuenta de gastos" }}</h2>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        {% if cuenta.prioridad == 'BAJA' %}
+          <span class="badge bg-secondary">{{ cuenta.get_prioridad_display|upper }}</span>
+        {% elif cuenta.prioridad == 'MEDIA' %}
+          <span class="badge bg-warning text-dark">{{ cuenta.get_prioridad_display|upper }}</span>
+        {% elif cuenta.prioridad == 'ALTA' %}
+          <span class="badge bg-danger">{{ cuenta.get_prioridad_display|upper }}</span>
+        {% endif %}
+        <span class="badge bg-info text-dark">{{ cuenta.get_estado_display|upper }}</span>
+        <span class="small text-muted">{{ cuenta.asignados.count }} asignados</span>
+      </div>
+    </div>
+    <button type="button" class="btn-close" data-cuenta-drawer-close="1" aria-label="Cerrar"></button>
+  </header>
+
+  <div class="cuenta-drawer__content">
+    {% include "cuenta_gastos/_detalle_panel_content.html" with cuenta=cuenta form=form comentario_form=comentario_form etiquetas=etiquetas etiquetas_count=etiquetas_count etiquetas_form=etiquetas_form etiqueta_create_form=etiqueta_create_form opciones=opciones opciones_count=opciones_count opciones_form=opciones_form opcion_create_form=opcion_create_form archivos_form=archivos_form archivos=archivos files_count=files_count enlace_form=enlace_form enlaces=enlaces links_count=links_count comentarios=comentarios comentarios_count=comentarios_count layout="drawer" only %}
+  </div>
+</div>

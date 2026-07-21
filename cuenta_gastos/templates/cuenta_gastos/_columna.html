@@ -1,0 +1,32 @@
+<section class="cuenta-column card border-0 shadow-sm flex-shrink-0" data-cuenta-column="1">
+  <header class="cuenta-column__header">
+    <div class="cuenta-column__eyebrow">Etapa {{ columna.posicion }}</div>
+    <div class="d-flex align-items-start justify-content-between gap-3">
+      <h3 class="cuenta-column__title mb-0">{{ columna.titulo }}</h3>
+      <span class="cuenta-column__count">{{ columna.count }}</span>
+    </div>
+  </header>
+
+  <div class="cuenta-column__actions px-3 pt-3">
+    <button
+      type="button"
+      class="btn btn-sm cuenta-column__add-btn"
+      data-cuenta-inline-open="1"
+      data-estado="{{ columna.estado }}"
+    >
+      + Nueva cuenta
+    </button>
+  </div>
+
+  <div class="px-3 pt-3 d-none" data-cuenta-inline-container="1" data-estado="{{ columna.estado }}">
+    {% include "cuenta_gastos/_inline_create_form.html" with form=inline_form estado=columna.estado only %}
+  </div>
+
+  <div class="cuenta-column__body columna-drop d-flex flex-column gap-3" data-estado="{{ columna.estado }}">
+    {% for cuenta in columna.items %}
+      {% include "cuenta_gastos/_card.html" with cuenta=cuenta estados_ui=estados_ui only %}
+    {% empty %}
+      <div class="cuenta-column__empty">Sin registros.</div>
+    {% endfor %}
+  </div>
+</section>

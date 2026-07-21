@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from clientes.models import Cliente
-from .forms import CotizacionForm, SolicitudForm
+from .forms import CLIENTE_NUEVO_LABEL, CLIENTE_NUEVO_VALUE, CotizacionForm, ReferenciaForm, SolicitudForm
 from .models import Cotizacion, Referencia, Solicitud
 from .views import _importar_referencias_desde_filas
 
@@ -74,6 +74,53 @@ class SeguridadPermisosTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "CLIENTE UNO")
         self.assertContains(response, "CLIENTE DOS")
+
+    def test_autocomplete_cliente_nuevo_aparece_primero_y_con_url_interna_en_solicitudes(self):
+        Cliente.objects.create(nombre="Cliente Uno")
+
+        self.client.login(username="admin", password="admin123")
+        response = self.client.get(reverse("crear_solicitud"))
+
+        self.assertEqual(response.status_code, 200)
+        contenido = response.content.decode("utf-8")
+        self.assertLess(
+            contenido.find(f'value="{CLIENTE_NUEVO_VALUE}"'),
+            contenido.find('value="CLIENTE UNO"'),
+        )
+        self.assertIn(
+            f'{reverse("cliente_crear")}?next\\u003D%2Fsolicitudes%2Fnueva%2F',
+            contenido,
+        )
+
+    def test_autocomplete_cliente_nuevo_aparece_primero_y_conserva_funcionamiento_en_cotizaciones(self):
+        Cliente.objects.create(nombre="Cliente Uno")
+
+        self.client.login(username="admin", password="admin123")
+        response = self.client.get(reverse("crear_cotizacion"))
+
+        self.assertEqual(response.status_code, 200)
+        contenido = response.content.decode("utf-8")
+        self.assertLess(
+            contenido.find(f'value="{CLIENTE_NUEVO_VALUE}"'),
+            contenido.find('value="CLIENTE UNO"'),
+        )
+        self.assertIn(
+            f'{reverse("cliente_crear")}?next\\u003D%2Fcotizaciones%2Fnueva%2F',
+            contenido,
+        )
+
+    def test_autocomplete_cliente_nuevo_aparece_primero_en_referencias(self):
+        Cliente.objects.create(nombre="Cliente Uno")
+
+        self.client.login(username="admin", password="admin123")
+        response = self.client.get(reverse("crear_referencia"))
+
+        self.assertEqual(response.status_code, 200)
+        contenido = response.content.decode("utf-8")
+        self.assertLess(
+            contenido.find(f'value="{CLIENTE_NUEVO_VALUE}"'),
+            contenido.find('value="CLIENTE UNO"'),
+        )
 
     def test_editar_formulario_muestra_fechas_actuales(self):
         self.client.login(username="admin", password="admin123")
@@ -491,6 +538,25 @@ class CotizacionFormTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("tipo", form.errors)
 
+    def test_rechaza_opcion_especial_como_cliente(self):
+        form = CotizacionForm(
+            data={
+                "anio": 2026,
+                "consecutivo": "",
+                "cliente": CLIENTE_NUEVO_LABEL,
+                "fecha_solicitud": "2026-02-03",
+                "fecha_envio": "",
+                "tipo": "Importación aérea",
+                "ejecutivo": self.ejecutivo.pk,
+                "tiempo_entrega": "4 dias",
+                "aerea": "on",
+                "maritima": "",
+                "terrestre": "",
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("cliente", form.errors)
+
 
 class CotizacionClienteNormalizacionTests(TestCase):
     def setUp(self):
@@ -642,6 +708,113 @@ class SolicitudFormTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         actualizado = form.save()
         self.assertEqual(actualizado.sg, "SG26001")
+
+    def test_rechaza_registrar_cliente_nuevo_como_cliente(self):
+        form = SolicitudForm(
+            data={
+                "anio": 2026,
+                "sg": "",
+                "cliente": CLIENTE_NUEVO_LABEL,
+                "fecha_recepcion": "2026-01-10",
+                "fecha_entrega": "",
+                "tipo": "Importación aérea",
+                "ejecutivo": self.ejecutivo.pk,
+                "aerea": True,
+                "maritima": False,
+                "terrestre": False,
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("cliente", form.errors)
+
+    def test_acepta_cliente_real_en_solicitud(self):
+        form = SolicitudForm(
+            data={
+                "anio": 2026,
+                "sg": "",
+                "cliente": "Cliente Real",
+                "fecha_recepcion": "2026-01-10",
+                "fecha_entrega": "",
+                "tipo": "Importación aérea",
+                "ejecutivo": self.ejecutivo.pk,
+                "aerea": True,
+                "maritima": False,
+                "terrestre": False,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_post_solicitud_no_crea_cliente_reservado(self):
+        self.client.login(username="ejec_sg", password="ejec123")
+        response = self.client.post(
+            reverse("crear_solicitud"),
+            {
+                "anio": 2026,
+                "sg": "",
+                "cliente": CLIENTE_NUEVO_LABEL,
+                "fecha_recepcion": "2026-01-10",
+                "fecha_entrega": "",
+                "tipo": "Importación aérea",
+                "ejecutivo": self.ejecutivo.pk,
+                "aerea": True,
+                "maritima": False,
+                "terrestre": False,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Selecciona un cliente valido o registra uno nuevo.")
+        self.assertFalse(Cliente.objects.filter(nombre=CLIENTE_NUEVO_LABEL.upper()).exists())
+        self.assertFalse(Solicitud.objects.exists())
+
+
+class ReferenciaFormTests(TestCase):
+    def setUp(self):
+        self.ejecutivo = User.objects.create_user(username="ejec_ref_form", password="ejec123")
+
+    def test_rechaza_registrar_cliente_nuevo_como_cliente(self):
+        form = ReferenciaForm(
+            data={
+                "ejecutivo": self.ejecutivo.pk,
+                "cliente": CLIENTE_NUEVO_LABEL,
+                "servicio": "importacion",
+                "medio_operacion": "",
+                "agencia_aduanal": "Agencia",
+                "fecha": "2026-01-15",
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("cliente", form.errors)
+
+    def test_acepta_cliente_real_en_referencia(self):
+        form = ReferenciaForm(
+            data={
+                "ejecutivo": self.ejecutivo.pk,
+                "cliente": "Cliente Real",
+                "servicio": "importacion",
+                "medio_operacion": "",
+                "agencia_aduanal": "Agencia",
+                "fecha": "2026-01-15",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_post_referencia_no_crea_cliente_reservado(self):
+        self.client.login(username="ejec_ref_form", password="ejec123")
+        response = self.client.post(
+            reverse("crear_referencia"),
+            {
+                "ejecutivo": self.ejecutivo.pk,
+                "cliente": CLIENTE_NUEVO_LABEL,
+                "servicio": "importacion",
+                "medio_operacion": "",
+                "agencia_aduanal": "Agencia",
+                "fecha": "2026-01-15",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Selecciona un cliente valido o registra uno nuevo.")
+        self.assertFalse(Cliente.objects.filter(nombre=CLIENTE_NUEVO_LABEL.upper()).exists())
+        self.assertFalse(Referencia.objects.exists())
 
 
 class SolicitudClienteNormalizacionTests(TestCase):

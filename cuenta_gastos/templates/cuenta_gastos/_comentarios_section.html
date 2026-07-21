@@ -1,0 +1,43 @@
+<div data-cuenta-comments-section="1" data-cuenta-id="{{ cuenta.id }}">
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+    <h5 class="mb-0">Comentarios</h5>
+    <span class="badge text-bg-light" data-cuenta-detail-comments-count="1">{{ comentarios_count }}</span>
+  </div>
+
+  <form
+    method="post"
+    action="{% url 'cuenta_gastos:agregar_comentario' cuenta.id %}"
+    data-cuenta-comentario-form="1"
+    data-cuenta-id="{{ cuenta.id }}"
+    class="mb-3"
+  >
+    {% csrf_token %}
+    <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
+    {{ comentario_form.comentario }}
+    {% if comentario_form.comentario.errors %}
+      <div class="text-danger small mt-2" data-cuenta-comentario-error="1">
+        {{ comentario_form.comentario.errors|join:" " }}
+      </div>
+    {% endif %}
+    {% if comentario_form.non_field_errors %}
+      <div class="text-danger small mt-2">{{ comentario_form.non_field_errors|join:" " }}</div>
+    {% endif %}
+    <div class="mt-2 d-flex justify-content-end">
+      <button type="submit" class="btn btn-outline-primary btn-sm">Enviar</button>
+    </div>
+  </form>
+
+  <div data-cuenta-comentarios="1">
+    {% for comentario in comentarios %}
+      <div class="small border rounded p-2 mb-2">
+        <div class="fw-semibold">
+          {{ comentario.usuario.get_full_name|default:comentario.usuario.username }}
+          <span class="text-muted fw-normal">• {{ comentario.fecha|date:"Y-m-d H:i" }}</span>
+        </div>
+        <div style="white-space: pre-wrap;">{{ comentario.comentario }}</div>
+      </div>
+    {% empty %}
+      <div class="text-muted small">Aún no hay comentarios.</div>
+    {% endfor %}
+  </div>
+</div>

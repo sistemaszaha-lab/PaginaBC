@@ -1,0 +1,16 @@
+<div data-cuenta-files-section="1" data-cuenta-id="{{ cuenta.id }}" class="cuenta-detail-section">
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+    <h5 class="mb-0">Archivos</h5>
+    <span class="badge text-bg-light" data-cuenta-detail-files-count="1">{{ files_count }}</span>
+  </div>
+
+  {% include "cuenta_gastos/_archivo_form.html" with cuenta=cuenta archivos_form=archivos_form layout=layout only %}
+
+  <div class="cuenta-section-list">
+    {% for archivo in archivos %}
+      {% include "cuenta_gastos/_archivo_item.html" with cuenta=cuenta archivo=archivo layout=layout only %}
+    {% empty %}
+      {% include "cuenta_gastos/_archivos_empty.html" %}
+    {% endfor %}
+  </div>
+</div>

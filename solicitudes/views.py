@@ -23,7 +23,15 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 from urllib.parse import urlencode
 from clientes.models import Cliente
-from .forms import CotizacionForm, CrearUsuarioForm, EditarUsuarioForm, ReferenciaForm, SolicitudForm
+from .forms import (
+    CLIENTE_NUEVO_LABEL,
+    CLIENTE_NUEVO_VALUE,
+    CotizacionForm,
+    CrearUsuarioForm,
+    EditarUsuarioForm,
+    ReferenciaForm,
+    SolicitudForm,
+)
 from .models import Cotizacion, Referencia, Solicitud
 
 ESTADOS_SIGUIENTES = {
@@ -157,8 +165,13 @@ def _respuesta_excel(nombre_archivo, headers, rows):
 def _contexto_clientes(request):
     # Cargar todos los clientes sin filtros adicionales para el selector.
     clientes = Cliente.objects.all().order_by("nombre", "empresa")
-    cliente_nuevo_url = f"{reverse('cliente_crear')}?{urlencode({'next': request.path})}"
-    return {"clientes": clientes, "cliente_nuevo_url": cliente_nuevo_url}
+    cliente_nuevo_url = f"{reverse('cliente_crear')}?{urlencode({'next': request.get_full_path()})}"
+    return {
+        "clientes": clientes,
+        "cliente_nuevo_label": CLIENTE_NUEVO_LABEL,
+        "cliente_nuevo_url": cliente_nuevo_url,
+        "cliente_nuevo_value": CLIENTE_NUEVO_VALUE,
+    }
 
 
 def _safe_next_url(request, default_name):

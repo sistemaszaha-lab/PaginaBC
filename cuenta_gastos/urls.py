@@ -16,11 +16,21 @@ urlpatterns = [
         views.crear_cuenta_gastos,
         name="crear_cuenta_gastos"
     ),
+    path(
+        "crear-inline/",
+        views.crear_cuenta_gastos_inline,
+        name="crear_cuenta_gastos_inline"
+    ),
 
     path(
         "detalle/<int:pk>/",
         views.detalle_cuenta_gastos,
         name="detalle_cuenta_gastos"
+    ),
+    path(
+        "<int:pk>/inline-update/",
+        views.actualizar_cuenta_inline,
+        name="actualizar_cuenta_inline"
     ),
 
     path(
@@ -48,6 +58,36 @@ urlpatterns = [
         "etiqueta/<int:etiqueta_id>/eliminar/",
         views.eliminar_etiqueta,
         name="eliminar_etiqueta"
+    ),
+    path(
+        "<int:pk>/etiquetas/",
+        views.actualizar_etiquetas_cuenta,
+        name="actualizar_etiquetas_cuenta"
+    ),
+    path(
+        "<int:pk>/etiquetas/crear/",
+        views.crear_etiqueta_cuenta,
+        name="crear_etiqueta_cuenta"
+    ),
+    path(
+        "<int:pk>/etiquetas/<int:etiqueta_id>/quitar/",
+        views.quitar_etiqueta_cuenta,
+        name="quitar_etiqueta_cuenta"
+    ),
+    path(
+        "<int:pk>/opciones/",
+        views.actualizar_opciones_cuenta,
+        name="actualizar_opciones_cuenta"
+    ),
+    path(
+        "<int:pk>/opciones/crear/",
+        views.crear_opcion_cuenta,
+        name="crear_opcion_cuenta"
+    ),
+    path(
+        "<int:pk>/opciones/<int:opcion_id>/quitar/",
+        views.quitar_opcion_cuenta,
+        name="quitar_opcion_cuenta"
     ),
     path(
         "<int:pk>/comentario/",
