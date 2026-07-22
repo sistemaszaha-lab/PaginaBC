@@ -129,12 +129,10 @@
 
     <td>
         <a href="{% url 'editar_solicitud' s.id %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-primary">Editar</a>
-        {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
-            {% if s.referencia_generada %}
-                <a href="{% url 'editar_referencia' s.referencia_generada.id %}" class="btn btn-sm btn-outline-success">Enviada a Referencias</a>
-            {% else %}
-                <a href="{% url 'enviar_solicitud_a_referencias' s.id %}" class="btn btn-sm btn-success">Enviar a Referencias</a>
-            {% endif %}
+        {% if s.referencia_generada %}
+            <a href="{% url 'editar_referencia' s.referencia_generada.id %}" class="btn btn-sm btn-outline-success">Enviada a Referencias</a>
+        {% else %}
+            <a href="{% url 'enviar_solicitud_a_referencias' s.id %}" class="btn btn-sm btn-success">Enviar a Referencias</a>
         {% endif %}
         {% if request.user.is_superuser %}
             <a href="{% url 'eliminar_solicitud' s.id %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-danger">Eliminar</a>

@@ -32,6 +32,28 @@ class ReferenciaAOperacionTests(TestCase):
         self.assertEqual(self.client.get(url).status_code, 302)
         self.assertEqual(Operacion.objects.filter(referencia_origen=self.referencia).count(), 1)
 
+    def test_administrador_y_otro_ejecutivo_pueden_abrir_referencia_ajena(self):
+        User = get_user_model()
+        admin = User.objects.create_user(username="admin-conv-op", password="pass", is_superuser=True)
+        otro = User.objects.create_user(username="otro-conv-op", password="pass")
+        url = reverse("operaciones:enviar_referencia_a_operaciones", args=[self.referencia.pk])
+        self.client.force_login(admin)
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.client.force_login(otro)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_conversion_requiere_autenticacion(self):
+        self.client.logout()
+        response = self.client.get(reverse("operaciones:enviar_referencia_a_operaciones", args=[self.referencia.pk]))
+        self.assertEqual(response.status_code, 302)
+
+    def test_boton_aparece_para_ejecutivo_no_asignado(self):
+        User = get_user_model()
+        otro = User.objects.create_user(username="otro-boton-op", password="pass")
+        self.client.force_login(otro)
+        response = self.client.get(reverse("lista_referencias"))
+        self.assertContains(response, "Enviar a Operaciones")
+
 
 @override_settings(
     STORAGES={

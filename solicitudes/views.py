@@ -74,7 +74,9 @@ def puede_crear(user):
 
 
 def _puede_convertir_solicitud(user, solicitud):
-    return puede_crear(user) and (user.is_superuser or solicitud.ejecutivo_id == user.id)
+    # ``puede_crear`` es la regla ya usada por Referencias: permite a los
+    # administradores y ejecutivos autenticados, sin depender del asignado.
+    return puede_crear(user)
 
 
 def _asignar_estados_por_transporte(solicitud):

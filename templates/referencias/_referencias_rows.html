@@ -29,12 +29,10 @@
     <td>{{ r.agencia_aduanal }}</td>
     <td>{{ r.fecha }}</td>
     <td>
-        {% if request.user.is_superuser or r.ejecutivo_id == request.user.id %}
-            {% if r.operacion_generada %}
-                <a href="{% url 'operaciones:panel_operaciones' %}" class="btn btn-sm btn-outline-success">Enviada a Operaciones</a>
-            {% else %}
-                <a href="{% url 'operaciones:enviar_referencia_a_operaciones' r.id %}" class="btn btn-sm btn-success">Enviar a Operaciones</a>
-            {% endif %}
+        {% if r.operacion_generada %}
+            <a href="{% url 'operaciones:panel_operaciones' %}" class="btn btn-sm btn-outline-success">Enviada a Operaciones</a>
+        {% else %}
+            <a href="{% url 'operaciones:enviar_referencia_a_operaciones' r.id %}" class="btn btn-sm btn-success">Enviar a Operaciones</a>
         {% endif %}
         {% if request.user.is_superuser %}
             <a href="{% url 'editar_referencia' r.id %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-primary">Editar</a>

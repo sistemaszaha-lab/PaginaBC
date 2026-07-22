@@ -35,6 +35,28 @@ class SolicitudAReferenciaTests(TestCase):
         self.assertEqual(self.client.get(url).status_code, 302)
         self.assertEqual(Referencia.objects.count(), 1)
 
+    def test_administrador_y_otro_ejecutivo_pueden_abrir_solicitud_ajena(self):
+        admin = User.objects.create_user(username="admin-conv", password="pass", is_superuser=True)
+        otro = User.objects.create_user(username="otro-conv", password="pass")
+        url = reverse("enviar_solicitud_a_referencias", args=[self.solicitud.pk])
+        self.client.force_login(admin)
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.client.force_login(otro)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Creando referencia desde la solicitud")
+
+    def test_conversion_requiere_autenticacion(self):
+        self.client.logout()
+        response = self.client.get(reverse("enviar_solicitud_a_referencias", args=[self.solicitud.pk]))
+        self.assertEqual(response.status_code, 302)
+
+    def test_boton_aparece_para_ejecutivo_no_asignado(self):
+        otro = User.objects.create_user(username="otro-boton", password="pass")
+        self.client.force_login(otro)
+        response = self.client.get(reverse("lista_solicitudes"))
+        self.assertContains(response, "Enviar a Referencias")
+
 
 class SeguridadPermisosTests(TestCase):
     def setUp(self):
