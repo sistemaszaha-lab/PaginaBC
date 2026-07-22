@@ -1,0 +1,34 @@
+<form method="post" class="operaciones-inline-form" data-operacion-inline-form="1">
+  {% csrf_token %}
+  <input type="hidden" name="estado" value="{{ estado }}">
+
+  <div class="mb-2">
+    {{ form.titulo }}
+    {% if form.titulo.errors %}
+      <div class="text-danger small mt-1">{{ form.titulo.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
+    {{ form.cliente }}
+    {% if form.cliente.errors %}
+      <div class="text-danger small mt-1">{{ form.cliente.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
+    {{ form.prioridad }}
+    {% if form.prioridad.errors %}
+      <div class="text-danger small mt-1">{{ form.prioridad.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="text-danger small mb-2">{{ form.non_field_errors|join:", " }}</div>
+  {% endif %}
+
+  <div class="d-flex gap-2 justify-content-end">
+    <button type="button" class="btn btn-light btn-sm" data-operacion-inline-cancel="1">Cancelar</button>
+    <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+  </div>
+</form>

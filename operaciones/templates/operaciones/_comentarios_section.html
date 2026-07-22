@@ -1,0 +1,32 @@
+<section data-operacion-comments-section="1" data-operacion-id="{{ operacion.id }}">
+  <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+    <h5 class="mb-0">Comentarios</h5>
+    <span class="badge text-bg-light" data-operacion-detail-comments-count="1">{{ comentarios_count }}</span>
+  </div>
+
+  <form method="post" action="{% url 'operaciones:agregar_comentario' operacion.id %}"
+    data-operacion-comentario-form="1" data-operacion-id="{{ operacion.id }}" class="mb-3">
+    {% csrf_token %}
+    {{ comentario_form.comentario }}
+    {% if comentario_form.comentario.errors %}
+      <div class="invalid-feedback d-block">{{ comentario_form.comentario.errors }}</div>
+    {% endif %}
+    <div class="mt-2 d-flex justify-content-end">
+      <button type="submit" class="btn btn-outline-primary btn-sm">Enviar</button>
+    </div>
+  </form>
+
+  <div data-operacion-comentarios="1">
+    {% for comentario in comentarios %}
+    <div class="small border rounded p-2 mb-2">
+      <div class="fw-semibold">
+        {{ comentario.usuario.get_full_name|default:comentario.usuario.username }}
+        <span class="text-muted fw-normal">â€¢ {{ comentario.fecha|date:"Y-m-d H:i" }}</span>
+      </div>
+      <div style="white-space: pre-wrap;">{{ comentario.comentario }}</div>
+    </div>
+    {% empty %}
+    <div class="text-muted small">AÃºn no hay comentarios.</div>
+    {% endfor %}
+  </div>
+</section>

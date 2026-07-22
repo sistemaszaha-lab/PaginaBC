@@ -1,0 +1,51 @@
+<section data-operacion-tags-section="1" data-operacion-id="{{ operacion.id }}" class="operaciones-tags-section" aria-busy="false">
+  <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+    <h5 class="mb-0">Etiquetas</h5>
+    <span class="badge text-bg-light" data-operacion-detail-tags-count="1" aria-live="polite">{{ etiquetas_count }}</span>
+  </div>
+  <div class="visually-hidden" role="status">{{ etiquetas_count }} etiquetas asignadas.</div>
+
+  <div class="operaciones-tags-section__list mb-3" data-operacion-tags-list="1">
+    {% for etiqueta in etiquetas %}
+    <div class="operaciones-tags-section__chip" style="--operacion-tag-bg: {{ etiqueta.color }};">
+      <span>{{ etiqueta.nombre }}</span>
+      <form method="post" action="{% url 'operaciones:quitar_etiqueta_operacion' operacion.id etiqueta.id %}"
+        data-operacion-tag-remove-form="1" data-operacion-id="{{ operacion.id }}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm p-0" aria-label="Quitar etiqueta {{ etiqueta.nombre }}">&times;</button>
+      </form>
+    </div>
+    {% empty %}
+    <div class="text-muted small">Sin etiquetas.</div>
+    {% endfor %}
+  </div>
+
+  <form method="post" action="{% url 'operaciones:agregar_etiqueta_operacion' operacion.id %}"
+    data-operacion-tag-assign-form="1" data-operacion-id="{{ operacion.id }}" class="mb-3">
+    {% csrf_token %}
+    <label class="visually-hidden" for="{{ etiquetas_form.etiqueta.id_for_label }}">Asignar etiqueta existente</label>
+    <div class="input-group">
+      {{ etiquetas_form.etiqueta }}
+      <button type="submit" class="btn btn-outline-primary">Asignar</button>
+    </div>
+    {% if etiquetas_form.etiqueta.errors %}
+      <div class="invalid-feedback d-block" role="alert">{{ etiquetas_form.etiqueta.errors }}</div>
+    {% endif %}
+  </form>
+
+  <form method="post" action="{% url 'operaciones:crear_etiqueta_operacion' operacion.id %}"
+    data-operacion-tag-create-form="1" data-operacion-id="{{ operacion.id }}">
+    {% csrf_token %}
+    <label class="form-label small fw-semibold" for="{{ etiqueta_create_form.nombre.id_for_label }}">Crear y asignar etiqueta</label>
+    <div class="row g-2">
+      <div class="col-8">{{ etiqueta_create_form.nombre }}</div>
+      <div class="col-4">{{ etiqueta_create_form.color }}</div>
+    </div>
+    {% if etiqueta_create_form.nombre.errors or etiqueta_create_form.color.errors %}
+      <div class="invalid-feedback d-block" role="alert">{{ etiqueta_create_form.nombre.errors }}{{ etiqueta_create_form.color.errors }}</div>
+    {% endif %}
+    <div class="mt-2 d-flex justify-content-end">
+      <button type="submit" class="btn btn-outline-secondary btn-sm">Crear y asignar</button>
+    </div>
+  </form>
+</section>

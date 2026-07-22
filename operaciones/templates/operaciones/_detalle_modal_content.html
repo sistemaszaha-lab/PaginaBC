@@ -6,7 +6,7 @@
   <div class="w-100">
     <div class="d-flex justify-content-between align-items-start gap-3">
       <div>
-        <h4 class="modal-title mb-2">{{ operacion.titulo }}</h4>
+        <h4 class="modal-title mb-2" id="operacion-drawer-title">{{ operacion.titulo }}</h4>
         <div class="d-flex gap-2 flex-wrap align-items-center">
           {% if operacion.prioridad == 'BAJA' %}
           <span class="badge bg-secondary">{{ operacion.get_prioridad_display|upper }}</span>
@@ -25,23 +25,22 @@
             <span class="text-muted small">Sin asignados</span>
             {% endfor %}
           </div>
-          {% if operacion.etiquetas.all %}
-          <div class="d-flex gap-1 flex-wrap align-items-center etiqueta-list">
-            {% for etiqueta in operacion.etiquetas.all %}
-            <span class="badge d-inline-flex align-items-center"
-              style="background-color: {{ etiqueta.color }}; color: #fff;">
-              <span class="me-1">{{ etiqueta.nombre }}</span>
-              <button type="button" class="btn btn-sm btn-link p-0 text-light eliminar-etiqueta"
-                data-url="{% url 'operaciones:eliminar_etiqueta' etiqueta.id %}" title="Eliminar etiqueta">×</button>
-            </span>
+          <div class="d-flex gap-1 flex-wrap align-items-center" data-operacion-detail-header-tags="1">
+            {% for etiqueta in etiquetas %}
+            <span class="badge" style="background-color: {{ etiqueta.color }}; color: #fff;">{{ etiqueta.nombre }}</span>
             {% endfor %}
           </div>
-          {% endif %}
           <span class="small text-muted">{{ operacion.asignados.count }} asignados</span>
           <span class="small text-muted">Vence: {% if operacion.fecha_vencimiento %}{{ operacion.fecha_vencimiento|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}</span>
         </div>
       </div>
-      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <button
+        type="button"
+        class="btn-close"
+        data-bs-dismiss="modal"
+        data-operacion-detail-close="1"
+        aria-label="Cerrar"
+      ></button>
     </div>
   </div>
 </div>
@@ -54,64 +53,44 @@
         {% csrf_token %}
 
         <div class="mb-3">
-          <label class="form-label fw-semibold">Título</label>
+          <label for="{{ form.titulo.id_for_label }}" class="form-label fw-semibold">Título</label>
           {{ form.titulo }}
         </div>
 
         <div class="row">
           <div class="col-md-6 mb-3">
-            <label class="form-label fw-semibold">Cliente</label>
+            <label for="{{ form.cliente.id_for_label }}" class="form-label fw-semibold">Cliente</label>
             {{ form.cliente }}
           </div>
           <div class="col-md-6 mb-3">
-            <label class="form-label fw-semibold">Prioridad</label>
+            <label for="{{ form.prioridad.id_for_label }}" class="form-label fw-semibold">Prioridad</label>
             {{ form.prioridad }}
           </div>
         </div>
 
         <div class="mb-3">
-          <label class="form-label fw-semibold">Vencimiento</label>
+          <label for="{{ form.fecha_vencimiento.id_for_label }}" class="form-label fw-semibold">Vencimiento</label>
           {{ form.fecha_vencimiento }}
         </div>
 
         <div class="mb-3">
-          <label class="form-label fw-semibold">Asignados</label>
+          <label for="{{ form.asignados.id_for_label }}" class="form-label fw-semibold">Asignados</label>
           {{ form.asignados }}
         </div>
 
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Etiquetas</label>
-          {{ form.etiquetas }}
-        </div>
-
-        <div class="d-flex gap-2 mb-3">
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
-            data-bs-target="#crearEtiquetaModal">+ Añadir nueva etiqueta</button>
-        </div>
-
-        {# Preserve descripcion and opciones silently to avoid clearing data on save #}
+        {# Preserve descripcion without reintroducing the isolated options workflow. #}
         <input type="hidden" name="descripcion" value="{{ form.initial.descripcion|default_if_none:'' }}">
-        {% for opcion in operacion.opciones.all %}
-        <input type="hidden" name="opciones" value="{{ opcion.id }}">
-        {% endfor %}
-
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Adjuntar archivos</label>
-          {{ archivos_form.archivos }}
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Agregar enlace</label>
-          <div class="row g-2">
-            <div class="col-md-4">{{ enlace_form.titulo }}</div>
-            <div class="col-md-8">{{ enlace_form.url }}</div>
-          </div>
-        </div>
 
         <div class="d-flex gap-2 flex-wrap">
           <button type="submit" class="btn btn-primary">Guardar</button>
         </div>
       </form>
+
+      {% include "operaciones/_etiquetas_section.html" %}
+
+      <div class="mt-4">
+        {% include "operaciones/_opciones_section.html" %}
+      </div>
 
       <form method="post" action="{% url 'operaciones:eliminar_operacion' operacion.id %}"
         data-operacion-modal-delete="1" class="mt-2">
@@ -121,78 +100,13 @@
 
       <hr class="my-4" />
 
-      <h5 class="mb-3">Archivos</h5>
-      {% if operacion.archivos.all %}
-      <div class="mb-3">
-        {% for archivo in operacion.archivos.all %}
-        <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 small">
-          <div class="min-w-0">
-            <div class="fw-semibold text-truncate">{{ archivo.archivo.name }}</div>
-            <div class="text-muted">{{ archivo.fecha|date:"Y-m-d H:i" }}</div>
-          </div>
-          <div class="d-flex gap-2 flex-wrap">
-            <a class="btn btn-sm btn-outline-primary" href="{{ archivo.archivo.url }}" target="_blank">Descargar</a>
-            <form method="post" action="{% url 'operaciones:eliminar_archivo' operacion.id %}"
-              data-operacion-modal-refresh="1" class="d-inline">
-              {% csrf_token %}
-              <input type="hidden" name="archivo_id" value="{{ archivo.id }}">
-              <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
-            </form>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div class="text-muted small mb-3">Sin archivos.</div>
-      {% endif %}
+      {% include "operaciones/_archivos_section.html" %}
 
-      <h5 class="mb-3">Enlaces</h5>
-      {% if operacion.enlaces.all %}
-      <div class="mb-3">
-        {% for enlace in operacion.enlaces.all %}
-        <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 small">
-          <div class="min-w-0">
-            <div class="fw-semibold">{{ enlace.titulo }}</div>
-            <a href="{{ enlace.url }}" target="_blank" rel="noopener" class="text-decoration-none">{{ enlace.url }}</a>
-          </div>
-          <form method="post" action="{% url 'operaciones:eliminar_enlace' operacion.id %}"
-            data-operacion-modal-refresh="1" class="d-inline">
-            {% csrf_token %}
-            <input type="hidden" name="enlace_id" value="{{ enlace.id }}">
-            <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
-          </form>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div class="text-muted small mb-3">Sin enlaces.</div>
-      {% endif %}
+      {% include "operaciones/_enlaces_section.html" %}
     </div>
 
     <div class="col-12 col-lg-4">
-      <h5 class="mb-3">Comentarios</h5>
-      <form method="post" action="{% url 'operaciones:agregar_comentario' operacion.id %}"
-        data-operacion-comentario-form="1" data-operacion-id="{{ operacion.id }}" class="mb-3">
-        {% csrf_token %}
-        {{ comentario_form.comentario }}
-        <div class="mt-2 d-flex justify-content-end">
-          <button type="submit" class="btn btn-outline-primary btn-sm">Enviar</button>
-        </div>
-      </form>
-
-      <div data-operacion-comentarios="1">
-        {% for comentario in operacion.comentarios.all|dictsortreversed:"fecha" %}
-        <div class="small border rounded p-2 mb-2">
-          <div class="fw-semibold">
-            {{ comentario.usuario.get_full_name|default:comentario.usuario.username }}
-            <span class="text-muted fw-normal">• {{ comentario.fecha|date:"Y-m-d H:i" }}</span>
-          </div>
-          <div style="white-space: pre-wrap;">{{ comentario.comentario }}</div>
-        </div>
-        {% empty %}
-        <div class="text-muted small">Aún no hay comentarios.</div>
-        {% endfor %}
-      </div>
+      {% include "operaciones/_comentarios_section.html" %}
     </div>
   </div>
 </div>
@@ -217,52 +131,4 @@
     });
   };
 
-  document.addEventListener('DOMContentLoaded', function () {
-    window.initOperacionSelects(document);
-    // Handler para eliminar etiquetas vía AJAX
-    document.body.addEventListener('click', function (e) {
-      const btn = e.target.closest('.eliminar-etiqueta');
-      if (!btn) return;
-      if (!confirm('¿Deseas eliminar esta etiqueta?')) return;
-      const url = btn.dataset.url;
-      const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-
-      // intentar obtener el id de la operación desde el modal
-      const modalForm = document.querySelector('[data-operacion-modal-form="1"]');
-      let objId = null;
-      if (modalForm) {
-        const m = modalForm.action.match(/(\d+)\/?$/);
-        if (m) objId = m[1];
-      }
-
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRFToken': csrf,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: objId ? `obj_id=${encodeURIComponent(objId)}` : ''
-      })
-        .then(r => r.json())
-        .then(data => {
-          if (!data.success) { alert('No se pudo eliminar la etiqueta'); return; }
-          const modalCont = document.getElementById('OperacionDetalleModalContent') || document.getElementById('modalContent');
-          if (data.html && modalCont) {
-            modalCont.innerHTML = data.html;
-          } else if (objId && modalCont) {
-            // recargar modal si no vino html
-            fetch(`{% url 'operaciones:detalle_operacion' 0 %}`.replace('/0/', `/${objId}/`), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-              .then(r => r.json())
-              .then(d => { if (d.html) modalCont.innerHTML = d.html; });
-          }
-
-          if (data.card_html && data.id) {
-            const existing = document.getElementById(`operacion-${data.id}`);
-            if (existing) existing.outerHTML = data.card_html;
-          }
-        })
-        .catch(() => { alert('No se pudo eliminar la etiqueta'); });
-    });
-  });
 </script>

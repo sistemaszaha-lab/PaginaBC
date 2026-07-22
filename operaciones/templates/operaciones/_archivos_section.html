@@ -1,0 +1,40 @@
+<section data-operacion-files-section="1" data-operacion-id="{{ operacion.id }}">
+  <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+    <h5 class="mb-0">Archivos</h5>
+    <span class="badge text-bg-light" data-operacion-detail-files-count="1">{{ files_count }}</span>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" action="{% url 'operaciones:agregar_archivo' operacion.id %}"
+    data-operacion-archivo-form="1" data-operacion-id="{{ operacion.id }}" class="mb-3">
+    {% csrf_token %}
+    {{ archivos_form.archivos }}
+    {% if archivos_form.archivos.errors %}
+      <div class="invalid-feedback d-block">{{ archivos_form.archivos.errors }}</div>
+    {% endif %}
+    <div class="mt-2 d-flex justify-content-end">
+      <button type="submit" class="btn btn-outline-primary btn-sm">Subir archivos</button>
+    </div>
+  </form>
+
+  <div data-operacion-archivos="1">
+    {% for archivo in archivos %}
+    <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 small">
+      <div class="min-w-0">
+        <div class="fw-semibold text-truncate">{{ archivo.archivo.name }}</div>
+        <div class="text-muted">{{ archivo.fecha|date:"Y-m-d H:i" }}</div>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-outline-primary" href="{{ archivo.archivo.url }}" target="_blank" rel="noopener">Descargar</a>
+        <form method="post" action="{% url 'operaciones:eliminar_archivo' operacion.id %}"
+          data-operacion-archivo-delete="1" data-operacion-id="{{ operacion.id }}" class="d-inline">
+          {% csrf_token %}
+          <input type="hidden" name="archivo_id" value="{{ archivo.id }}">
+          <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+        </form>
+      </div>
+    </div>
+    {% empty %}
+    <div class="text-muted small">Sin archivos.</div>
+    {% endfor %}
+  </div>
+</section>

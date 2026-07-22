@@ -1,0 +1,52 @@
+<div class="operaciones-card__body">
+  <form
+    method="post"
+    action="{% url 'operaciones:editar_operacion_rapida' operacion.id %}"
+    class="operaciones-quick-edit-form"
+    data-operacion-quick-edit-form="1"
+  >
+    {% csrf_token %}
+    <div class="operaciones-quick-edit-form__header">
+      <strong>Edicion rapida</strong>
+      <span class="text-muted small">{{ operacion.get_estado_display }}</span>
+    </div>
+
+    <div class="mb-2">
+      <label class="form-label small mb-1" for="{{ form.titulo.id_for_label }}">Titulo</label>
+      {{ form.titulo }}
+      {% if form.titulo.errors %}<div class="text-danger small mt-1">{{ form.titulo.errors|join:", " }}</div>{% endif %}
+    </div>
+
+    <div class="mb-2">
+      <label class="form-label small mb-1" for="{{ form.cliente.id_for_label }}">Cliente</label>
+      {{ form.cliente }}
+      {% if form.cliente.errors %}<div class="text-danger small mt-1">{{ form.cliente.errors|join:", " }}</div>{% endif %}
+    </div>
+
+    <div class="row g-2 mb-2">
+      <div class="col-6">
+        <label class="form-label small mb-1" for="{{ form.prioridad.id_for_label }}">Prioridad</label>
+        {{ form.prioridad }}
+      </div>
+      <div class="col-6">
+        <label class="form-label small mb-1" for="{{ form.fecha_vencimiento.id_for_label }}">Vencimiento</label>
+        {{ form.fecha_vencimiento }}
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label small mb-1" for="{{ form.asignados.id_for_label }}">Asignados</label>
+      {{ form.asignados }}
+      {% if form.asignados.errors %}<div class="text-danger small mt-1">{{ form.asignados.errors|join:", " }}</div>{% endif %}
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="text-danger small mb-2">{{ form.non_field_errors|join:", " }}</div>
+    {% endif %}
+
+    <div class="d-flex justify-content-end gap-2">
+      <button type="button" class="btn btn-light btn-sm" data-operacion-quick-edit-cancel="1">Cancelar</button>
+      <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+    </div>
+  </form>
+</div>
