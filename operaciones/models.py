@@ -57,6 +57,14 @@ class Operacion(models.Model):
     fecha_creacion = models.DateTimeField(default=timezone.now)
     etiquetas = models.ManyToManyField("OperacionEtiqueta", blank=True, related_name="operaciones")
     opciones = models.ManyToManyField("OperacionOpcion", blank=True, related_name="operaciones")
+    referencia_origen = models.OneToOneField(
+        "solicitudes.Referencia",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="operacion_generada",
+        editable=False,
+    )
 
     class Meta:
         ordering = ["-fecha_creacion", "-id"]

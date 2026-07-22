@@ -33,6 +33,7 @@ from .forms import (
     SolicitudForm,
 )
 from .models import Cotizacion, Referencia, Solicitud
+from .services import obtener_initial_referencia_desde_solicitud
 
 ESTADOS_SIGUIENTES = {
     "Pendiente": "Cumplido",
@@ -70,6 +71,10 @@ def puede_crear(user):
     if user.has_perm("solicitudes.add_referencia"):
         return True
     return rol in {"admin", "ejecutivo"}
+
+
+def _puede_convertir_solicitud(user, solicitud):
+    return puede_crear(user) and (user.is_superuser or solicitud.ejecutivo_id == user.id)
 
 
 def _asignar_estados_por_transporte(solicitud):
@@ -1430,6 +1435,35 @@ def crear_referencia(request):
             form.fields["cliente"].initial = cliente_param
 
     context = {"form": form, "next_url": next_url}
+    context.update(_contexto_clientes(request))
+    return render(request, "referencias/crear_referencia.html", context)
+
+
+@login_required
+def enviar_solicitud_a_referencias(request, pk):
+    solicitud = get_object_or_404(Solicitud, pk=pk)
+    if not _puede_convertir_solicitud(request.user, solicitud):
+        raise PermissionDenied("No tienes permisos para enviar esta solicitud a Referencias.")
+    if getattr(solicitud, "referencia_generada", None):
+        messages.info(request, "Esta solicitud ya fue enviada a Referencias.")
+        return redirect("lista_referencias")
+
+    if request.method == "POST":
+        form = ReferenciaForm(request.POST)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    form.instance.solicitud_origen = solicitud
+                    form.save()
+            except IntegrityError:
+                messages.error(request, "Esta solicitud ya fue enviada a Referencias.")
+                return redirect("lista_referencias")
+            messages.success(request, "Referencia creada desde la solicitud.")
+            return redirect("lista_referencias")
+    else:
+        form = ReferenciaForm(initial=obtener_initial_referencia_desde_solicitud(solicitud))
+
+    context = {"form": form, "next_url": reverse("lista_solicitudes"), "solicitud_origen": solicitud}
     context.update(_contexto_clientes(request))
     return render(request, "referencias/crear_referencia.html", context)
 

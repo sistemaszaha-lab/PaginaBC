@@ -5,6 +5,32 @@ from django.test.utils import override_settings
 from django.urls import reverse
 
 from .models import Operacion, OperacionArchivo, OperacionComentario, OperacionEnlace, OperacionEtiqueta, OperacionOpcion
+from solicitudes.models import Referencia
+
+
+@override_settings(
+    STORAGES={"staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}}
+)
+class ReferenciaAOperacionTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.usuario = User.objects.create_user(username="convertidor-op", password="pass")
+        self.referencia = Referencia.objects.create(
+            referencia="BC261001", consecutivo=1, ejecutivo=self.usuario,
+            cliente="CLIENTE SIN ALTA", servicio="importacion",
+        )
+        self.client.force_login(self.usuario)
+
+    def test_crea_operacion_pendiente_vinculada_y_no_duplica(self):
+        url = reverse("operaciones:enviar_referencia_a_operaciones", args=[self.referencia.pk])
+        self.assertEqual(self.client.get(url).status_code, 200)
+        response = self.client.post(url, {"titulo": "Referencia BC261001", "descripcion": "detalle"})
+        self.assertRedirects(response, reverse("operaciones:panel_operaciones"))
+        operacion = Operacion.objects.get(referencia_origen=self.referencia)
+        self.assertEqual(operacion.estado, Operacion.Estado.PENDIENTE)
+        self.assertEqual(operacion.creado_por, self.usuario)
+        self.assertEqual(self.client.get(url).status_code, 302)
+        self.assertEqual(Operacion.objects.filter(referencia_origen=self.referencia).count(), 1)
 
 
 @override_settings(

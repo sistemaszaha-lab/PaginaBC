@@ -10,6 +10,32 @@ from .models import Cotizacion, Referencia, Solicitud
 from .views import _importar_referencias_desde_filas
 
 
+class SolicitudAReferenciaTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user(username="convertidor", password="pass")
+        self.solicitud = Solicitud.objects.create(
+            anio=2026, sg="SG26001", cliente="cliente origen",
+            fecha_recepcion=date(2026, 7, 1), tipo="Importación aérea",
+            aerea=True, ejecutivo=self.usuario,
+        )
+
+    def test_crea_referencia_vinculada_y_no_duplica(self):
+        self.client.force_login(self.usuario)
+        url = reverse("enviar_solicitud_a_referencias", args=[self.solicitud.pk])
+        self.assertEqual(self.client.get(url).status_code, 200)
+        response = self.client.post(url, {
+            "ejecutivo": self.usuario.pk, "cliente": "cliente origen",
+            "servicio": "importacion", "medio_operacion": "aerea", "fecha": "2026-07-01",
+        })
+        self.assertRedirects(response, reverse("lista_referencias"))
+        referencia = Referencia.objects.get(solicitud_origen=self.solicitud)
+        self.assertEqual(referencia.cliente, "CLIENTE ORIGEN")
+        self.assertEqual(referencia.referencia, "BC261001")
+        self.assertEqual(Solicitud.objects.count(), 1)
+        self.assertEqual(self.client.get(url).status_code, 302)
+        self.assertEqual(Referencia.objects.count(), 1)
+
+
 class SeguridadPermisosTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_user(

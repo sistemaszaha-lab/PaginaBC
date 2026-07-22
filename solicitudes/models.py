@@ -242,6 +242,14 @@ class Referencia(models.Model):
     )
     agencia_aduanal = models.CharField(max_length=200, blank=True, null=True)
     fecha = models.DateField(blank=True, null=True)
+    solicitud_origen = models.OneToOneField(
+        Solicitud,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="referencia_generada",
+        editable=False,
+    )
 
     SERVICIOS_LABELS = {
         "importacion": "Importacion",

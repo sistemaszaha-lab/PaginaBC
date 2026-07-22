@@ -29,6 +29,7 @@ urlpatterns = [
     path("referencias/importar-csv/", views.importar_referencias_csv, name="importar_referencias_csv"),
     path("referencias/exportar-excel/", views.exportar_referencias_excel, name="exportar_referencias_excel"),
     path("referencias/nueva/", views.crear_referencia, name="crear_referencia"),
+    path("solicitudes/<int:pk>/enviar-a-referencias/", views.enviar_solicitud_a_referencias, name="enviar_solicitud_a_referencias"),
     path("referencias/editar/<int:pk>/", views.editar_referencia, name="editar_referencia"),
     path("referencias/eliminar/<int:pk>/", views.eliminar_referencia, name="eliminar_referencia"),
     path("referencias/cambiar-ejecutivo/<int:pk>/", views.cambiar_ejecutivo_referencia, name="cambiar_ejecutivo_referencia"),

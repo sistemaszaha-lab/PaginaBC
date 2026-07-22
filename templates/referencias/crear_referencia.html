@@ -7,6 +7,7 @@
 
 <form method="post">
     {% csrf_token %}
+    {% if solicitud_origen %}<p class="text-muted">Creando referencia desde la solicitud {{ solicitud_origen.sg }}.</p>{% endif %}
     <input type="hidden" name="next" value="{{ next_url }}">
     {{ form.as_p }}
 

@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
+from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -33,6 +34,8 @@ from .models import (
     OperacionEtiqueta,
     OperacionOpcion,
 )
+from solicitudes.models import Referencia
+from .services import obtener_initial_operacion_desde_referencia
 
 User = get_user_model()
 
@@ -404,6 +407,46 @@ def crear_operacion(request):
         "operaciones/crear_operacion.html",
         {"form": form, "archivos_form": archivos_form, "enlace_form": enlace_form, "current": "crear_operacion", "next_url": next_url},
     )
+
+
+@login_required
+def enviar_referencia_a_operaciones(request, pk):
+    referencia = get_object_or_404(Referencia, pk=pk)
+    if not (request.user.is_superuser or referencia.ejecutivo_id == request.user.id):
+        raise PermissionDenied("No tienes permisos para enviar esta referencia a Operaciones.")
+    if getattr(referencia, "operacion_generada", None):
+        messages.info(request, "Esta referencia ya fue enviada a Operaciones.")
+        return redirect("operaciones:panel_operaciones")
+
+    if request.method == "POST":
+        form = OperacionForm(request.POST)
+        archivos_form = OperacionArchivosForm(request.POST, request.FILES)
+        enlace_form = OperacionEnlaceForm(request.POST, prefix="enlace")
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    operacion = form.save(commit=False)
+                    operacion.creado_por = request.user
+                    operacion.referencia_origen = referencia
+                    operacion.estado = Operacion.Estado.PENDIENTE
+                    operacion.save()
+                    form.save_m2m()
+                    if archivos_form.is_valid() and enlace_form.is_valid():
+                        _guardar_adjuntos_enlaces(request, operacion, enlace_form)
+            except IntegrityError:
+                messages.error(request, "Esta referencia ya fue enviada a Operaciones.")
+                return redirect("operaciones:panel_operaciones")
+            messages.success(request, "Operación creada en Pendientes desde la referencia.")
+            return redirect("operaciones:panel_operaciones")
+    else:
+        form = OperacionForm(initial=obtener_initial_operacion_desde_referencia(referencia))
+        archivos_form = OperacionArchivosForm()
+        enlace_form = OperacionEnlaceForm(prefix="enlace")
+
+    return render(request, "operaciones/crear_operacion.html", {
+        "form": form, "archivos_form": archivos_form, "enlace_form": enlace_form,
+        "current": "crear_operacion", "referencia_origen": referencia,
+    })
 
 
 @login_required
