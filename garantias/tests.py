@@ -5,8 +5,10 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
+from django.middleware.csrf import get_token
+from django.http import HttpRequest
 from django.urls import reverse
 from django.utils import timezone
 from datetime import date, timedelta
@@ -880,6 +882,33 @@ class GarantiasComentarioTests(TestCase):
         self.assertIn("comentario", data["errors"])
         self.assertIn('data-garantia-comentario-form="1"', data["html"])
         self.assertEqual(GarantiaComentario.objects.filter(garantia=self.garantia).count(), 0)
+
+    def test_agregar_comentario_ajax_valida_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="admin_comentarios_garantias", password="pass123")
+
+        response_sin_csrf = client.post(
+            reverse("garantias:agregar_comentario", args=[self.garantia.pk]),
+            {"comentario": "Comentario sin CSRF", "layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest"
+        )
+        self.assertEqual(response_sin_csrf.status_code, 403)
+        self.assertFalse(GarantiaComentario.objects.filter(comentario="Comentario sin CSRF").exists())
+
+        request = HttpRequest()
+        csrftoken = get_token(request)
+        client.cookies.load({"csrftoken": csrftoken})
+
+        response_con_csrf = client.post(
+            reverse("garantias:agregar_comentario", args=[self.garantia.pk]),
+            {"comentario": "Comentario con CSRF", "layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_X_CSRFTOKEN=csrftoken
+        )
+        self.assertEqual(response_con_csrf.status_code, 200)
+        data = response_con_csrf.json()
+        self.assertTrue(data["success"])
+        self.assertTrue(GarantiaComentario.objects.filter(comentario="Comentario con CSRF").exists())
 
 
 class GarantiasArchivosAjaxTests(TestCase):

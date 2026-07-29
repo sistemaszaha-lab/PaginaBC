@@ -12,7 +12,6 @@
     if (!config?.estadoUpdateUrl || !config?.boardUrl || !config?.inlineCreateUrl || !config?.inlineFormUrl) return;
     root.dataset.panelJsInitialized = '1';
 
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
     const updateUrl = config.estadoUpdateUrl;
     const boardUrl = config.boardUrl;
     const inlineCreateUrl = config.inlineCreateUrl;
@@ -41,12 +40,16 @@
     let boardVersion = 0;
     let boardRefreshController = null;
 
-    function postForm(url, formData) {
+    function postForm(url, formData, formElement = null) {
+      const token = window.getCSRFToken(formElement);
+      if (!token) return Promise.reject(new Error("CSRF token missing"));
       return fetch(url, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
-          'X-CSRFToken': csrfToken,
+          'X-CSRFToken': token,
           'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
         },
         body: formData,
       });
@@ -758,10 +761,13 @@
 
     function performDelete() {
       if (!panelCotizacionDeleteUrl) return;
+      const token = window.getCSRFToken();
+      if (!token) return;
       fetch(panelCotizacionDeleteUrl, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
-          'X-CSRFToken': csrfToken,
+          'X-CSRFToken': token,
           'X-Requested-With': 'XMLHttpRequest',
         },
       })
@@ -913,11 +919,13 @@
       if (deleteArchivoButton) {
         e.preventDefault();
         const url = deleteArchivoButton.dataset.deleteUrl;
-        if (!url || !window.confirm('Deseas eliminar este archivo?')) return;
+        const token = window.getCSRFToken();
+        if (!token) return;
         fetch(url, {
           method: 'POST',
+          credentials: 'same-origin',
           headers: {
-            'X-CSRFToken': csrfToken,
+            'X-CSRFToken': token,
             'X-Requested-With': 'XMLHttpRequest',
           },
         })
@@ -941,11 +949,13 @@
       if (deleteEnlaceButton) {
         e.preventDefault();
         const url = deleteEnlaceButton.dataset.deleteUrl;
-        if (!url || !window.confirm('Deseas eliminar este enlace?')) return;
+        const token = window.getCSRFToken();
+        if (!token) return;
         fetch(url, {
           method: 'POST',
+          credentials: 'same-origin',
           headers: {
-            'X-CSRFToken': csrfToken,
+            'X-CSRFToken': token,
             'X-Requested-With': 'XMLHttpRequest',
           },
         })
@@ -1004,7 +1014,7 @@
 
         const fd = new FormData(inlineEditor);
         setCardPending(card, true);
-        postForm(inlineEditor.dataset.updateUrl, fd)
+        postForm(inlineEditor.dataset.updateUrl, fd, inlineEditor)
           .then(async (response) => {
             const data = await response.json();
             if (!response.ok) throw data;
@@ -1057,7 +1067,7 @@
         if (submitButton) submitButton.disabled = true;
 
         const fd = new FormData(archivoForm);
-        postForm(archivoForm.getAttribute('action'), fd)
+        postForm(archivoForm.getAttribute('action'), fd, archivoForm)
           .then(async (response) => {
             const data = await response.json();
             if (!response.ok) throw data;
@@ -1092,7 +1102,7 @@
         if (submitButton) submitButton.disabled = true;
 
         const fd = new FormData(enlaceForm);
-        postForm(enlaceForm.getAttribute('action'), fd)
+        postForm(enlaceForm.getAttribute('action'), fd, enlaceForm)
           .then(async (response) => {
             const data = await response.json();
             if (!response.ok) throw data;
@@ -1130,7 +1140,7 @@
         inlineForm.setAttribute('aria-busy', 'true');
         inlineForm.querySelectorAll('button, input, select').forEach((control) => { control.disabled = true; });
         setInlineCreateButtonsDisabled(true);
-        postForm(inlineCreateUrl, fd)
+        postForm(inlineCreateUrl, fd, inlineForm)
           .then((response) => readInlineCreateResponse(response))
           .then((data) => {
             if (!data.ok) return;
@@ -1185,7 +1195,7 @@
       if (modalForm) {
         e.preventDefault();
         const fd = new FormData(modalForm);
-        postForm(modalForm.getAttribute('action'), fd)
+        postForm(modalForm.getAttribute('action'), fd, modalForm)
           .then(async (response) => {
             const contentType = response.headers.get('content-type') || '';
             if (contentType.includes('application/json')) {
@@ -1231,10 +1241,9 @@
         if (errorNode) errorNode.textContent = 'Escribe un comentario.';
         return;
       }
-      const fd = new FormData();
-      fd.set('texto', text);
+      const fd = new FormData(commentForm);
       if (submitButton) submitButton.disabled = true;
-      postForm(url, fd)
+      postForm(url, fd, commentForm)
         .then(async (response) => {
           const data = await response.json();
           if (!response.ok) {

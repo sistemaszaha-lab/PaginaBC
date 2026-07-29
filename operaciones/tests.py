@@ -9,6 +9,8 @@ from django.test import Client, TestCase
 from django.test.utils import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.db import connection
+from django.middleware.csrf import get_token
+from django.http import HttpRequest
 from django.urls import resolve, reverse
 from django.utils import timezone
 
@@ -245,7 +247,7 @@ class OperacionesDetalleModalTests(TestCase):
         usuario_2 = User.objects.create_user(username="tester2", password="pass")
         from operaciones.models import OperacionEtiqueta
         etiqueta = OperacionEtiqueta.objects.create(nombre="Urgente")
-        
+
         self.operacion.titulo = "Laptop"
         self.operacion.fecha_vencimiento = "2026-05-22"
         self.operacion.prioridad = "ALTA"
@@ -257,14 +259,14 @@ class OperacionesDetalleModalTests(TestCase):
         post_data = {
             "prioridad": "MEDIA",  # Queremos cambiar solo la prioridad
         }
-        
+
         resp = self.client.post(
             reverse("operaciones:editar_operacion", args=[self.operacion.id]),
             post_data,
             HTTP_X_REQUESTED_WITH="XMLHttpRequest"
         )
         self.assertEqual(resp.status_code, 200)
-        
+
         self.operacion.refresh_from_db()
         # Verificar que la prioridad cambió a MEDIA
         self.assertEqual(self.operacion.prioridad, "MEDIA")
@@ -955,10 +957,36 @@ class OperacionesComentariosAjaxTests(TestCase):
 
     def test_comentario_requiere_solicitud_ajax(self):
         response = self.client.post(self.url, {"comentario": "Sin AJAX"})
-
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json()["success"])
         self.assertFalse(OperacionComentario.objects.filter(operacion=self.operacion).exists())
+
+    def test_agregar_comentario_ajax_valida_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="comments_owner", password="pass")
+
+        response_sin_csrf = client.post(
+            self.url,
+            {"comentario": "Comentario sin CSRF", "layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest"
+        )
+        self.assertEqual(response_sin_csrf.status_code, 403)
+        self.assertFalse(OperacionComentario.objects.filter(comentario="Comentario sin CSRF").exists())
+
+        request = HttpRequest()
+        csrftoken = get_token(request)
+        client.cookies.load({"csrftoken": csrftoken})
+
+        response_con_csrf = client.post(
+            self.url,
+            {"comentario": "Comentario con CSRF", "layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_X_CSRFTOKEN=csrftoken
+        )
+        self.assertEqual(response_con_csrf.status_code, 200)
+        data = response_con_csrf.json()
+        self.assertTrue(data["success"])
+        self.assertTrue(OperacionComentario.objects.filter(comentario="Comentario con CSRF").exists())
 
     def test_comentario_requiere_post(self):
         response = self.client.get(self.url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")

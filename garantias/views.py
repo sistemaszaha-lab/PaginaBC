@@ -620,6 +620,7 @@ def agregar_comentario(request, pk):
             garantia = get_object_or_404(_garantia_queryset(), pk=pk)
             return JsonResponse(
                 {
+                    "success": True,
                     "status": "ok",
                     "id": garantia.pk,
                     "html": _render_comentarios_section(request, garantia, layout=layout),
@@ -632,6 +633,7 @@ def agregar_comentario(request, pk):
             garantia = get_object_or_404(_garantia_queryset(), pk=pk)
             return JsonResponse(
                 {
+                    "success": False,
                     "status": "error",
                     "errors": form.errors.get_json_data(escape_html=True),
                     "html": _render_comentarios_section(request, garantia, form=form, layout=layout),

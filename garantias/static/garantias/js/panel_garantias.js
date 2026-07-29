@@ -13,7 +13,6 @@
     if (typeof window.createKanbanQuickEditController !== 'function') return;
     root.dataset.panelJsInitialized = '1';
 
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
     const updateUrl = config.estadoUpdateUrl;
     const inlineCreateUrl = config.inlineCreateUrl;
     const inlineFormUrl = config.inlineFormUrl;
@@ -38,12 +37,14 @@
     const columnLoadRequests = new Map();
     let boardVersion = 0;
 
-    function postForm(url, formData) {
+    function postForm(url, formData, formElement = null) {
+      const token = window.getCSRFToken(formElement);
+      if (!token) return Promise.reject(new Error("CSRF token missing"));
       return fetch(url, {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
-          'X-CSRFToken': csrfToken,
+          'X-CSRFToken': token,
           'X-Requested-With': 'XMLHttpRequest',
           'Accept': 'application/json',
         },
@@ -354,10 +355,10 @@
       if (node) node.textContent = String(Number.parseInt(value, 10) || 0);
     }
 
-    async function postDetailSection(section, form) {
+    async function postDetailSection(section, form, formData) {
       const version = (sectionRequestVersions.get(section) || 0) + 1;
       sectionRequestVersions.set(section, version);
-      const response = await postForm(form.action, new FormData(form));
+      const response = await postForm(form.action, formData, form);
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         throw new Error('Respuesta inesperada del servidor.');
@@ -1166,8 +1167,9 @@
         const section = filesForm.closest('[data-garantia-files-section="1"]');
         const detailRoot = getDetailRoot(filesForm);
         if (!section || section.dataset.pending === 'true') return;
+        const fd = new FormData(filesForm);
         setSectionPending(section, true);
-        postDetailSection(section, filesForm)
+        postDetailSection(section, filesForm, fd)
           .then(({ok, data, stale}) => {
             if (stale) return;
             if (!data.files_html || !replaceDetailSection(detailRoot, '[data-garantia-files-section="1"]', data.files_html)) {
@@ -1196,8 +1198,9 @@
         const section = linksForm.closest('[data-garantia-links-section="1"]');
         const detailRoot = getDetailRoot(linksForm);
         if (!section || section.dataset.pending === 'true') return;
+        const fd = new FormData(linksForm);
         setSectionPending(section, true);
-        postDetailSection(section, linksForm)
+        postDetailSection(section, linksForm, fd)
           .then(({ok, data, stale}) => {
             if (stale) return;
             if (!data.links_html || !replaceDetailSection(detailRoot, '[data-garantia-links-section="1"]', data.links_html)) {
@@ -1272,8 +1275,7 @@
       const submitButton = commentForm.querySelector('[data-garantia-comment-submit="1"]');
       if (commentForm.dataset.pending === 'true') return;
 
-      const fd = new FormData();
-      fd.set('comentario', text);
+      const fd = new FormData(commentForm);
       const layout = commentForm.querySelector('[name="layout"]')?.value || currentDetailLayout || 'drawer';
       fd.set('layout', layout);
       const detailVersion = detailState.version;
@@ -1281,7 +1283,7 @@
       commentForm.setAttribute('aria-busy', 'true');
       if (submitButton) submitButton.disabled = true;
       setDrawerBusy(layout === 'drawer');
-      postForm(url, fd)
+      postForm(url, fd, commentForm)
         .then((response) => {
           return readJsonResponse(response).then((data) => ({ ok: response.ok, status: response.status, data }));
         })

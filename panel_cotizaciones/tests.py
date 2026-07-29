@@ -8,6 +8,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import Client, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
+from django.middleware.csrf import get_token
+from django.http import HttpRequest
 from django.urls import reverse
 from django.utils import timezone
 
@@ -987,6 +989,34 @@ class PanelCotizacionComentarioTests(TestCase):
         data = response.json()
         self.assertEqual(data["status"], "error")
         self.assertIn("texto", data["errors"])
+
+    def test_agregar_comentario_ajax_valida_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="panel_comment", password="panel123")
+
+        response_sin_csrf = client.post(
+            reverse("panel_cotizaciones:comentario_create", args=[self.panel.pk]),
+            {"texto": "Comentario sin CSRF", "layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest"
+        )
+        self.assertEqual(response_sin_csrf.status_code, 403)
+        self.assertFalse(self.panel.comentarios.filter(texto="Comentario sin CSRF").exists())
+
+        request = HttpRequest()
+        csrftoken = get_token(request)
+        client.cookies.load({"csrftoken": csrftoken})
+
+        response_con_csrf = client.post(
+            reverse("panel_cotizaciones:comentario_create", args=[self.panel.pk]),
+            {"texto": "Comentario con CSRF", "layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_X_CSRFTOKEN=csrftoken
+        )
+        self.assertEqual(response_con_csrf.status_code, 200)
+        data = response_con_csrf.json()
+        self.assertEqual(data["status"], "ok")
+        self.assertTrue(self.panel.comentarios.filter(texto="Comentario con CSRF").exists())
+
 
 
 class PanelCotizacionAdjuntosEnlacesTests(TestCase):

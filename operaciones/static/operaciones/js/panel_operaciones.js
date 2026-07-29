@@ -12,7 +12,6 @@
     if (!config?.inlineCreateUrl || !config?.inlineFormUrl) return;
     root.dataset.panelJsInitialized = '1';
 
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
     const modalElement = document.getElementById('OperacionDetalleModal');
     const modalContent = document.getElementById('OperacionDetalleModalContent');
     const modalInstance = modalElement && window.bootstrap ? new bootstrap.Modal(modalElement) : null;
@@ -45,12 +44,14 @@
       window.location.reload();
     }
 
-    function postForm(url, formData) {
+    function postForm(url, formData, formElement = null) {
+      const token = window.getCSRFToken(formElement);
+      if (!token) return Promise.reject(new Error("CSRF token missing"));
       return fetch(url, {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
-          'X-CSRFToken': csrfToken,
+          'X-CSRFToken': token,
           'X-Requested-With': 'XMLHttpRequest',
           'Accept': 'application/json',
         },
@@ -400,7 +401,7 @@
       setInlineFormPending(form, true);
       container.querySelector('.operaciones-inline-error')?.remove();
 
-      postForm(form.action || inlineCreateUrl, formData)
+      postForm(form.action || inlineCreateUrl, formData, form)
         .then(async (response) => {
           const raw = await response.text();
           const contentType = response.headers.get('content-type') || '';
@@ -522,7 +523,7 @@
 
       setCardPending(card, true);
       form.dataset.pending = '1';
-      postForm(form.getAttribute('action'), new FormData(form))
+      postForm(form.getAttribute('action'), new FormData(form), form)
         .then(async (response) => {
           const data = await response.json().catch(() => ({}));
           if (!response.ok || !data.ok) return data;
@@ -1156,10 +1157,13 @@
 
     function performDelete() {
       if (!operacionDeleteUrl) return;
+      const token = window.getCSRFToken();
+      if (!token) return;
       fetch(operacionDeleteUrl, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
-          'X-CSRFToken': csrfToken,
+          'X-CSRFToken': token,
           'X-Requested-With': 'XMLHttpRequest'
         }
       })
@@ -1399,9 +1403,10 @@
         if (!section || !cardId || detailState.pending || section.dataset.pending === '1' || commentForm.dataset.submitting === '1') return;
 
         const scrollTop = getDetailContainer()?.scrollTop || 0;
+        const fd = new FormData(commentForm);
         commentForm.dataset.submitting = '1';
         setCommentsPending(section, true);
-        postForm(url, new FormData(commentForm))
+        postForm(url, fd, commentForm)
           .then(async (response) => {
             const data = await response.json().catch(() => ({}));
             if (!response.ok || !data.success) throw data;
@@ -1443,9 +1448,10 @@
         const input = fileForm.querySelector('input[type="file"]');
         if (!isDelete && !input?.files?.length) return;
         const scrollTop = getDetailContainer()?.scrollTop || 0;
+        const fd = new FormData(fileForm);
         fileForm.dataset.submitting = '1';
         setFilesPending(section, true);
-        postForm(fileForm.getAttribute('action'), new FormData(fileForm))
+        postForm(fileForm.getAttribute('action'), fd, fileForm)
           .then(async (response) => {
             const data = await response.json().catch(() => ({}));
             if (!response.ok || !data.success) throw data;
@@ -1488,9 +1494,10 @@
         const tagSelect = tagForm.querySelector('select[name="etiqueta"]');
         if (!isRemove && !isCreate && !tagSelect?.value) return;
         const scrollTop = getDetailContainer()?.scrollTop || 0;
+        const fd = new FormData(tagForm);
         tagForm.dataset.submitting = '1';
         setTagsPending(section, true);
-        postForm(tagForm.getAttribute('action'), new FormData(tagForm))
+        postForm(tagForm.getAttribute('action'), fd, tagForm)
           .then(async (response) => {
             const data = await response.json().catch(() => ({}));
             if (!response.ok || !data.success) throw data;
@@ -1540,9 +1547,10 @@
         if (isCreate && !(nameInput?.value || '').trim()) return;
         const scrollTop = getDetailContainer()?.scrollTop || 0;
         const submittedSection = section;
+        const fd = new FormData(optionForm);
         optionForm.dataset.submitting = '1';
         setOptionsPending(section, true);
-        postForm(optionForm.getAttribute('action'), new FormData(optionForm))
+        postForm(optionForm.getAttribute('action'), fd, optionForm)
           .then(async (response) => {
             const data = await response.json().catch(() => ({}));
             if (!response.ok || !data.success) throw data;
@@ -1595,9 +1603,10 @@
       if (!section || !cardId || detailState.pending || section.dataset.pending === '1' || linkForm.dataset.submitting === '1') return;
 
       const scrollTop = getDetailContainer()?.scrollTop || 0;
+      const fd = new FormData(linkForm);
       linkForm.dataset.submitting = '1';
       setLinksPending(section, true);
-      postForm(linkForm.getAttribute('action'), new FormData(linkForm))
+      postForm(linkForm.getAttribute('action'), fd, linkForm)
         .then(async (response) => {
           const data = await response.json().catch(() => ({}));
           if (!response.ok || !data.success) throw data;

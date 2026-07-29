@@ -8,6 +8,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext, override_settings
+from django.middleware.csrf import get_token
+from django.http import HttpRequest
 from django.urls import reverse
 from django.utils import timezone
 
@@ -35,7 +37,7 @@ class CuentaGastosTests(TestCase):
         User = get_user_model()
         self.user = User.objects.create_user(username="tester", password="pass", first_name="Tester")
         self.asignado = User.objects.create_user(username="asignado", password="pass", first_name="Asignado")
-        
+
         self.cliente = Cliente.objects.create(nombre="Cliente Test", empresa="Empresa Test")
         self.etiqueta = CuentaGastosEtiqueta.objects.create(nombre="Urgente", color="#FF0000")
         self.opcion = CuentaGastosOpcion.objects.create(nombre="Opción Especial")
@@ -817,6 +819,33 @@ class CuentaGastosTests(TestCase):
         self.assertFalse(data["success"])
         self.assertIn("data-cuenta-comments-section", data["comments_html"])
         self.assertIn('name="comentario"', data["comments_html"])
+
+    def test_agregar_comentario_ajax_valida_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="tester", password="pass")
+
+        response_sin_csrf = client.post(
+            reverse("cuenta_gastos:agregar_comentario", args=[self.cuenta.id]),
+            {"comentario": "Comentario sin CSRF", "layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest"
+        )
+        self.assertEqual(response_sin_csrf.status_code, 403)
+        self.assertFalse(CuentaGastosComentario.objects.filter(comentario="Comentario sin CSRF").exists())
+
+        request = HttpRequest()
+        csrftoken = get_token(request)
+        client.cookies.load({"csrftoken": csrftoken})
+
+        response_con_csrf = client.post(
+            reverse("cuenta_gastos:agregar_comentario", args=[self.cuenta.id]),
+            {"comentario": "Comentario con CSRF", "layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_X_CSRFTOKEN=csrftoken
+        )
+        self.assertEqual(response_con_csrf.status_code, 200)
+        data = response_con_csrf.json()
+        self.assertTrue(data["success"])
+        self.assertTrue(CuentaGastosComentario.objects.filter(comentario="Comentario con CSRF").exists())
 
     def test_queryset_comentarios_muestra_mas_recientes_primero(self):
         viejo = CuentaGastosComentario.objects.create(

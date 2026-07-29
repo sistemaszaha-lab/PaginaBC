@@ -113,3 +113,34 @@ sidebarLinks.forEach((link) => {
         input.setSelectionRange(beforeStart.length, beforeEnd.length);
     });
 })();
+
+window.getCookie = window.getCookie || function (name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== "") {
+        const cookies = document.cookie.split(";");
+        for (const cookie of cookies) {
+            const trimmed = cookie.trim();
+            if (trimmed.startsWith(name + "=")) {
+                cookieValue = decodeURIComponent(trimmed.slice(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+};
+
+window.getCSRFToken = window.getCSRFToken || function (form = null) {
+    let token = window.getCookie("csrftoken");
+    if (!token && form) {
+        const input = form.querySelector('input[type="hidden"][name^="csrf"]');
+        if (input && input.value) {
+            token = input.value;
+        }
+    }
+    if (!token) {
+        console.error("Error CSRF: No se encontró el token CSRF en el formulario ni en la cookie.");
+        alert("Ocurrió un error de seguridad (CSRF). Por favor, recarga la página.");
+        return null;
+    }
+    return token;
+};

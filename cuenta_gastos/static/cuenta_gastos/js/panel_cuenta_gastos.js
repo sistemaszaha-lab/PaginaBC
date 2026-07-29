@@ -12,7 +12,6 @@
     if (!config?.inlineCreateUrl || !config?.inlineFormUrl) return;
     root.dataset.panelJsInitialized = '1';
 
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
     const pendingCardIds = new Set();
     const inlineCreateUrl = config.inlineCreateUrl;
     const inlineFormUrl = config.inlineFormUrl;
@@ -300,14 +299,19 @@
     function submitCuentaArchivoForm(form) {
       const cardId = form.dataset.cuentaId || getDetailCardIdFromAction(form.action);
       if (form.dataset.submitting === '1') return;
+      const formData = new FormData(form);
       form.dataset.submitting = '1';
       clearSectionError('files');
       setArchivoPending(true);
 
       fetch(form.action, {
         method: form.method || 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        body: new FormData(form)
+        credentials: 'same-origin',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(form)
+        },
+        body: formData
       })
         .then(async (response) => {
           const data = await response.json();
@@ -336,14 +340,19 @@
     function submitCuentaLinkForm(form) {
       const cardId = form.dataset.cuentaId || getDetailCardIdFromAction(form.action);
       if (form.dataset.submitting === '1') return;
+      const formData = new FormData(form);
       form.dataset.submitting = '1';
       clearSectionError('links');
       setEnlacePending(true);
 
       fetch(form.action, {
         method: form.method || 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        body: new FormData(form)
+        credentials: 'same-origin',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(form)
+        },
+        body: formData
       })
         .then(async (response) => {
           const data = await response.json();
@@ -372,14 +381,19 @@
     function submitCuentaEtiquetasForm(form) {
       const cardId = form.dataset.cuentaId || getDetailCardIdFromAction(form.action);
       if (form.dataset.submitting === '1') return;
+      const formData = new FormData(form);
       form.dataset.submitting = '1';
       clearSectionError('tags');
       setEtiquetaPending(true);
 
       fetch(form.action, {
         method: form.method || 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        body: new FormData(form)
+        credentials: 'same-origin',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(form)
+        },
+        body: formData
       })
         .then(async (response) => {
           const data = await response.json();
@@ -409,14 +423,19 @@
     function submitCuentaOpcionesForm(form) {
       const cardId = form.dataset.cuentaId || getDetailCardIdFromAction(form.action);
       if (form.dataset.submitting === '1') return;
+      const formData = new FormData(form);
       form.dataset.submitting = '1';
       clearSectionError('options');
       setOpcionPending(true);
 
       fetch(form.action, {
         method: form.method || 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        body: new FormData(form)
+        credentials: 'same-origin',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(form)
+        },
+        body: formData
       })
         .then(async (response) => {
           const data = await response.json();
@@ -1017,9 +1036,10 @@
       try {
         const response = await fetch(`/cuenta-gastos/${getCardId(card)}/mover/`, {
           method: 'POST',
+          credentials: 'same-origin',
           headers: {
-            'X-CSRFToken': csrfToken,
             'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(),
             'Content-Type': 'application/x-www-form-urlencoded'
           },
           body: `estado=${encodeURIComponent(targetState)}`
@@ -1256,8 +1276,9 @@
         setCardPending(card, true);
         fetch(inlineEditor.dataset.updateUrl, {
           method: 'POST',
+          credentials: 'same-origin',
           headers: {
-            'X-CSRFToken': csrfToken,
+            'X-CSRFToken': window.getCSRFToken(inlineEditor),
             'X-Requested-With': 'XMLHttpRequest',
           },
           body: formData
@@ -1335,8 +1356,9 @@
         if (selectedUserId) formData.set('usuario', selectedUserId);
         fetch(inlineCreateUrl, {
           method: 'POST',
+          credentials: 'same-origin',
           headers: {
-            'X-CSRFToken': csrfToken,
+            'X-CSRFToken': window.getCSRFToken(inlineForm),
             'X-Requested-With': 'XMLHttpRequest',
           },
           body: formData
@@ -1405,13 +1427,18 @@
         const activeCard = getCardElement(cardId);
         if (activeCard && isCardPending(activeCard)) return;
 
+        const formData = new FormData(commentForm);
         commentForm.dataset.submitting = '1';
         setCardPendingById(cardId, true);
 
         fetch(commentForm.action, {
           method: commentForm.method || 'POST',
-          headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          body: new FormData(commentForm)
+          credentials: 'same-origin',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(commentForm)
+          },
+          body: formData
         })
           .then(async (response) => {
             const data = await response.json();
@@ -1523,13 +1550,19 @@
         return;
       }
 
-      setCardPendingById(cardId, true);
       const formData = new FormData(form);
       const selectedUserId = document.getElementById('CuentaGastosUserFilter')?.value || '';
       if (selectedUserId) formData.set('usuario', selectedUserId);
+
+      setCardPendingById(cardId, true);
+
       fetch(form.action, {
         method: form.method || 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(form)
+        },
         body: formData
       })
         .then(async (response) => {
