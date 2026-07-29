@@ -20,3 +20,10 @@ Thumbs.db
 # IDE
 .vscode/
 railway_backup.dump
+
+# Generated local files
+static/
+uploads/
+.codex-runserver.err
+.codex-runserver.out
+fase11_candidates.json
