@@ -411,6 +411,7 @@ class PanelCotizacionCargaProgresivaTests(TestCase):
             'data-panel-cotizacion-state-select="1"',
             second_data["html"],
         )
+        self.assertIn('data-status-option="', second_data["html"])
 
     def test_endpoint_reconcilia_movimiento_eliminacion_y_offset_mayor(self):
         self._bulk(10)
@@ -550,6 +551,16 @@ class PanelCotizacionCargaProgresivaTests(TestCase):
             javascript.count("root.addEventListener('click'"), 1
         )
         self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
+        self.assertIn(
+            "const statusButton = e.target.closest('.kanban-status-control__option[data-status-option]');",
+            javascript,
+        )
+        self.assertIn("handleCardStateChange(stateSelect, statusButton);", javascript)
+        self.assertIn("persistCardState(card, sourceColumn, targetColumn, nuevoEstado, previousState, triggerElement)", javascript)
+        self.assertIn("postForm(updateUrl, fd, triggerElement?.closest('form') || triggerElement || card)", javascript)
+        self.assertIn("'X-Requested-With': 'XMLHttpRequest'", javascript)
+        self.assertIn("'X-CSRFToken': token", javascript)
+        self.assertIn("button.classList.toggle('active', isActive);", javascript)
 
 
 class PanelCotizacionInlineCreateTests(TestCase):
@@ -826,6 +837,20 @@ class PanelCotizacionEstadoUpdateTests(TestCase):
         data = response.json()
         self.assertEqual(data["status"], "ok")
         self.assertEqual(data["estado"], PanelCotizacion.Estado.ENVIADA)
+
+    def test_estado_update_ajax_valida_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="panel_estado", password="panel123")
+        client.get(reverse("panel_cotizaciones:panel_cotizaciones"))
+        response_sin_csrf = client.post(
+            reverse("panel_cotizaciones:estado_update"),
+            {
+                "cotizacion_id": self.panel.pk,
+                "nuevo_estado": PanelCotizacion.Estado.ENVIADA,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response_sin_csrf.status_code, 403)
 
 
 class PanelCotizacionInlineUpdateTests(TestCase):

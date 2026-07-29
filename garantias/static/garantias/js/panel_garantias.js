@@ -186,6 +186,11 @@
       const badge = card.querySelector('[data-garantia-state-badge="1"]');
       if (select) select.value = estado;
       if (badge) badge.textContent = estadoLabel || getEstadoLabel(estado);
+      card.querySelectorAll('.kanban-status-control__option[data-status-option]').forEach((button) => {
+        const isActive = button.dataset.statusOption === estado;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
     }
 
     function getCardId(card) {
@@ -605,6 +610,7 @@
       sourceIndex,
       targetIndex,
       trigger,
+      triggerElement,
     }) {
       if (!card || !targetStatus || !targetColumn || !sourceColumn) {
         throw new Error('Movimiento invalido');
@@ -623,15 +629,18 @@
       fd.set('nuevo_estado', targetStatus);
 
       try {
-        const response = await window.csrfFetch(updateUrl, { method: 'POST', body: fd, headers: {'Accept': 'application/json'} });
+        const response = await postGarantiaStateUpdate(fd, triggerElement || card);
+        const data = await readJsonResponse(response);
         if (!response.ok) {
           const error = new Error(`Error ${response.status}`);
           error.status = response.status;
+          error.data = data;
           throw error;
         }
-        const data = await readJsonResponse(response);
         if (data.status !== 'ok' || String(data.id) !== getCardId(card)) {
-          throw new Error('Estado no actualizado.');
+          const error = new Error(data.error || 'Estado no actualizado.');
+          error.data = data;
+          throw error;
         }
 
         syncCardStateUI(card, data.estado || targetStatus, data.estado_label);
@@ -687,6 +696,32 @@
       if (!node) return;
       node.textContent = message || '';
       node.classList.toggle('d-none', !message);
+    }
+
+    function getAjaxErrorMessage(error) {
+      const serverMessage = error?.data?.error || error?.data?.detail || error?.data?.message;
+      if (serverMessage) return serverMessage;
+      if (error?.message && !/^Error \d+$/.test(error.message)) return error.message;
+      return requestErrorMessage(error);
+    }
+
+    function postGarantiaStateUpdate(formData, triggerElement) {
+      const csrfToken = window.getCSRFToken?.(triggerElement?.closest('form') || triggerElement || document);
+      if (!csrfToken) {
+        const error = new Error('No se encontro un token CSRF valido. Recarga la pagina e intenta nuevamente.');
+        error.status = 403;
+        throw error;
+      }
+      return fetch(updateUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+        },
+        body: formData,
+      });
     }
 
     function invalidateColumnLoads() {
@@ -863,6 +898,7 @@
               sourceIndex,
               targetIndex,
               trigger: 'drag',
+              triggerElement: card,
             }).catch((error) => {
               console.error('No se pudo mover la garantia:', error);
             });
@@ -940,21 +976,12 @@
         });
     }
 
-    root.addEventListener('change', (e) => {
-      if (e.target && e.target.id === 'GarantiasUserFilter') {
-        invalidateColumnLoads();
-        e.target.form?.submit();
-        return;
-      }
-
-      const stateSelect = e.target.closest('[data-garantia-state-select="1"]');
-      if (!stateSelect) return;
-
-      const card = stateSelect.closest('[data-garantia-card="1"]');
+    function handleGarantiaStateChange(stateSelect, triggerElement = stateSelect) {
+      const card = stateSelect?.closest('[data-garantia-card="1"]');
       const sourceColumn = card?.closest('.kanban-col');
-      const previousState = sourceColumn?.dataset.estado || stateSelect.dataset.previousValue || stateSelect.value;
-      const nuevoEstado = stateSelect.value;
-      if (!card || !sourceColumn || !nuevoEstado || previousState === nuevoEstado) {
+      const previousState = card?.dataset.garantiaState || sourceColumn?.dataset.estado || stateSelect?.dataset.previousValue || stateSelect?.value;
+      const nuevoEstado = stateSelect?.value || '';
+      if (!card || !sourceColumn || !stateSelect || !nuevoEstado || previousState === nuevoEstado) {
         syncCardStateUI(card, previousState, getEstadoLabel(previousState));
         return;
       }
@@ -969,6 +996,9 @@
         syncCardStateUI(card, previousState, getEstadoLabel(previousState));
         return;
       }
+
+      showColumnLoadError(getColumnShell(sourceColumn), '');
+      showColumnLoadError(getColumnShell(targetColumn), '');
 
       const sourceIndex = Array.from(sourceColumn.querySelectorAll('[data-garantia-card="1"]')).indexOf(card);
       const targetIndex = 0;
@@ -985,13 +1015,50 @@
         sourceColumn,
         sourceIndex,
         targetIndex,
-        trigger: 'select',
+        trigger: triggerElement === stateSelect ? 'select' : 'button',
+        triggerElement,
       }).catch((error) => {
+        const message = getAjaxErrorMessage(error);
+        showColumnLoadError(getColumnShell(sourceColumn), message);
+        if (sourceColumn !== targetColumn) {
+          showColumnLoadError(getColumnShell(targetColumn), message);
+        }
         console.error('No se pudo actualizar el estado de la garantia:', error);
       });
+    }
+
+    root.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'GarantiasUserFilter') {
+        invalidateColumnLoads();
+        e.target.form?.submit();
+        return;
+      }
+
+      const stateSelect = e.target.closest('[data-garantia-state-select="1"]');
+      if (!stateSelect) return;
+      handleGarantiaStateChange(stateSelect);
     });
 
     root.addEventListener('click', (e) => {
+      const statusButton = e.target.closest('.kanban-status-control__option[data-status-option]');
+      if (statusButton) {
+        e.preventDefault();
+        const control = statusButton.closest('.kanban-status-control');
+        const stateSelect = control?.querySelector('[data-garantia-state-select="1"]');
+        const card = statusButton.closest('[data-garantia-card="1"]');
+        const previousState = card?.dataset.garantiaState || stateSelect?.value || '';
+        const nextState = statusButton.dataset.statusOption || '';
+        if (!stateSelect || !nextState) return;
+        if (stateSelect.disabled) {
+          syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+          return;
+        }
+        stateSelect.dataset.previousValue = previousState;
+        stateSelect.value = nextState;
+        handleGarantiaStateChange(stateSelect, statusButton);
+        return;
+      }
+
       const loadMoreButton = e.target.closest('[data-garantia-load-more="1"]');
       if (loadMoreButton) {
         e.preventDefault();

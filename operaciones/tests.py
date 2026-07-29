@@ -691,6 +691,16 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertIn("if (select.tomselect) select.tomselect.destroy();", javascript)
         self.assertEqual(javascript.count("root.addEventListener('submit', (e) => {"), 1)
 
+    def test_javascript_comentarios_usa_delegacion_en_document_para_drawer_y_modal(self):
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("document.addEventListener('submit', (e) => {", javascript)
+        self.assertIn("const commentForm = e.target.closest('[data-operacion-comentario-form=\"1\"]');", javascript)
+        self.assertIn("e.preventDefault();", javascript)
+        self.assertIn("submitCommentForm(commentForm);", javascript)
+
     def test_javascript_serializa_antes_de_deshabilitar_el_formulario(self):
         response = self.client.get(reverse("operaciones:panel_operaciones"))
         javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
@@ -992,6 +1002,25 @@ class OperacionesComentariosAjaxTests(TestCase):
         response = self.client.get(self.url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
 
         self.assertEqual(response.status_code, 405)
+
+    def test_template_y_javascript_mantienen_contrato_ajax_para_formulario_dinamico(self):
+        template = (
+            Path(__file__).resolve().parent
+            / "templates"
+            / "operaciones"
+            / "_comentarios_section.html"
+        ).read_text(encoding="utf-8")
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('method="post"', template)
+        self.assertIn('data-operacion-comentario-form="1"', template)
+        self.assertIn("{% csrf_token %}", template)
+        self.assertIn("const formData = new FormData(commentForm);", javascript)
+        self.assertIn("const csrfToken = window.getCSRFToken?.(commentForm);", javascript)
+        self.assertIn("'X-Requested-With': 'XMLHttpRequest'", javascript)
+        self.assertIn("'X-CSRFToken': csrfToken", javascript)
+        self.assertIn("document.addEventListener('submit', (e) => {", javascript)
+        self.assertIn("submitCommentForm(commentForm);", javascript)
 
 
 @override_settings(

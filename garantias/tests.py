@@ -406,6 +406,20 @@ class GarantiasCargaProgresivaTests(TestCase):
         self.assertEqual(
             javascript.count("root.addEventListener('change'"), 1
         )
+        self.assertIn(
+            "const statusButton = e.target.closest('.kanban-status-control__option[data-status-option]');",
+            javascript,
+        )
+        self.assertIn("handleGarantiaStateChange(stateSelect, statusButton);", javascript)
+        self.assertIn("triggerElement: statusButton,", javascript)
+        self.assertIn("trigger: triggerElement === stateSelect ? 'select' : 'button',", javascript)
+        self.assertIn(
+            "const csrfToken = window.getCSRFToken?.(triggerElement?.closest('form') || triggerElement || document);",
+            javascript,
+        )
+        self.assertIn("'X-Requested-With': 'XMLHttpRequest'", javascript)
+        self.assertIn("'X-CSRFToken': csrfToken", javascript)
+        self.assertIn("button.classList.toggle('active', isActive);", javascript)
 
 
 class GarantiasInlineCreateTests(TestCase):
@@ -595,6 +609,20 @@ class GarantiasEstadoTests(TestCase):
         data = response.json()
         self.assertEqual(data["status"], "ok")
         self.assertEqual(data["estado"], Garantia.Estado.DEVOLUCION_CLIENTE)
+
+    def test_actualizar_estado_ajax_valida_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="admin_estado_garantias", password="pass123")
+        client.get(reverse("garantias:panel_garantias"))
+        response_sin_csrf = client.post(
+            reverse("garantias:actualizar_estado_garantia"),
+            {
+                "garantia_id": self.garantia.pk,
+                "nuevo_estado": Garantia.Estado.DEVOLUCION_CLIENTE,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response_sin_csrf.status_code, 403)
 
     def test_detalle_layout_drawer_renderiza(self):
         response = self.client.get(
@@ -809,6 +837,7 @@ class GarantiasInlineUpdateTests(TestCase):
         self.assertIn('data-garantia-card="1"', html)
         self.assertIn('data-garantia-id="', html)
         self.assertIn('data-garantia-state-select="1"', html)
+        self.assertIn('data-status-option="', html)
         self.assertIn('data-garantia-modal-open="1"', html)
         self.assertIn("garantia-card__comments", html)
 

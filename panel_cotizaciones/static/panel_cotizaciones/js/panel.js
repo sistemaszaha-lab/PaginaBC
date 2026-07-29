@@ -55,6 +55,24 @@
       });
     }
 
+    function readJsonResponse(response) {
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const error = new Error(
+          response.status === 403
+            ? 'Tu sesion o el token CSRF no son validos. Recarga la pagina e intenta nuevamente.'
+            : 'Respuesta inesperada del servidor.'
+        );
+        error.status = response.status;
+        throw error;
+      }
+      return response.json().catch(() => {
+        const error = new Error('La respuesta JSON no es valida.');
+        error.status = response.status;
+        throw error;
+      });
+    }
+
     function getHtml(url, options = {}) {
       return fetch(url, {
         ...options,
@@ -138,6 +156,11 @@
       if (badge) {
         badge.textContent = estadoLabel || getEstadoLabel(estado);
       }
+      card.querySelectorAll('.kanban-status-control__option[data-status-option]').forEach((button) => {
+        const isActive = button.dataset.statusOption === estado;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
     }
 
     function updateCardCommentCount(cardId, count) {
@@ -183,7 +206,16 @@
       syncColumnState(targetColumn);
     }
 
-    function persistCardState(card, sourceColumn, targetColumn, nuevoEstado, previousSelectValue) {
+    function getStateChangeErrorMessage(error) {
+      const serverMessage = error?.data?.error || error?.data?.detail || error?.data?.message;
+      if (serverMessage) return serverMessage;
+      if (error?.message && !/^Error \d+$/.test(error.message)) return error.message;
+      if (error?.status === 400) return 'Revisa los datos enviados e intenta de nuevo.';
+      if (error?.status === 403) return 'Tu sesion o el token CSRF no son validos. Recarga la pagina e intenta nuevamente.';
+      return 'No se pudo actualizar el estado.';
+    }
+
+    function persistCardState(card, sourceColumn, targetColumn, nuevoEstado, previousSelectValue, triggerElement = card) {
       if (!card || isCardPending(card)) {
         return Promise.reject(new Error('La tarjeta ya se esta actualizando'));
       }
@@ -193,16 +225,23 @@
       fd.set('cotizacion_id', getCardId(card));
       fd.set('nuevo_estado', nuevoEstado);
 
-      return postForm(updateUrl, fd)
+      return postForm(updateUrl, fd, triggerElement?.closest('form') || triggerElement || card)
         .then((response) => {
-          if (!response.ok) {
-            throw new Error(`Error ${response.status}`);
-          }
-          return response.json();
+          return readJsonResponse(response).then((data) => {
+            if (!response.ok) {
+              const error = new Error(`Error ${response.status}`);
+              error.status = response.status;
+              error.data = data;
+              throw error;
+            }
+            return data;
+          });
         })
         .then((data) => {
           if (data.status !== 'ok') {
-            throw new Error('Estado no actualizado');
+            const error = new Error(data.error || 'Estado no actualizado');
+            error.data = data;
+            throw error;
           }
 
           syncCardStateUI(card, data.estado || nuevoEstado, data.estado_display);
@@ -688,7 +727,7 @@
 
             const previousState = source.dataset.estado;
 
-            persistCardState(card, source, target, nuevoEstado, previousState)
+            persistCardState(card, source, target, nuevoEstado, previousState, card)
               .catch((error) => {
                 console.error('No se pudo mover la cotizacion:', error);
               })
@@ -826,17 +865,12 @@
         });
     }
 
-    document.addEventListener('change', (e) => {
-      if (e.target && e.target.id === 'panelCotizacionesUserFilter') refreshBoard();
-
-      const stateSelect = e.target.closest('[data-panel-cotizacion-state-select="1"]');
-      if (!stateSelect) return;
-
-      const card = stateSelect.closest('[data-panel-cotizacion-card="1"]');
+    function handleCardStateChange(stateSelect, triggerElement = stateSelect) {
+      const card = stateSelect?.closest('[data-panel-cotizacion-card="1"]');
       const sourceColumn = card?.closest('.panel-cotizaciones-col');
-      const previousState = sourceColumn?.dataset.estado || stateSelect.dataset.previousValue || stateSelect.value;
-      const nuevoEstado = stateSelect.value;
-      if (!card || !sourceColumn || !nuevoEstado || previousState === nuevoEstado) {
+      const previousState = card?.dataset.panelCotizacionState || sourceColumn?.dataset.estado || stateSelect?.dataset.previousValue || stateSelect?.value;
+      const nuevoEstado = stateSelect?.value || '';
+      if (!card || !sourceColumn || !stateSelect || !nuevoEstado || previousState === nuevoEstado) {
         syncCardStateUI(card, previousState, getEstadoLabel(previousState));
         return;
       }
@@ -852,18 +886,52 @@
         return;
       }
 
+      showColumnLoadError(getColumnShell(sourceColumn), '');
+      showColumnLoadError(getColumnShell(targetColumn), '');
       moveCardToColumn(card, targetColumn);
-      persistCardState(card, sourceColumn, targetColumn, nuevoEstado, previousState)
+      persistCardState(card, sourceColumn, targetColumn, nuevoEstado, previousState, triggerElement)
         .catch((error) => {
+          const message = getStateChangeErrorMessage(error);
+          showColumnLoadError(getColumnShell(sourceColumn), message);
+          if (sourceColumn !== targetColumn) {
+            showColumnLoadError(getColumnShell(targetColumn), message);
+          }
           console.error('No se pudo actualizar el estado de la cotizacion:', error);
         })
         .finally(() => {
           ensureEmptyState(sourceColumn);
           ensureEmptyState(targetColumn);
         });
+    }
+
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'panelCotizacionesUserFilter') refreshBoard();
+
+      const stateSelect = e.target.closest('[data-panel-cotizacion-state-select="1"]');
+      if (!stateSelect) return;
+      handleCardStateChange(stateSelect);
     });
 
     document.addEventListener('click', (e) => {
+      const statusButton = e.target.closest('.kanban-status-control__option[data-status-option]');
+      if (statusButton) {
+        e.preventDefault();
+        const control = statusButton.closest('.kanban-status-control');
+        const stateSelect = control?.querySelector('[data-panel-cotizacion-state-select="1"]');
+        const card = statusButton.closest('[data-panel-cotizacion-card="1"]');
+        const previousState = card?.dataset.panelCotizacionState || stateSelect?.value || '';
+        const nextState = statusButton.dataset.statusOption || '';
+        if (!stateSelect || !nextState) return;
+        if (stateSelect.disabled) {
+          syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+          return;
+        }
+        stateSelect.dataset.previousValue = previousState;
+        stateSelect.value = nextState;
+        handleCardStateChange(stateSelect, statusButton);
+        return;
+      }
+
       const loadMoreButton = e.target.closest('[data-panel-cotizacion-load-more="1"]');
       if (loadMoreButton) {
         e.preventDefault();

@@ -1083,6 +1083,91 @@
       section.querySelector('[data-operacion-comentario-form="1"]')?.before(error);
     }
 
+    function submitCommentForm(commentForm) {
+      if (!commentForm) return;
+
+      const url = commentForm.getAttribute('action');
+      const textarea = commentForm.querySelector('textarea[name="comentario"]');
+      const text = (textarea?.value || '').trim();
+      const section = commentForm.closest('[data-operacion-comments-section="1"]');
+      const cardId = commentForm.dataset.operacionId || detailState.id;
+
+      if (!url || !text || !section || !cardId || detailState.pending || section.dataset.pending === '1' || commentForm.dataset.submitting === '1') {
+        return;
+      }
+
+      const scrollTop = getDetailContainer()?.scrollTop || 0;
+      const formData = new FormData(commentForm);
+      const csrfToken = window.getCSRFToken?.(commentForm);
+
+      if (!csrfToken) {
+        renderCommentsError(section, 'No se encontro un token CSRF valido. Recarga la pagina e intenta nuevamente.');
+        return;
+      }
+
+      commentForm.dataset.submitting = '1';
+      setCommentsPending(section, true);
+
+      fetch(url, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrfToken,
+          'Accept': 'application/json',
+        }
+      })
+        .then(async (response) => {
+          const contentType = response.headers.get('content-type') || '';
+          let data = null;
+
+          if (contentType.includes('application/json')) {
+            data = await response.json().catch(() => null);
+          }
+
+          if (!data) {
+            const error = new Error(response.status === 403
+              ? 'La verificacion CSRF fallo. Recarga la pagina e intenta nuevamente.'
+              : 'El servidor devolvio una respuesta inesperada.');
+            error.status = response.status;
+            throw error;
+          }
+
+          if (!response.ok || !data.success) {
+            const error = new Error(data.error || `Error ${response.status}`);
+            error.status = response.status;
+            error.data = data;
+            throw error;
+          }
+
+          return data;
+        })
+        .then((data) => {
+          if (!replaceCommentsSection(data.comments_html)) {
+            throw new Error('No se pudo actualizar la seccion de comentarios.');
+          }
+          syncCommentsCount(cardId, data.comments_count);
+          const container = getDetailContainer();
+          if (container) container.scrollTop = scrollTop;
+        })
+        .catch((error) => {
+          console.error('No se pudo agregar el comentario:', error);
+          if (error?.data?.comments_html && replaceCommentsSection(error.data.comments_html)) {
+            syncCommentsCount(cardId, error.data.comments_count || 0);
+            return;
+          }
+          const message = error?.status === 403
+            ? 'La verificacion CSRF fallo. Recarga la pagina e intenta nuevamente.'
+            : 'No se pudo agregar el comentario. Intenta nuevamente.';
+          renderCommentsError(section, message);
+        })
+        .finally(() => {
+          delete commentForm.dataset.submitting;
+          setCommentsPending(section, false);
+        });
+    }
+
     function openDrawer() {
       if (!drawerSupported) return;
       drawerElement.hidden = false;
@@ -1391,50 +1476,6 @@
         return;
       }
 
-      const commentForm = e.target.closest('[data-operacion-comentario-form="1"]');
-      if (commentForm) {
-        e.preventDefault();
-        const url = commentForm.getAttribute('action');
-        const textarea = commentForm.querySelector('textarea[name="comentario"]');
-        const text = (textarea?.value || '').trim();
-        if (!url || !text) return;
-        const section = commentForm.closest('[data-operacion-comments-section="1"]');
-        const cardId = commentForm.dataset.operacionId || detailState.id;
-        if (!section || !cardId || detailState.pending || section.dataset.pending === '1' || commentForm.dataset.submitting === '1') return;
-
-        const scrollTop = getDetailContainer()?.scrollTop || 0;
-        const fd = new FormData(commentForm);
-        commentForm.dataset.submitting = '1';
-        setCommentsPending(section, true);
-        postForm(url, fd, commentForm)
-          .then(async (response) => {
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.success) throw data;
-            return data;
-          })
-          .then((data) => {
-            if (!replaceCommentsSection(data.comments_html)) {
-              throw new Error('No se pudo actualizar la seccion de comentarios.');
-            }
-            syncCommentsCount(cardId, data.comments_count);
-            const container = getDetailContainer();
-            if (container) container.scrollTop = scrollTop;
-          })
-          .catch((error) => {
-            console.error('No se pudo agregar el comentario:', error);
-            if (error?.comments_html && replaceCommentsSection(error.comments_html)) {
-              syncCommentsCount(cardId, error.comments_count || 0);
-              return;
-            }
-            renderCommentsError(section, 'No se pudo agregar el comentario. Intenta nuevamente.');
-          })
-          .finally(() => {
-            delete commentForm.dataset.submitting;
-            setCommentsPending(section, false);
-          });
-        return;
-      }
-
       const fileForm = e.target.closest('[data-operacion-archivo-form="1"], [data-operacion-archivo-delete="1"]');
       if (fileForm) {
         e.preventDefault();
@@ -1642,6 +1683,15 @@
       if (e.key === 'Escape' && drawerSupported && drawerElement.classList.contains('is-open')) {
         closeDrawer();
       }
+    });
+
+    document.addEventListener('submit', (e) => {
+      const commentForm = e.target.closest('[data-operacion-comentario-form="1"]');
+      if (!commentForm) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      submitCommentForm(commentForm);
     });
 
     const rootObserver = new MutationObserver(() => {
