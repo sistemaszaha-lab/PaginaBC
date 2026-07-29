@@ -23,7 +23,7 @@ def obtener_initial_operacion_desde_referencia(referencia):
     initial = {
         "titulo": f"Referencia {referencia.referencia}",
         "descripcion": descripcion,
-        "estado": Operacion.Estado.PENDIENTE,
+        "estado": Operacion.Estado.COORDINAR_PICKUP,
     }
     if cliente:
         initial["cliente"] = cliente.pk

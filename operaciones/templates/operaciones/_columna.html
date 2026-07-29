@@ -1,4 +1,9 @@
-<section class="operaciones-column card border-0 shadow-sm flex-shrink-0" data-operaciones-column="1">
+<section
+  class="operaciones-column card border-0 shadow-sm flex-shrink-0"
+  data-operaciones-column="1"
+  data-estado="{{ columna.estado }}"
+  data-total="{{ columna.count }}"
+  data-loaded="{{ columna.loaded }}">
   <header class="operaciones-column__header">
     <div class="operaciones-column__eyebrow">Etapa {{ columna.posicion }}</div>
     <div class="d-flex align-items-start justify-content-between gap-3">
@@ -18,15 +23,32 @@
     </button>
   </div>
 
-  <div class="px-3 pt-3 d-none" data-operacion-inline-container="1" data-estado="{{ columna.estado }}">
-    {% include "operaciones/_inline_create_form.html" with form=inline_form estado=columna.estado only %}
-  </div>
-
   <div class="operaciones-column__body panel-operaciones-col d-flex flex-column gap-3" data-estado="{{ columna.estado }}">
     {% for operacion in columna.items %}
       {% include "operaciones/_operacion_card.html" with operacion=operacion estados=estados only %}
     {% empty %}
       <div class="operaciones-column__empty text-muted panel-operacion-empty">Sin operaciones.</div>
     {% endfor %}
+  </div>
+
+  <div class="px-3 pb-3 text-center">
+    <button
+      type="button"
+      class="btn btn-sm btn-outline-secondary"
+      data-operacion-load-more="1"
+      data-load-url="{{ columna.load_url }}"
+      {% if not columna.has_more %}hidden{% endif %}>
+      Cargar más{% if columna.remaining %} ({{ columna.remaining }}){% endif %}
+    </button>
+    <div
+      class="small text-muted mt-2 d-none"
+      data-operacion-load-indicator="1"
+      role="status">
+      Cargando...
+    </div>
+    <div
+      class="small text-danger mt-2 d-none"
+      data-operacion-load-error="1"
+      role="alert"></div>
   </div>
 </section>

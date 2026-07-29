@@ -1,0 +1,1373 @@
+  (function () {
+    const root = document.querySelector('.garantias-board');
+    const configElement = document.getElementById('panel-garantias-config');
+    if (!root || !configElement || root.dataset.panelJsInitialized === '1') return;
+
+    let config;
+    try {
+      config = JSON.parse(configElement.textContent);
+    } catch (_) {
+      return;
+    }
+    if (!config?.estadoUpdateUrl || !config?.inlineCreateUrl || !config?.inlineFormUrl) return;
+    if (typeof window.createKanbanQuickEditController !== 'function') return;
+    root.dataset.panelJsInitialized = '1';
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+    const updateUrl = config.estadoUpdateUrl;
+    const inlineCreateUrl = config.inlineCreateUrl;
+    const inlineFormUrl = config.inlineFormUrl;
+    const modalElement = document.getElementById('garantiaDetalleModal');
+    const modalContent = document.getElementById('garantiaDetalleModalContent');
+    const modalInstance = modalElement && window.bootstrap ? new bootstrap.Modal(modalElement) : null;
+    const drawerRoot = document.getElementById('garantia-drawer-root');
+    const drawerElement = drawerRoot?.querySelector('.garantia-drawer');
+    const drawerContent = document.getElementById('garantiaDrawerContent');
+    const pendingCardIds = new Set();
+    const sectionRequestVersions = new WeakMap();
+    const detailState = { version: 0, id: '', layout: drawerElement ? 'drawer' : 'modal' };
+    let currentDetailUrl = '';
+    let currentDetailCardId = '';
+    let currentDetailLayout = drawerElement ? 'drawer' : 'modal';
+    let drawerBusy = false;
+    const inlineSharedSlot = document.querySelector('[data-garantia-inline-shared-slot="1"]');
+    const inlineSlotHome = document.querySelector('[data-garantia-inline-slot-home="1"]');
+    let inlineFormLoadPromise = null;
+    let inlineFormLoaded = false;
+    let latestInlineTarget = null;
+    const columnLoadRequests = new Map();
+    let boardVersion = 0;
+
+    function postForm(url, formData) {
+      return fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+        },
+        body: formData,
+      });
+    }
+
+    async function readJsonResponse(response) {
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const error = new Error('Respuesta inesperada del servidor.');
+        error.status = response.status;
+        throw error;
+      }
+      try {
+        return await response.json();
+      } catch (_) {
+        const error = new Error('La respuesta JSON no es valida.');
+        error.status = response.status;
+        throw error;
+      }
+    }
+
+    async function readDetailFormResponse(response) {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await readJsonResponse(response);
+        if (!response.ok) {
+          const error = new Error(`Error ${response.status}`);
+          error.status = response.status;
+          error.data = data;
+          throw error;
+        }
+        return data;
+      }
+      if (contentType.includes('text/html') && response.status === 400) {
+        const html = await response.text();
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html;
+        if (wrapper.querySelector('.garantia-detail__body')) {
+          return {status: 'validation_error', html};
+        }
+      }
+      const error = new Error('Respuesta inesperada del servidor.');
+      error.status = response.status;
+      throw error;
+    }
+
+    function requestErrorMessage(error) {
+      const status = error?.status;
+      if (status === 400) return 'Revisa los datos enviados e intenta de nuevo.';
+      if (status === 403) return 'Tu sesion no tiene permiso para esta accion.';
+      if (status === 404) return 'La garantia o el recurso ya no existe.';
+      if (status === 405) return 'La accion no esta permitida.';
+      if (status >= 500) return 'El servidor no pudo completar la accion.';
+      return 'No se pudo completar la accion. Verifica tu conexion e intenta de nuevo.';
+    }
+
+    function getHtml(url) {
+      return fetch(url, {
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' }
+      }).then((response) => {
+        if (!response.ok) {
+          const error = new Error(`Error ${response.status}`);
+          error.status = response.status;
+          throw error;
+        }
+        if (!(response.headers.get('content-type') || '').includes('text/html')) {
+          const error = new Error('Respuesta HTML inesperada.');
+          error.status = response.status;
+          throw error;
+        }
+        return response.text();
+      });
+    }
+
+    function ensureEmptyState(column) {
+      const cards = column.querySelectorAll('[data-garantia-card="1"]');
+      let empty = column.querySelector('.garantia-empty');
+      if (!cards.length && !empty) {
+        empty = document.createElement('div');
+        empty.className = 'garantia-empty';
+        empty.textContent = 'Sin garantias.';
+        column.appendChild(empty);
+      }
+      if (cards.length && empty) empty.remove();
+    }
+
+    function getColumnShell(column) {
+      return column?.closest('[data-garantia-column="1"]') || null;
+    }
+
+    function getColumnTotal(column) {
+      const shell = getColumnShell(column);
+      const value = Number.parseInt(shell?.dataset.total || '', 10);
+      return Number.isNaN(value) ? 0 : value;
+    }
+
+    function syncColumnState(column, totalOverride) {
+      if (!column) return;
+      const shell = getColumnShell(column);
+      if (!shell) return;
+      const loaded = column.querySelectorAll('[data-garantia-card="1"]').length;
+      const parsedTotal = Number.parseInt(totalOverride, 10);
+      const total = Number.isNaN(parsedTotal)
+        ? Math.max(getColumnTotal(column), loaded)
+        : Math.max(parsedTotal, loaded);
+      shell.dataset.total = String(total);
+      shell.dataset.loaded = String(loaded);
+      const countNode = shell.querySelector('[data-garantias-column-count="1"]');
+      if (countNode) countNode.textContent = String(total);
+      const remaining = Math.max(0, total - loaded);
+      const button = shell.querySelector('[data-garantia-load-more="1"]');
+      if (button) {
+        button.hidden = remaining === 0;
+        button.textContent = remaining
+          ? `Cargar más (${remaining})`
+          : 'Cargar más';
+      }
+      ensureEmptyState(column);
+    }
+
+    function adjustColumnTotal(column, delta) {
+      if (!column) return;
+      syncColumnState(column, Math.max(0, getColumnTotal(column) + delta));
+    }
+
+    function updateColumnCount(column, value) {
+      syncColumnState(column, value);
+    }
+
+    function updateColumnCountFromDom(column) {
+      if (!column) return;
+      syncColumnState(column);
+    }
+
+    function getEstadoLabel(value) {
+      if (value === 'SOLICITUD_NAVIERA') return 'Solicitud a naviera';
+      if (value === 'EN_PROCESO') return 'En proceso';
+      if (value === 'PAGO_NAVIERA_ZAHA') return 'Pago naviera a Zaha';
+      if (value === 'DEVOLUCION_CLIENTE') return 'Devolucion a cliente';
+      return value || '';
+    }
+
+    function syncCardStateUI(card, estado, estadoLabel) {
+      if (!card) return;
+      card.dataset.garantiaState = estado;
+      const select = card.querySelector('[data-garantia-state-select="1"]');
+      const badge = card.querySelector('[data-garantia-state-badge="1"]');
+      if (select) select.value = estado;
+      if (badge) badge.textContent = estadoLabel || getEstadoLabel(estado);
+    }
+
+    function getCardId(card) {
+      return card?.getAttribute('data-garantia-id') || '';
+    }
+
+    function isCardPending(card) {
+      return pendingCardIds.has(getCardId(card));
+    }
+
+    function setCardPending(card, isPending) {
+      if (!card) return;
+      const cardId = getCardId(card);
+      if (!cardId) return;
+
+      if (isPending) {
+        pendingCardIds.add(cardId);
+        card.dataset.pending = 'true';
+      } else {
+        pendingCardIds.delete(cardId);
+        delete card.dataset.pending;
+      }
+      card.setAttribute('aria-busy', isPending ? 'true' : 'false');
+
+      const stateSelect = card.querySelector('[data-garantia-state-select="1"]');
+      if (stateSelect) stateSelect.disabled = isPending;
+    }
+
+    function lockBodyScroll() {
+      document.body.classList.add('garantia-drawer-open');
+    }
+
+    function unlockBodyScroll() {
+      document.body.classList.remove('garantia-drawer-open');
+    }
+
+    function setDrawerBusy(value) {
+      drawerBusy = value;
+      if (drawerElement) {
+        if (value) drawerElement.dataset.busy = '1';
+        else delete drawerElement.dataset.busy;
+      }
+    }
+
+    function openDrawerShell() {
+      if (!drawerRoot || !drawerElement) return;
+      drawerRoot.classList.add('is-open');
+      drawerRoot.setAttribute('aria-hidden', 'false');
+      lockBodyScroll();
+      drawerElement.focus();
+    }
+
+    function closeDrawer(force) {
+      if (!drawerRoot || !drawerElement) return;
+      if (drawerBusy && !force) return;
+      drawerRoot.classList.remove('is-open');
+      drawerRoot.setAttribute('aria-hidden', 'true');
+      unlockBodyScroll();
+      detailState.version += 1;
+      detailState.id = '';
+      currentDetailUrl = '';
+      currentDetailCardId = '';
+      currentDetailLayout = drawerElement ? 'drawer' : 'modal';
+    }
+
+    function replaceCardHtml(cardId, html) {
+      if (!cardId || !html) return;
+      const currentCard = document.querySelector(`[data-garantia-id="${cardId}"]`);
+      if (!currentCard) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const nextCard = wrapper.firstElementChild;
+      if (!nextCard) return;
+      invalidateColumnLoads();
+      currentCard.replaceWith(nextCard);
+      // Los listeners del tablero usan delegaciÃ³n. Esta inicializaciÃ³n solo
+      // cubre widgets que viven dentro de la nueva tarjeta.
+      if (window.initGarantiaSelects) window.initGarantiaSelects(nextCard);
+      const column = nextCard.closest('.kanban-col');
+      syncColumnState(column);
+    }
+
+    function removeCard(cardId) {
+      const card = document.querySelector(`[data-garantia-id="${cardId}"]`);
+      if (!card) return;
+      const column = card.closest('.kanban-col');
+      invalidateColumnLoads();
+      card.remove();
+      adjustColumnTotal(column, -1);
+    }
+
+    function setCardCommentCount(cardId, value) {
+      const card = document.querySelector(`[data-garantia-id="${cardId}"]`);
+      const node = card?.querySelector('.garantia-card__comments span');
+      if (!node) return;
+      const nextValue = parseInt(value, 10);
+      node.textContent = String(Number.isNaN(nextValue) ? 0 : nextValue);
+    }
+
+    function replaceCommentsSection(root, html) {
+      if (!root || !html) return false;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const nextSection = wrapper.querySelector('[data-garantia-comments-section="1"]');
+      const currentSection = root.querySelector('[data-garantia-comments-section="1"]');
+      if (!nextSection || !currentSection) return false;
+      currentSection.replaceWith(nextSection);
+      return true;
+    }
+
+    function showCommentFormError(root, message) {
+      const errorNode = root?.querySelector('[data-garantia-comment-error="1"]');
+      if (!errorNode) return;
+      errorNode.textContent = message;
+      errorNode.classList.remove('d-none');
+    }
+
+    function getDetailRoot(node) {
+      return node?.closest('.garantia-drawer__content, .modal-content') || null;
+    }
+
+    function replaceDetailSection(root, selector, html) {
+      if (!root || !html) return false;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const current = root.querySelector(selector);
+      const next = wrapper.querySelector(selector);
+      if (!current || !next) return false;
+      current.replaceWith(next);
+      return true;
+    }
+
+    function setSectionPending(section, pending) {
+      if (!section) return;
+      if (pending) section.dataset.pending = 'true';
+      else delete section.dataset.pending;
+      section.setAttribute('aria-busy', pending ? 'true' : 'false');
+      section.querySelectorAll('button, input').forEach((control) => {
+        control.disabled = pending;
+      });
+    }
+
+    function setFormPending(form, pending) {
+      if (!form) return;
+      if (pending) form.dataset.pending = 'true';
+      else delete form.dataset.pending;
+      form.setAttribute('aria-busy', pending ? 'true' : 'false');
+      form.querySelectorAll('button, input, select, textarea').forEach((control) => {
+        control.disabled = pending;
+      });
+    }
+
+    function syncCardResourceCount(cardId, resource, value) {
+      const card = document.querySelector(`[data-garantia-id="${cardId}"]`);
+      const node = card?.querySelector(`[data-garantia-card-${resource}-count="1"]`);
+      if (node) node.textContent = String(Number.parseInt(value, 10) || 0);
+    }
+
+    async function postDetailSection(section, form) {
+      const version = (sectionRequestVersions.get(section) || 0) + 1;
+      sectionRequestVersions.set(section, version);
+      const response = await postForm(form.action, new FormData(form));
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Respuesta inesperada del servidor.');
+      }
+      const data = await readJsonResponse(response);
+      if (sectionRequestVersions.get(section) !== version) return {stale: true};
+      return {ok: response.ok, data};
+    }
+
+    function setInlineCreateButtonsDisabled(disabled) {
+      document.querySelectorAll('[data-garantia-inline-open="1"]').forEach((button) => {
+        button.disabled = disabled;
+      });
+    }
+
+    function destroyInlineCreateSelects(root) {
+      if (!root) return;
+      root.querySelectorAll('select').forEach((select) => {
+        if (select.tomselect) {
+          select.tomselect.destroy();
+        }
+      });
+    }
+
+    function initInlineCreateSelects(root) {
+      if (!root || !window.initGarantiaSelects) return;
+      root.querySelectorAll('select').forEach((select) => {
+        if (select.tomselect) return;
+      });
+      window.initGarantiaSelects(root);
+    }
+
+    function inlineTargetFromButton(button) {
+      const column = button?.closest('.garantias-column');
+      const estado = button?.dataset.estado || '';
+      if (!column || !estado) return null;
+      return {
+        column,
+        estado,
+        label: button.dataset.estadoLabel || getEstadoLabel(estado),
+      };
+    }
+
+    function findInlineTarget(estado) {
+      const button = Array.from(
+        document.querySelectorAll('[data-garantia-inline-open="1"]')
+      ).find((item) => item.dataset.estado === estado);
+      return inlineTargetFromButton(button);
+    }
+
+    function moveInlineSlot(target) {
+      if (!inlineSharedSlot || !target?.column) return;
+      const actions = target.column.querySelector('.garantias-column__actions');
+      if (actions) actions.after(inlineSharedSlot);
+    }
+
+    function configureInlineSlot(target) {
+      if (!inlineSharedSlot || !target) return;
+      moveInlineSlot(target);
+      inlineSharedSlot.dataset.estado = target.estado;
+      const form = inlineSharedSlot.querySelector('[data-garantia-inline-form="1"]');
+      const estadoInput = form?.querySelector('[name="estado"]');
+      const destination = inlineSharedSlot.querySelector('[data-garantia-inline-destination="1"]');
+      if (estadoInput) estadoInput.value = target.estado;
+      if (destination) destination.textContent = target.label;
+      inlineSharedSlot.classList.remove('d-none');
+    }
+
+    function showInlineLoading(target) {
+      if (!inlineSharedSlot || !target) return;
+      moveInlineSlot(target);
+      inlineSharedSlot.classList.remove('d-none');
+      inlineSharedSlot.innerHTML = '<div class="text-muted small py-2" data-garantia-inline-loading="1">Cargando formulario...</div>';
+    }
+
+    function parseInlineFragment(html) {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const fragments = wrapper.querySelectorAll('[data-garantia-inline-form-fragment="1"]');
+      const forms = wrapper.querySelectorAll('[data-garantia-inline-form="1"]');
+      if (fragments.length !== 1 || forms.length !== 1) {
+        throw new Error('El servidor no devolvio el formulario esperado.');
+      }
+      return fragments[0].outerHTML;
+    }
+
+    function loadInlineCreateForm() {
+      if (inlineFormLoaded) return Promise.resolve();
+      if (inlineFormLoadPromise) return inlineFormLoadPromise;
+
+      setInlineCreateButtonsDisabled(true);
+      inlineFormLoadPromise = fetch(inlineFormUrl, {
+        method: 'GET',
+        credentials: 'same-origin',
+        redirect: 'error',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'text/html',
+        },
+      })
+        .then(async (response) => {
+          if (!response.ok || response.redirected) {
+            const error = new Error(`Error ${response.status}`);
+            error.status = response.status;
+            throw error;
+          }
+          if (!(response.headers.get('content-type') || '').includes('text/html')) {
+            throw new Error('Respuesta HTML inesperada.');
+          }
+          return parseInlineFragment(await response.text());
+        })
+        .then((html) => {
+          if (!inlineSharedSlot) return;
+          inlineSharedSlot.innerHTML = html;
+          inlineFormLoaded = true;
+          if (latestInlineTarget) configureInlineSlot(latestInlineTarget);
+          initInlineCreateSelects(inlineSharedSlot);
+        })
+        .catch((error) => {
+          inlineFormLoaded = false;
+          if (inlineSharedSlot) {
+            inlineSharedSlot.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0" data-garantia-inline-load-error="1">No se pudo cargar el formulario. Intenta de nuevo.</div>';
+            inlineSharedSlot.classList.remove('d-none');
+          }
+          throw error;
+        })
+        .finally(() => {
+          inlineFormLoadPromise = null;
+          setInlineCreateButtonsDisabled(false);
+        });
+      return inlineFormLoadPromise;
+    }
+
+    function openInlineCreateForm(button) {
+      const target = inlineTargetFromButton(button);
+      if (!target) return;
+      latestInlineTarget = target;
+      if (inlineFormLoaded) {
+        configureInlineSlot(target);
+        inlineSharedSlot?.querySelector('input, select, textarea')?.focus();
+        return;
+      }
+      showInlineLoading(target);
+      loadInlineCreateForm()
+        .then(() => {
+          if (latestInlineTarget) configureInlineSlot(latestInlineTarget);
+          inlineSharedSlot?.querySelector('input, select, textarea')?.focus();
+        })
+        .catch((error) => {
+          console.error('No se pudo cargar el formulario inline:', error);
+        });
+    }
+
+    function closeInlineCreateForm() {
+      latestInlineTarget = null;
+      if (!inlineSharedSlot) return;
+      inlineSharedSlot.classList.add('d-none');
+      if (inlineSlotHome) inlineSlotHome.appendChild(inlineSharedSlot);
+    }
+
+    function replaceInlineCreateForm(html, target) {
+      if (!inlineSharedSlot) return;
+      destroyInlineCreateSelects(inlineSharedSlot);
+      inlineSharedSlot.innerHTML = parseInlineFragment(html);
+      inlineFormLoaded = true;
+      latestInlineTarget = target;
+      configureInlineSlot(target);
+      initInlineCreateSelects(inlineSharedSlot);
+    }
+
+    async function readInlineCreateResponse(response) {
+      if (!(response.headers.get('content-type') || '').includes('application/json')) {
+        throw new Error('Respuesta JSON inesperada.');
+      }
+      const data = await response.json();
+      if (!response.ok) {
+        const error = new Error(`Error ${response.status}`);
+        error.status = response.status;
+        error.data = data;
+        throw error;
+      }
+      return data;
+    }
+
+    function insertCardAt(column, card, index) {
+      if (!column || !card) return;
+      const cards = Array.from(column.querySelectorAll('[data-garantia-card="1"]')).filter((node) => node !== card);
+      if (typeof index !== 'number' || index < 0 || index >= cards.length) {
+        column.appendChild(card);
+        return;
+      }
+      column.insertBefore(card, cards[index]);
+    }
+
+    async function moveGarantiaCard({
+      card,
+      targetStatus,
+      targetColumn,
+      sourceColumn,
+      sourceIndex,
+      targetIndex,
+      trigger,
+    }) {
+      if (!card || !targetStatus || !targetColumn || !sourceColumn) {
+        throw new Error('Movimiento invalido');
+      }
+      if (isCardPending(card)) {
+        throw new Error('La garantia ya se esta actualizando');
+      }
+
+      const previousState = sourceColumn.dataset.estado || '';
+      const sameColumn = sourceColumn === targetColumn;
+
+      invalidateColumnLoads();
+      setCardPending(card, true);
+      const fd = new FormData();
+      fd.set('garantia_id', getCardId(card));
+      fd.set('nuevo_estado', targetStatus);
+
+      try {
+        const response = await postForm(updateUrl, fd);
+        if (!response.ok) {
+          const error = new Error(`Error ${response.status}`);
+          error.status = response.status;
+          throw error;
+        }
+        const data = await readJsonResponse(response);
+        if (data.status !== 'ok' || String(data.id) !== getCardId(card)) {
+          throw new Error('Estado no actualizado.');
+        }
+
+        syncCardStateUI(card, data.estado || targetStatus, data.estado_label);
+        if (!sameColumn) {
+          adjustColumnTotal(sourceColumn, -1);
+          adjustColumnTotal(targetColumn, 1);
+        } else {
+          syncColumnState(targetColumn);
+        }
+        return data;
+      } catch (error) {
+        if (sameColumn) {
+          insertCardAt(sourceColumn, card, sourceIndex);
+          syncColumnState(sourceColumn);
+        } else {
+          insertCardAt(sourceColumn, card, sourceIndex);
+          syncColumnState(sourceColumn);
+          syncColumnState(targetColumn);
+        }
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        throw error;
+      } finally {
+        ensureEmptyState(sourceColumn);
+        ensureEmptyState(targetColumn);
+        setCardPending(card, false);
+      }
+    }
+
+    function getLoadedCardIds(column) {
+      return Array.from(
+        column?.querySelectorAll('[data-garantia-card="1"]') || []
+      )
+        .map((card) => getCardId(card))
+        .filter(Boolean);
+    }
+
+    function getSelectedUserId() {
+      return document.getElementById('GarantiasUserFilter')?.value || '';
+    }
+
+    function setColumnLoading(shell, isLoading) {
+      const button = shell?.querySelector('[data-garantia-load-more="1"]');
+      const indicator = shell?.querySelector('[data-garantia-load-indicator="1"]');
+      if (button) {
+        button.disabled = isLoading;
+        button.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+      }
+      indicator?.classList.toggle('d-none', !isLoading);
+    }
+
+    function showColumnLoadError(shell, message) {
+      const node = shell?.querySelector('[data-garantia-load-error="1"]');
+      if (!node) return;
+      node.textContent = message || '';
+      node.classList.toggle('d-none', !message);
+    }
+
+    function invalidateColumnLoads() {
+      boardVersion += 1;
+      columnLoadRequests.forEach((entry) => entry.controller.abort());
+      columnLoadRequests.clear();
+    }
+
+    function loadMoreCards(button) {
+      const shell = button?.closest('[data-garantia-column="1"]');
+      const column = shell?.querySelector('.kanban-col');
+      const state = shell?.dataset.estado || column?.dataset.estado || '';
+      const loadUrl = button?.dataset.loadUrl || '';
+      if (!shell || !column || !state || !loadUrl) {
+        return Promise.reject(new Error('Columna no disponible.'));
+      }
+
+      const existing = columnLoadRequests.get(state);
+      if (existing) return existing.promise;
+
+      const loadedIds = getLoadedCardIds(column);
+      const offset = loadedIds.length;
+      const url = new URL(loadUrl, window.location.origin);
+      url.searchParams.set('offset', String(offset));
+      url.searchParams.set('loaded', loadedIds.join(','));
+      const selectedUserId = getSelectedUserId();
+      if (selectedUserId) url.searchParams.set('usuario', selectedUserId);
+
+      const controller = new AbortController();
+      const requestVersion = boardVersion;
+      setColumnLoading(shell, true);
+      showColumnLoadError(shell, '');
+
+      const request = fetch(`${url.pathname}${url.search}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        signal: controller.signal,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+        },
+      })
+        .then(async (response) => {
+          const contentType = response.headers.get('content-type') || '';
+          if (!contentType.includes('application/json')) {
+            throw new Error('Respuesta JSON invalida.');
+          }
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error(data.error || `Error ${response.status}`);
+          }
+          return data;
+        })
+        .then((data) => {
+          if (requestVersion !== boardVersion || controller.signal.aborted) {
+            return null;
+          }
+          const staleIds = Array.isArray(data.stale_ids)
+            ? data.stale_ids.map((value) => String(value))
+            : null;
+          const uniqueStaleIds = staleIds ? new Set(staleIds) : null;
+          if (
+            data.estado !== state ||
+            !Number.isInteger(data.loaded) ||
+            data.loaded < 0 ||
+            !Number.isInteger(data.next_offset) ||
+            !uniqueStaleIds ||
+            uniqueStaleIds.size !== staleIds.length ||
+            staleIds.some((cardId) => !loadedIds.includes(cardId)) ||
+            data.next_offset !== offset - staleIds.length + data.loaded ||
+            !Number.isInteger(data.total) ||
+            data.total < data.next_offset ||
+            typeof data.has_more !== 'boolean' ||
+            typeof data.html !== 'string' ||
+            (data.loaded > 0 && !data.html.trim()) ||
+            (data.loaded === 0 && data.has_more)
+          ) {
+            throw new Error('Respuesta incompatible con la columna.');
+          }
+
+          staleIds.forEach((cardId) => {
+            Array.from(column.querySelectorAll('[data-garantia-card="1"]'))
+              .find((card) => getCardId(card) === cardId)
+              ?.remove();
+          });
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = data.html;
+          const cards = Array.from(wrapper.children).filter(
+            (node) => node.matches?.('[data-garantia-card="1"]')
+          );
+          if (cards.length !== data.loaded) {
+            throw new Error('Cantidad de tarjetas inesperada.');
+          }
+          const existingIds = new Set(getLoadedCardIds(column));
+          const responseIds = new Set();
+          cards.forEach((card) => {
+            const cardId = getCardId(card);
+            if (
+              !cardId ||
+              existingIds.has(cardId) ||
+              responseIds.has(cardId) ||
+              card.dataset.garantiaState !== state
+            ) {
+              throw new Error('Tarjeta duplicada o incompatible.');
+            }
+            responseIds.add(cardId);
+          });
+
+          column.querySelector('.garantia-empty')?.remove();
+          const fragment = document.createDocumentFragment();
+          cards.forEach((card) => fragment.appendChild(card));
+          column.appendChild(fragment);
+          syncColumnState(column, data.total);
+          button.hidden = !data.has_more;
+          return data;
+        })
+        .catch((error) => {
+          if (error.name === 'AbortError' || requestVersion !== boardVersion) {
+            return null;
+          }
+          showColumnLoadError(
+            shell,
+            'No se pudieron cargar las tarjetas. Intenta nuevamente.'
+          );
+          throw error;
+        })
+        .finally(() => {
+          if (columnLoadRequests.get(state)?.promise === request) {
+            columnLoadRequests.delete(state);
+            if (shell.isConnected) setColumnLoading(shell, false);
+          }
+        });
+
+      columnLoadRequests.set(state, {promise: request, controller});
+      return request;
+    }
+
+    function initSortable() {
+      if (typeof Sortable === 'undefined') return;
+      document.querySelectorAll('.kanban-col').forEach((column) => {
+        if (column.dataset.sortableReady === '1') return;
+        column.dataset.sortableReady = '1';
+        Sortable.create(column, {
+          group: 'garantias-kanban',
+          animation: 150,
+          ghostClass: 'garantia-ghost',
+          dragClass: 'garantia-drag',
+          onMove: function (evt) {
+            if (isCardPending(evt.dragged)) return false;
+            return true;
+          },
+          onEnd: function (evt) {
+            const card = evt.item;
+            const target = evt.to;
+            const source = evt.from;
+            const garantiaId = card.getAttribute('data-garantia-id');
+            const nuevoEstado = target.getAttribute('data-estado');
+            const sourceIndex = evt.oldIndex;
+            const targetIndex = evt.newIndex;
+            if (!garantiaId || !nuevoEstado || source === target || isCardPending(card)) {
+              if (isCardPending(card) && source !== target) {
+                insertCardAt(source, card, sourceIndex);
+              }
+              ensureEmptyState(source);
+              ensureEmptyState(target);
+              return;
+            }
+
+            moveGarantiaCard({
+              card,
+              targetStatus: nuevoEstado,
+              targetColumn: target,
+              sourceColumn: source,
+              sourceIndex,
+              targetIndex,
+              trigger: 'drag',
+            }).catch((error) => {
+              console.error('No se pudo mover la garantia:', error);
+            });
+          },
+        });
+        syncColumnState(column);
+      });
+    }
+
+    function loadModal(url, cardId) {
+      if (!modalContent || !modalInstance) return;
+      const version = detailState.version + 1;
+      detailState.version = version;
+      detailState.id = cardId || '';
+      detailState.layout = 'modal';
+      modalContent.innerHTML = '<div class="modal-body p-4 text-center text-muted">Cargando...</div>';
+      modalInstance.show();
+      getHtml(url)
+        .then((html) => {
+          if (detailState.version !== version || detailState.id !== cardId || !modalElement.classList.contains('show')) return;
+          modalContent.innerHTML = html;
+          if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
+        })
+        .catch((error) => {
+          if (detailState.version !== version || detailState.id !== cardId || !modalElement.classList.contains('show')) return;
+          console.error('No se pudo cargar la garantia:', error);
+          modalContent.innerHTML = `<div class="modal-body p-4 text-center text-danger">${requestErrorMessage(error)}</div>`;
+        });
+    }
+
+    function loadDrawer(url, cardId) {
+      if (!drawerRoot || !drawerElement || !drawerContent) return;
+      const detailUrl = url.includes('?') ? `${url}&layout=drawer` : `${url}?layout=drawer`;
+      const version = detailState.version + 1;
+      detailState.version = version;
+      detailState.id = cardId || '';
+      detailState.layout = 'drawer';
+      currentDetailUrl = detailUrl;
+      currentDetailCardId = cardId || '';
+      currentDetailLayout = 'drawer';
+      drawerContent.innerHTML = '<div class="garantia-drawer__loading">Cargando...</div>';
+      openDrawerShell();
+      setDrawerBusy(true);
+      getHtml(detailUrl)
+        .then((html) => {
+          if (detailState.version !== version || detailState.id !== cardId || !drawerRoot.classList.contains('is-open')) return;
+          drawerContent.innerHTML = html;
+          if (window.initGarantiaSelects) window.initGarantiaSelects(drawerContent);
+        })
+        .catch((error) => {
+          if (detailState.version !== version || detailState.id !== cardId || !drawerRoot.classList.contains('is-open')) return;
+          console.error('No se pudo cargar la garantia:', error);
+          drawerContent.innerHTML = `<div class="garantia-drawer__loading text-danger">${requestErrorMessage(error)}</div>`;
+        })
+        .finally(() => {
+          if (detailState.version === version) setDrawerBusy(false);
+        });
+    }
+
+    function refreshActiveDetail() {
+      if (!currentDetailUrl) return Promise.resolve();
+      const container = currentDetailLayout === 'drawer' ? drawerContent : modalContent;
+      if (!container) return Promise.resolve();
+      setDrawerBusy(currentDetailLayout === 'drawer');
+      return getHtml(currentDetailUrl)
+        .then((html) => {
+          container.innerHTML = html;
+          if (window.initGarantiaSelects) window.initGarantiaSelects(container);
+        })
+        .catch((error) => {
+          console.error('No se pudo refrescar el detalle de la garantia:', error);
+        })
+        .finally(() => {
+          setDrawerBusy(false);
+        });
+    }
+
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'GarantiasUserFilter') {
+        invalidateColumnLoads();
+        e.target.form?.submit();
+        return;
+      }
+
+      const stateSelect = e.target.closest('[data-garantia-state-select="1"]');
+      if (!stateSelect) return;
+
+      const card = stateSelect.closest('[data-garantia-card="1"]');
+      const sourceColumn = card?.closest('.kanban-col');
+      const previousState = sourceColumn?.dataset.estado || stateSelect.dataset.previousValue || stateSelect.value;
+      const nuevoEstado = stateSelect.value;
+      if (!card || !sourceColumn || !nuevoEstado || previousState === nuevoEstado) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
+      }
+
+      if (isCardPending(card)) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
+      }
+
+      const targetColumn = document.querySelector(`.kanban-col[data-estado="${nuevoEstado}"]`);
+      if (!targetColumn) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
+      }
+
+      const sourceIndex = Array.from(sourceColumn.querySelectorAll('[data-garantia-card="1"]')).indexOf(card);
+      const targetIndex = 0;
+      if (sourceColumn !== targetColumn) {
+        const emptyState = targetColumn.querySelector('.garantia-empty');
+        if (emptyState) emptyState.remove();
+        targetColumn.prepend(card);
+      }
+
+      moveGarantiaCard({
+        card,
+        targetStatus: nuevoEstado,
+        targetColumn,
+        sourceColumn,
+        sourceIndex,
+        targetIndex,
+        trigger: 'select',
+      }).catch((error) => {
+        console.error('No se pudo actualizar el estado de la garantia:', error);
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      const loadMoreButton = e.target.closest('[data-garantia-load-more="1"]');
+      if (loadMoreButton) {
+        e.preventDefault();
+        loadMoreCards(loadMoreButton).catch((error) => {
+          console.error('No se pudieron cargar mas garantias:', error);
+        });
+        return;
+      }
+
+      const inlineOpenButton = e.target.closest('[data-garantia-inline-open="1"]');
+      if (inlineOpenButton) {
+        e.preventDefault();
+        openInlineCreateForm(inlineOpenButton);
+        return;
+      }
+
+      const inlineCancelButton = e.target.closest('[data-garantia-inline-cancel="1"]');
+      if (inlineCancelButton) {
+        e.preventDefault();
+        closeInlineCreateForm();
+        return;
+      }
+
+      const inlineFieldValue = e.target.closest('[data-garantia-inline-field]');
+      if (inlineFieldValue) {
+        e.preventDefault();
+        const card = inlineFieldValue.closest('[data-garantia-card="1"]');
+        const slot = inlineFieldValue.closest('[data-garantia-inline-slot]');
+        const fieldName = inlineFieldValue.dataset.garantiaInlineField;
+        const updateUrlValue = inlineFieldValue.dataset.updateUrl || '';
+        if (!card || !slot || !fieldName || isCardPending(card)) return;
+        if (slot.querySelector('[data-garantia-inline-editor="1"]')) return;
+        openInlineEditor(slot, fieldName, card, updateUrlValue);
+        return;
+      }
+
+      const inlineFieldCancelButton = e.target.closest('[data-garantia-inline-field-cancel="1"]');
+      if (inlineFieldCancelButton) {
+        e.preventDefault();
+        const card = inlineFieldCancelButton.closest('[data-garantia-card="1"]');
+        restoreInlineCard(card);
+        return;
+      }
+
+      const closeDrawerButton = e.target.closest('[data-garantia-drawer-close="1"]');
+      if (closeDrawerButton) {
+        e.preventDefault();
+        closeDrawer(false);
+        return;
+      }
+
+      if (e.target.closest('[data-garantia-drawer-overlay="1"]')) {
+        e.preventDefault();
+        closeDrawer(false);
+        return;
+      }
+
+      const link = e.target.closest('[data-garantia-modal-open="1"]');
+      if (!link) return;
+      e.preventDefault();
+      const url = link.getAttribute('data-modal-url') || link.getAttribute('href');
+      const cardId = link.closest('[data-garantia-card="1"]')?.getAttribute('data-garantia-id') || '';
+      if (!url) return;
+      if (drawerElement) {
+        loadDrawer(url, cardId);
+      } else {
+        currentDetailLayout = 'modal';
+        currentDetailUrl = url;
+        currentDetailCardId = cardId;
+        loadModal(url, cardId);
+      }
+    });
+
+    document.addEventListener('submit', (e) => {
+      const inlineEditor = e.target.closest('[data-garantia-inline-editor="1"]');
+      if (inlineEditor) {
+        e.preventDefault();
+        const slot = inlineEditor.closest('[data-garantia-inline-slot]');
+        const card = inlineEditor.closest('[data-garantia-card="1"]');
+        const fieldName = inlineEditor.dataset.field;
+        if (!slot || !card || !fieldName || isCardPending(card)) return;
+
+        const fd = new FormData(inlineEditor);
+        setCardPending(card, true);
+        postForm(inlineEditor.dataset.updateUrl, fd)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (!data.ok) return;
+            replaceCardHtml(getCardId(card), data.html);
+          })
+          .catch((error) => {
+            const errorNode = inlineEditor.querySelector('[data-garantia-inline-error="1"]');
+            if (error && error.errors && errorNode) {
+              const fieldErrors = error.errors[fieldName] || error.errors.__all__ || [];
+              errorNode.textContent = fieldErrors.map((item) => item.message).join(' ');
+              return;
+            }
+            restoreInlineCard(card);
+          })
+          .finally(() => {
+            setCardPending(card, false);
+          });
+        return;
+      }
+
+      const inlineForm = e.target.closest('[data-garantia-inline-form="1"]');
+      if (inlineForm) {
+        e.preventDefault();
+        if (inlineForm.dataset.submitting === 'true') return;
+        const fd = new FormData(inlineForm);
+        const submittedEstado = String(fd.get('estado') || '');
+        const submittedTarget = findInlineTarget(submittedEstado);
+        const column = submittedTarget?.column.querySelector('.kanban-col');
+        if (!submittedTarget || !column) return;
+        inlineForm.dataset.submitting = 'true';
+        inlineForm.setAttribute('aria-busy', 'true');
+        inlineForm.querySelectorAll('button, input, select').forEach((control) => { control.disabled = true; });
+        setInlineCreateButtonsDisabled(true);
+        postForm(inlineCreateUrl, fd)
+          .then((response) => readInlineCreateResponse(response))
+          .then((data) => {
+            if (!data.ok) return;
+
+            const activeFilter = document.getElementById('GarantiasUserFilter')?.value || '';
+            if (!activeFilter) {
+              const wrapper = document.createElement('div');
+              wrapper.innerHTML = data.html;
+              const card = wrapper.firstElementChild;
+              if (!card) return;
+              invalidateColumnLoads();
+              const duplicate = document.querySelector(
+                `[data-garantia-id="${data.id}"]`
+              );
+              if (duplicate) {
+                const duplicateColumn = duplicate.closest('.kanban-col');
+                duplicate.remove();
+                syncColumnState(duplicateColumn);
+              }
+              const emptyState = column.querySelector('.garantia-empty');
+              if (emptyState) emptyState.remove();
+              column.prepend(card);
+              updateColumnCount(column, data.column_count);
+            }
+
+            destroyInlineCreateSelects(inlineForm);
+            inlineForm.reset();
+            initInlineCreateSelects(inlineForm);
+            closeInlineCreateForm();
+          })
+          .catch((error) => {
+            if (error?.data?.html) {
+              replaceInlineCreateForm(error.data.html, submittedTarget);
+              return;
+            }
+            console.error('No se pudo crear la garantia:', error);
+            const errorNode = inlineSharedSlot?.querySelector('[data-garantia-inline-error="1"]');
+            if (errorNode) errorNode.textContent = requestErrorMessage(error);
+          })
+          .finally(() => {
+            const activeForm = inlineSharedSlot?.querySelector('[data-garantia-inline-form="1"]');
+            if (activeForm) {
+              delete activeForm.dataset.submitting;
+              activeForm.setAttribute('aria-busy', 'false');
+              activeForm.querySelectorAll('button, input, select').forEach((control) => { control.disabled = false; });
+            }
+            setInlineCreateButtonsDisabled(false);
+          });
+        return;
+      }
+
+      const modalForm = e.target.closest('[data-garantia-modal-form="1"]');
+      if (modalForm) {
+        e.preventDefault();
+        if (modalForm.dataset.pending === 'true') return;
+        const fd = new FormData(modalForm);
+        setFormPending(modalForm, true);
+        setDrawerBusy((modalForm.querySelector('[name="layout"]')?.value || '') === 'drawer');
+        postForm(modalForm.getAttribute('action'), fd)
+          .then(async (response) => {
+            const data = await readJsonResponse(response);
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            const layout = modalForm.querySelector('[name="layout"]')?.value || 'modal';
+            if (!data.html || (data.id && String(data.id) !== String(currentDetailCardId))) throw new Error('Respuesta de garantia inesperada.');
+            if (layout === 'drawer' && drawerContent && drawerRoot?.classList.contains('is-open')) {
+              drawerContent.innerHTML = data.html;
+              if (window.initGarantiaSelects) window.initGarantiaSelects(drawerContent);
+            } else if (modalContent) {
+              modalContent.innerHTML = data.html;
+              if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
+            }
+            if (data.status === 'ok') {
+              replaceCardHtml(data.id, data.card_html);
+            }
+          })
+          .catch((error) => {
+            console.error('No se pudo guardar la garantia:', error);
+            const root = getDetailRoot(modalForm);
+            showCommentFormError(root, requestErrorMessage(error));
+          })
+          .finally(() => {
+            if (modalForm.isConnected) setFormPending(modalForm, false);
+            setDrawerBusy(false);
+          });
+        return;
+      }
+
+      const filesForm = e.target.closest('[data-garantia-files-form="1"], [data-garantia-file-delete-form="1"]');
+      if (filesForm) {
+        e.preventDefault();
+        const section = filesForm.closest('[data-garantia-files-section="1"]');
+        const detailRoot = getDetailRoot(filesForm);
+        if (!section || section.dataset.pending === 'true') return;
+        setSectionPending(section, true);
+        postDetailSection(section, filesForm)
+          .then(({ok, data, stale}) => {
+            if (stale) return;
+            if (!data.files_html || !replaceDetailSection(detailRoot, '[data-garantia-files-section="1"]', data.files_html)) {
+              throw new Error('No se pudo actualizar la seccion de archivos.');
+            }
+            syncCardResourceCount(data.id, 'files', data.files_count);
+            if (!ok || !data.success) {
+              const invalid = detailRoot?.querySelector('[data-garantia-files-section="1"] .is-invalid, [data-garantia-files-section="1"] input');
+              invalid?.focus();
+            }
+          })
+          .catch((error) => {
+            console.error('No se pudo actualizar los archivos:', error);
+            const form = section.querySelector('[data-garantia-files-form="1"]');
+            form?.querySelector('input[type="file"]')?.focus();
+          })
+          .finally(() => {
+            if (sectionRequestVersions.get(section)) setSectionPending(section, false);
+          });
+        return;
+      }
+
+      const linksForm = e.target.closest('[data-garantia-links-form="1"], [data-garantia-link-delete-form="1"]');
+      if (linksForm) {
+        e.preventDefault();
+        const section = linksForm.closest('[data-garantia-links-section="1"]');
+        const detailRoot = getDetailRoot(linksForm);
+        if (!section || section.dataset.pending === 'true') return;
+        setSectionPending(section, true);
+        postDetailSection(section, linksForm)
+          .then(({ok, data, stale}) => {
+            if (stale) return;
+            if (!data.links_html || !replaceDetailSection(detailRoot, '[data-garantia-links-section="1"]', data.links_html)) {
+              throw new Error('No se pudo actualizar la seccion de enlaces.');
+            }
+            syncCardResourceCount(data.id, 'links', data.links_count);
+            if (!ok || !data.success) {
+              const invalid = detailRoot?.querySelector('[data-garantia-links-section="1"] .is-invalid, [data-garantia-links-section="1"] input');
+              invalid?.focus();
+            }
+          })
+          .catch((error) => {
+            console.error('No se pudo actualizar los enlaces:', error);
+            section.querySelector('[data-garantia-links-form="1"] input')?.focus();
+          })
+          .finally(() => {
+            if (sectionRequestVersions.get(section)) setSectionPending(section, false);
+          });
+        return;
+      }
+
+      const refreshForm = e.target.closest('[data-garantia-modal-refresh="1"], [data-garantia-modal-delete="1"]');
+      if (refreshForm) {
+        e.preventDefault();
+        const fd = new FormData(refreshForm);
+        const layout = refreshForm.querySelector('[name="layout"]')?.value || 'modal';
+        setDrawerBusy(layout === 'drawer');
+        postForm(refreshForm.getAttribute('action'), fd)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`Error ${response.status}`);
+            }
+            return response.json();
+          })
+          .then((data) => {
+            if (data.deleted) {
+              removeCard(data.id);
+              closeDrawer(true);
+              if (modalInstance && modalElement?.classList.contains('show')) {
+                modalInstance.hide();
+              }
+              return;
+            }
+            if (layout === 'drawer' && drawerContent) {
+              drawerContent.innerHTML = data.html;
+              if (window.initGarantiaSelects) window.initGarantiaSelects(drawerContent);
+            } else if (modalContent) {
+              modalContent.innerHTML = data.html;
+              if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
+            }
+            if (data.card_html) {
+              replaceCardHtml(data.id, data.card_html);
+            }
+          })
+          .catch((error) => {
+            console.error('No se pudo actualizar la garantia:', error);
+          })
+          .finally(() => {
+            setDrawerBusy(false);
+          });
+        return;
+      }
+
+      const commentForm = e.target.closest('[data-garantia-comentario-form="1"]');
+      if (!commentForm) return;
+      e.preventDefault();
+      const url = commentForm.getAttribute('action');
+      const detailRoot = commentForm.closest('.garantia-drawer__content, .modal-content');
+      const textarea = commentForm.querySelector('textarea[name="comentario"]');
+      const text = (textarea?.value || '').trim();
+      if (!url) return;
+      const submitButton = commentForm.querySelector('[data-garantia-comment-submit="1"]');
+      if (commentForm.dataset.pending === 'true') return;
+
+      const fd = new FormData();
+      fd.set('comentario', text);
+      const layout = commentForm.querySelector('[name="layout"]')?.value || currentDetailLayout || 'drawer';
+      fd.set('layout', layout);
+      const detailVersion = detailState.version;
+      commentForm.dataset.pending = 'true';
+      commentForm.setAttribute('aria-busy', 'true');
+      if (submitButton) submitButton.disabled = true;
+      setDrawerBusy(layout === 'drawer');
+      postForm(url, fd)
+        .then((response) => {
+          return readJsonResponse(response).then((data) => ({ ok: response.ok, status: response.status, data }));
+        })
+        .then(({ ok, status, data }) => {
+          if (detailState.version !== detailVersion || !detailRoot?.isConnected || String(data.id) !== String(currentDetailCardId)) return;
+          if (!ok) {
+            const error = new Error(`Error ${status}`);
+            error.status = status;
+            error.data = data;
+            throw error;
+          }
+          if (data.status === 'ok') {
+            if (detailRoot) {
+              replaceCommentsSection(detailRoot, data.html);
+            }
+            setCardCommentCount(data.id, data.comentarios_count);
+          }
+        })
+        .catch((error) => {
+          if (error.data?.html && detailRoot) {
+            replaceCommentsSection(detailRoot, error.data.html);
+            return;
+          }
+          if (detailRoot?.isConnected && detailState.version === detailVersion) {
+            showCommentFormError(detailRoot, requestErrorMessage(error));
+          }
+          console.error('No se pudo agregar el comentario:', error);
+        })
+        .finally(() => {
+          delete commentForm.dataset.pending;
+          commentForm.setAttribute('aria-busy', 'false');
+          if (submitButton) submitButton.disabled = false;
+          setDrawerBusy(false);
+        });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      const editor = e.target.closest('[data-garantia-inline-editor="1"]');
+      if (editor) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          const card = editor.closest('[data-garantia-card="1"]');
+          restoreInlineCard(card);
+          return;
+        }
+
+        if (editor.dataset.field !== 'asignados' && e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && !e.shiftKey) {
+          e.preventDefault();
+          editor.requestSubmit();
+          return;
+        }
+      }
+
+      if (e.key === 'Escape' && drawerRoot?.classList.contains('is-open')) {
+        e.preventDefault();
+        closeDrawer(false);
+      }
+    });
+
+    window.createKanbanQuickEditController({
+      cardSelector: '[data-garantia-card="1"]',
+      openSelector: '[data-garantia-quick-edit-open="1"]',
+      cancelSelector: '[data-garantia-quick-edit-cancel="1"]',
+      formSelector: '[data-garantia-quick-edit-form="1"]',
+      getId: (card) => getCardId(card),
+      getUrl: (button) => button.dataset.garantiaQuickEditUrl,
+      isPending: isCardPending,
+      setPending: setCardPending,
+      initComponents: (card) => {
+        invalidateColumnLoads();
+        window.initGarantiaSelects?.(card);
+        syncColumnState(card?.closest('.kanban-col'));
+      },
+      showError: (card, message) => {
+        const body = card.querySelector('.card-body');
+        if (body) body.insertAdjacentHTML('afterbegin', `<div class="alert alert-danger small py-2 mb-2">${message}</div>`);
+      },
+      loadingHtml: '<div class="card-body text-center text-muted small py-4">Cargando edicion...</div>',
+    });
+
+    modalElement?.addEventListener('hidden.bs.modal', () => {
+      detailState.version += 1;
+      detailState.id = '';
+      currentDetailUrl = '';
+      currentDetailCardId = '';
+    });
+
+    initSortable();
+  })();

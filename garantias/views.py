@@ -2,39 +2,43 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count
+from django.db.models import Count, F, Window
+from django.db.models.functions import RowNumber
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from .decorators import admin_required
 from .forms import (
     GarantiaArchivosForm,
+    GarantiaArchivoUploadForm,
     GarantiaComentarioForm,
     GarantiaEditarForm,
     GarantiaEnlaceForm,
+    GarantiaEnlaceCreateForm,
     GarantiaForm,
-    GarantiaInlineAsignadosForm,
-    GarantiaInlineClienteForm,
     GarantiaInlineCreateForm,
-    GarantiaInlinePrioridadForm,
-    GarantiaInlineTituloForm,
-    GarantiaInlineVencimientoForm,
+    GarantiaQuickEditForm,
 )
 from .models import Garantia, GarantiaArchivo, GarantiaComentario, GarantiaEnlace
 
 User = get_user_model()
-INLINE_FIELD_FORMS = {
-    "titulo": GarantiaInlineTituloForm,
-    "prioridad": GarantiaInlinePrioridadForm,
-    "fecha_vencimiento": GarantiaInlineVencimientoForm,
-    "cliente": GarantiaInlineClienteForm,
-    "asignados": GarantiaInlineAsignadosForm,
-}
+
+INITIAL_CARDS_PER_COLUMN = 10
+CARDS_PAGE_SIZE = 10
+GARANTIA_ORDERING = ("-fecha_creacion", "-id")
+ESTADOS_VISIBLES = frozenset(
+    (
+        Garantia.Estado.SOLICITUD_NAVIERA,
+        Garantia.Estado.EN_PROCESO,
+        Garantia.Estado.PAGO_NAVIERA_ZAHA,
+        Garantia.Estado.DEVOLUCION_CLIENTE,
+    )
+)
 
 
 def _estado_label(estado):
@@ -76,10 +80,67 @@ def _es_ajax(request):
 def _garantia_queryset():
     return (
         Garantia.objects.select_related("cliente", "creado_por")
-        .prefetch_related("asignados", "comentarios__usuario", "archivos", "enlaces")
-        .annotate(comentarios_count=Count("comentarios", distinct=True))
+        .prefetch_related("asignados")
+        .annotate(
+            comentarios_count=Count("comentarios", distinct=True),
+            archivos_count=Count("archivos", distinct=True),
+            enlaces_count=Count("enlaces", distinct=True),
+        )
         .order_by("-fecha_creacion", "-id")
     )
+
+
+def _board_queryset(usuario=None):
+    queryset = _garantia_queryset().filter(estado__in=ESTADOS_VISIBLES)
+    if usuario is not None:
+        queryset = queryset.filter(asignados__id=usuario.id).distinct()
+    return queryset.order_by(*GARANTIA_ORDERING)
+
+
+def _columnas_kanban(usuario=None):
+    garantias = list(
+        _board_queryset(usuario)
+        .annotate(
+            posicion_columna=Window(
+                expression=RowNumber(),
+                partition_by=[F("estado")],
+                order_by=[
+                    F("fecha_creacion").desc(),
+                    F("id").desc(),
+                ],
+            ),
+            total_columna=Window(
+                expression=Count("id"),
+                partition_by=[F("estado")],
+            ),
+        )
+        .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
+    )
+    items_por_estado = {estado: [] for estado in _estados_disponibles()}
+    totales = {estado: 0 for estado in _estados_disponibles()}
+    for garantia in garantias:
+        if garantia.estado in items_por_estado:
+            items_por_estado[garantia.estado].append(garantia)
+            totales[garantia.estado] = garantia.total_columna
+
+    return [
+        {
+            "estado": estado,
+            "estado_texto": _estado_label(estado),
+            "items": items_por_estado[estado],
+            "count": totales[estado],
+            "loaded": len(items_por_estado[estado]),
+            "has_more": totales[estado] > len(items_por_estado[estado]),
+            "remaining": max(
+                0, totales[estado] - len(items_por_estado[estado])
+            ),
+            "load_url": reverse(
+                "garantias:tarjetas_columna",
+                kwargs={"estado": estado},
+            ),
+        }
+        for estado in _estados_disponibles()
+    ]
 
 
 def _get_usuario_filter(request):
@@ -87,6 +148,54 @@ def _get_usuario_filter(request):
     if not usuario_id.isdigit():
         return None
     return User.objects.filter(pk=int(usuario_id)).first()
+
+
+def _get_usuario_filter_estricto(request):
+    raw_values = [
+        value.strip()
+        for value in request.GET.getlist("usuario")
+        if (value or "").strip()
+    ]
+    if not raw_values:
+        return None, None
+    if (
+        len(raw_values) != 1
+        or not raw_values[0].isdigit()
+        or int(raw_values[0]) <= 0
+    ):
+        return None, JsonResponse(
+            {"ok": False, "error": "Filtro de usuario invalido."},
+            status=400,
+        )
+    usuario = User.objects.filter(
+        pk=int(raw_values[0]),
+        is_active=True,
+    ).first()
+    if usuario is None:
+        return None, JsonResponse(
+            {"ok": False, "error": "Filtro de usuario invalido."},
+            status=400,
+        )
+    return usuario, None
+
+
+def _parse_loaded_ids(request, offset):
+    raw_values = request.GET.getlist("loaded")
+    parts = []
+    for raw_value in raw_values:
+        parts.extend(
+            value.strip()
+            for value in raw_value.split(",")
+            if value.strip()
+        )
+    if not parts:
+        return [] if offset == 0 else None
+    if any(not value.isdigit() or int(value) <= 0 for value in parts):
+        return None
+    loaded_ids = list(dict.fromkeys(int(value) for value in parts))
+    if len(loaded_ids) != len(parts) or len(loaded_ids) != offset:
+        return None
+    return loaded_ids
 
 
 def _usuarios_filtro(selected_user_id=None):
@@ -124,7 +233,9 @@ def _contexto_modal_garantia(garantia, form=None, archivos_form=None, enlace_for
         "iniciales_asignados": [_iniciales_usuario(usuario) for usuario in asignados],
         "asignados_count": len(asignados),
         "comentarios": _comentarios_queryset(garantia),
-        "comentarios_count": garantia.comentarios.count(),
+        "comentarios_count": garantia.comentarios_count,
+        "archivos": _archivos_queryset(garantia),
+        "enlaces": _enlaces_queryset(garantia),
     }
 
 
@@ -155,6 +266,14 @@ def _render_card_html(request, garantia):
     )
 
 
+def _render_quick_edit_form(request, garantia, form=None):
+    return render_to_string(
+        "garantias/_quick_edit_form.html",
+        {"g": garantia, "form": form or GarantiaQuickEditForm(instance=garantia)},
+        request=request,
+    )
+
+
 def _comentarios_queryset(garantia):
     return garantia.comentarios.select_related("usuario").order_by("-fecha", "-id")
 
@@ -166,24 +285,41 @@ def _render_comentarios_section(request, garantia, *, form=None, layout="modal")
             "garantia": garantia,
             "comentario_form": form or GarantiaComentarioForm(),
             "comentarios": _comentarios_queryset(garantia),
-            "comentarios_count": garantia.comentarios.count(),
+            "comentarios_count": garantia.comentarios_count,
             "layout": layout,
         },
         request=request,
     )
 
 
-def _render_inline_field(request, garantia, field_name):
-    templates = {
-        "titulo": "garantias/_inline_field_titulo.html",
-        "prioridad": "garantias/_inline_field_prioridad.html",
-        "fecha_vencimiento": "garantias/_inline_field_vencimiento.html",
-        "cliente": "garantias/_inline_field_cliente.html",
-        "asignados": "garantias/_inline_field_asignados.html",
-    }
+def _archivos_queryset(garantia):
+    return garantia.archivos.select_related("subido_por").order_by("-fecha", "-id")
+
+
+def _render_archivos_section(request, garantia, *, form=None):
     return render_to_string(
-        templates[field_name],
-        {"g": garantia, "today": timezone.localdate()},
+        "garantias/_archivos_section.html",
+        {
+            "garantia": garantia,
+            "archivos": _archivos_queryset(garantia),
+            "archivos_form": form or GarantiaArchivoUploadForm(),
+        },
+        request=request,
+    )
+
+
+def _enlaces_queryset(garantia):
+    return garantia.enlaces.select_related("creado_por").order_by("-fecha", "-id")
+
+
+def _render_enlaces_section(request, garantia, *, form=None):
+    return render_to_string(
+        "garantias/_enlaces_section.html",
+        {
+            "garantia": garantia,
+            "enlaces": _enlaces_queryset(garantia),
+            "enlace_form": form or GarantiaEnlaceCreateForm(),
+        },
         request=request,
     )
 
@@ -199,59 +335,98 @@ def _detalle_template_name(layout: str) -> str:
 @login_required
 @admin_required
 def panel_garantias(request):
-    garantias = _garantia_queryset()
     usuario = _get_usuario_filter(request)
-    if usuario:
-        garantias = garantias.filter(asignados__id=usuario.id).distinct()
-    columnas = {
-        Garantia.Estado.SOLICITUD_NAVIERA: [],
-        Garantia.Estado.EN_PROCESO: [],
-        Garantia.Estado.PAGO_NAVIERA_ZAHA: [],
-        Garantia.Estado.DEVOLUCION_CLIENTE: [],
-    }
-    for garantia in garantias:
-        columnas.setdefault(garantia.estado, []).append(garantia)
-
-    estados = _estados_disponibles()
-    estados_ui = [(estado, _estado_label(estado)) for estado in estados]
-
     return render(
         request,
         "garantias/panel_garantias.html",
         {
-            "columnas_kanban": [
-                (
-                    Garantia.Estado.SOLICITUD_NAVIERA,
-                    _estado_label(Garantia.Estado.SOLICITUD_NAVIERA),
-                    columnas.get(Garantia.Estado.SOLICITUD_NAVIERA, []),
-                ),
-                (
-                    Garantia.Estado.EN_PROCESO,
-                    _estado_label(Garantia.Estado.EN_PROCESO),
-                    columnas.get(Garantia.Estado.EN_PROCESO, []),
-                ),
-                (
-                    Garantia.Estado.PAGO_NAVIERA_ZAHA,
-                    _estado_label(Garantia.Estado.PAGO_NAVIERA_ZAHA),
-                    columnas.get(Garantia.Estado.PAGO_NAVIERA_ZAHA, []),
-                ),
-                (
-                    Garantia.Estado.DEVOLUCION_CLIENTE,
-                    _estado_label(Garantia.Estado.DEVOLUCION_CLIENTE),
-                    columnas.get(Garantia.Estado.DEVOLUCION_CLIENTE, []),
-                ),
-            ],
-            "estado_update_url": reverse("garantias:actualizar_estado_garantia"),
-            "inline_create_url": reverse("garantias:crear_garantia_inline"),
-            "inline_form": GarantiaInlineCreateForm(),
-            "inline_fake_g": Garantia(pk="__PK__"),
-            "inline_titulo_form": GarantiaInlineTituloForm(),
-            "inline_prioridad_form": GarantiaInlinePrioridadForm(),
-            "inline_vencimiento_form": GarantiaInlineVencimientoForm(),
-            "inline_cliente_form": GarantiaInlineClienteForm(),
-            "inline_asignados_form": GarantiaInlineAsignadosForm(),
+            "columnas_kanban": _columnas_kanban(usuario),
+            "panel_config": {
+                "estadoUpdateUrl": reverse("garantias:actualizar_estado_garantia"),
+                "inlineCreateUrl": reverse("garantias:crear_garantia_inline"),
+                "inlineFormUrl": reverse("garantias:formulario_garantia_inline"),
+            },
             "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
             "today": timezone.localdate(),
+        },
+    )
+
+
+@login_required
+@admin_required
+@require_GET
+def tarjetas_columna(request, estado):
+    if estado not in ESTADOS_VISIBLES:
+        return JsonResponse(
+            {"ok": False, "error": "Estado no encontrado."},
+            status=404,
+        )
+
+    raw_offset = (request.GET.get("offset") or "").strip()
+    if not raw_offset.isdigit():
+        return JsonResponse(
+            {"ok": False, "error": "Offset invalido."},
+            status=400,
+        )
+    offset = int(raw_offset)
+    usuario, error = _get_usuario_filter_estricto(request)
+    if error is not None:
+        return error
+    loaded_ids = _parse_loaded_ids(request, offset)
+    if loaded_ids is None:
+        return JsonResponse(
+            {"ok": False, "error": "Tarjetas cargadas invalidas."},
+            status=400,
+        )
+
+    columna = _board_queryset(usuario).filter(estado=estado)
+    total = columna.count()
+    recognized_loaded_ids = set(
+        columna.filter(pk__in=loaded_ids).values_list("pk", flat=True)
+    )
+    stale_ids = [
+        pk for pk in loaded_ids if pk not in recognized_loaded_ids
+    ]
+    siguientes = list(
+        columna.exclude(pk__in=loaded_ids)[: CARDS_PAGE_SIZE + 1]
+    )
+    has_more = len(siguientes) > CARDS_PAGE_SIZE
+    garantias = siguientes[:CARDS_PAGE_SIZE]
+    html = "".join(
+        render_to_string(
+            "garantias/_garantia_card.html",
+            {"g": garantia, "today": timezone.localdate()},
+            request=request,
+        )
+        for garantia in garantias
+    )
+    loaded = len(garantias)
+    return JsonResponse(
+        {
+            "ok": True,
+            "estado": estado,
+            "html": html,
+            "loaded": loaded,
+            "next_offset": len(recognized_loaded_ids) + loaded,
+            "has_more": has_more,
+            "total": total,
+            "stale_ids": stale_ids,
+        }
+    )
+
+
+@login_required
+@admin_required
+@require_GET
+def formulario_garantia_inline(request):
+    estado = Garantia.Estado.SOLICITUD_NAVIERA
+    return render(
+        request,
+        "garantias/_inline_create_form.html",
+        {
+            "form": GarantiaInlineCreateForm(),
+            "estado": estado,
+            "estado_texto": _estado_label(estado),
         },
     )
 
@@ -336,7 +511,7 @@ def crear_garantia_inline(request):
 
 @login_required
 @admin_required
-@require_POST
+@require_http_methods(["GET", "POST"])
 def actualizar_garantia_inline(request, pk):
     if not _es_ajax(request):
         return JsonResponse(
@@ -344,33 +519,35 @@ def actualizar_garantia_inline(request, pk):
             status=400,
         )
 
-    field_name = (request.POST.get("field") or "").strip()
-    form_class = INLINE_FIELD_FORMS.get(field_name)
-    if form_class is None:
-        return JsonResponse(
-            {"ok": False, "errors": {"field": ["Campo no permitido."]}},
-            status=400,
-        )
-
     garantia = get_object_or_404(_garantia_queryset(), pk=pk)
-    form = form_class(request.POST, instance=garantia)
+    if request.method == "GET":
+        return JsonResponse({"ok": True, "html": _render_quick_edit_form(request, garantia)})
+
+    form = GarantiaQuickEditForm(request.POST, instance=garantia)
     if not form.is_valid():
         return JsonResponse(
-            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            {
+                "ok": False,
+                "errors": form.errors.get_json_data(escape_html=True),
+                "html": _render_quick_edit_form(request, garantia, form),
+            },
             status=400,
         )
 
-    if field_name == "asignados":
-        garantia.asignados.set(form.cleaned_data.get("asignados"))
-    else:
-        garantia = form.save()
+    # Cada formulario inline contiene exclusivamente el campo solicitado y se
+    # enlaza a la instancia existente. ModelForm se encarga tanto de los campos
+    # simples como de la relación M2M; por ello no se toca ningún otro valor de
+    # la garantía ni se vacían relaciones ajenas al formulario.
+    garantia = form.save()
 
     garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     return JsonResponse(
         {
             "ok": True,
-            "field": field_name,
-            "html": _render_inline_field(request, garantia, field_name),
+            "id": garantia.id,
+            # El cliente reemplaza la tarjeta completa para conservar todos los
+            # bloques visuales sincronizados (comentarios, estado y metadatos).
+            "html": _render_card_html(request, garantia),
         }
     )
 
@@ -584,29 +761,102 @@ def descargar_archivo(request, pk, archivo_id):
 @login_required
 @admin_required
 @require_POST
+def agregar_archivos(request, pk):
+    garantia = get_object_or_404(Garantia, pk=pk)
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"success": False, "error": "Solicitud AJAX requerida."}, status=400
+        )
+
+    form = GarantiaArchivoUploadForm(request.POST, request.FILES)
+    if form.is_valid():
+        for archivo in form.cleaned_data["archivos"]:
+            GarantiaArchivo.objects.create(
+                garantia=garantia,
+                archivo=archivo,
+                subido_por=request.user,
+            )
+        garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+        return JsonResponse(
+            {
+                "success": True,
+                "id": garantia.pk,
+                "files_html": _render_archivos_section(request, garantia),
+                "files_count": garantia.archivos.count(),
+            }
+        )
+
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    return JsonResponse(
+        {
+            "success": False,
+            "id": garantia.pk,
+            "files_html": _render_archivos_section(request, garantia, form=form),
+            "files_count": garantia.archivos.count(),
+        },
+        status=400,
+    )
+
+
+@login_required
+@admin_required
+@require_POST
 def eliminar_archivo(request, pk, archivo_id):
     garantia = get_object_or_404(Garantia, pk=pk)
     archivo = get_object_or_404(GarantiaArchivo, pk=archivo_id, garantia=garantia)
-    archivo.delete()
-    messages.success(request, "Archivo eliminado.")
     if _es_ajax(request):
-        layout = (request.POST.get("layout") or "modal").strip()
+        archivo.delete()
         garantia = get_object_or_404(_garantia_queryset(), pk=pk)
-        contexto = _contexto_modal_garantia(garantia)
-        contexto["layout"] = layout
         return JsonResponse(
             {
-                "status": "ok",
-                "html": render_to_string(
-                    _detalle_template_name(layout),
-                    contexto,
-                    request=request,
-                ),
-                "card_html": _render_card_html(request, garantia),
+                "success": True,
                 "id": garantia.pk,
+                "files_html": _render_archivos_section(request, garantia),
+                "files_count": garantia.archivos.count(),
             }
         )
+
+    archivo.delete()
+    messages.success(request, "Archivo eliminado.")
     return redirect("garantias:editar_garantia", pk=garantia.pk)
+
+
+@login_required
+@admin_required
+@require_POST
+def agregar_enlace(request, pk):
+    garantia = get_object_or_404(Garantia, pk=pk)
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"success": False, "error": "Solicitud AJAX requerida."}, status=400
+        )
+
+    form = GarantiaEnlaceCreateForm(request.POST)
+    if form.is_valid():
+        enlace = form.save(commit=False)
+        enlace.garantia = garantia
+        enlace.creado_por = request.user
+        enlace.save()
+        garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+        return JsonResponse(
+            {
+                "success": True,
+                "id": garantia.pk,
+                "links_html": _render_enlaces_section(request, garantia),
+                "links_count": garantia.enlaces.count(),
+            }
+        )
+
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    return JsonResponse(
+        {
+            "success": False,
+            "id": garantia.pk,
+            "links_html": _render_enlaces_section(request, garantia, form=form),
+            "links_count": garantia.enlaces.count(),
+        },
+        status=400,
+    )
 
 
 @login_required
@@ -615,23 +865,18 @@ def eliminar_archivo(request, pk, archivo_id):
 def eliminar_enlace(request, pk, enlace_id):
     garantia = get_object_or_404(Garantia, pk=pk)
     enlace = get_object_or_404(GarantiaEnlace, pk=enlace_id, garantia=garantia)
-    enlace.delete()
-    messages.success(request, "Enlace eliminado.")
     if _es_ajax(request):
-        layout = (request.POST.get("layout") or "modal").strip()
+        enlace.delete()
         garantia = get_object_or_404(_garantia_queryset(), pk=pk)
-        contexto = _contexto_modal_garantia(garantia)
-        contexto["layout"] = layout
         return JsonResponse(
             {
-                "status": "ok",
-                "html": render_to_string(
-                    _detalle_template_name(layout),
-                    contexto,
-                    request=request,
-                ),
-                "card_html": _render_card_html(request, garantia),
+                "success": True,
                 "id": garantia.pk,
+                "links_html": _render_enlaces_section(request, garantia),
+                "links_count": garantia.enlaces.count(),
             }
         )
+
+    enlace.delete()
+    messages.success(request, "Enlace eliminado.")
     return redirect("garantias:editar_garantia", pk=garantia.pk)

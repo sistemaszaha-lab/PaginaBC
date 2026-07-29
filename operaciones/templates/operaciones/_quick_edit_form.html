@@ -6,6 +6,7 @@
     data-operacion-quick-edit-form="1"
   >
     {% csrf_token %}
+    <input type="hidden" name="asignados_present" value="1">
     <div class="operaciones-quick-edit-form__header">
       <strong>Edicion rapida</strong>
       <span class="text-muted small">{{ operacion.get_estado_display }}</span>

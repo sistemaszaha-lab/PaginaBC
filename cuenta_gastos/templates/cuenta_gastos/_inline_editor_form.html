@@ -2,11 +2,15 @@
   method="post"
   class="cuenta-inline-editor"
   data-cuenta-inline-editor="1"
+  data-cuenta-editor-id="{{ cuenta.id }}"
+  data-update-url="{% url 'cuenta_gastos:actualizar_cuenta_inline' cuenta.id %}"
   data-field="{{ field_name }}">
   {% csrf_token %}
   <input type="hidden" name="field" value="{{ field_name }}">
   {{ bound_field }}
-  <div class="text-danger small mt-1" data-cuenta-inline-error="1"></div>
+  <div class="text-danger small mt-1" data-cuenta-inline-error="1">
+    {% for error in bound_field.errors %}{{ error }}{% endfor %}
+  </div>
   <div class="cuenta-inline-editor__actions">
     <button type="button" class="btn btn-light btn-sm" data-cuenta-inline-field-cancel="1">Cancelar</button>
     <button type="submit" class="btn btn-primary btn-sm">Guardar</button>

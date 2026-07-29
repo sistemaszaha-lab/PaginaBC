@@ -1,4 +1,4 @@
-<form method="post" class="operaciones-inline-form" data-operacion-inline-form="1">
+<form method="post" action="{% url 'operaciones:crear_operacion_inline' %}" enctype="multipart/form-data" class="operaciones-inline-form" data-operacion-inline-form="1">
   {% csrf_token %}
   <input type="hidden" name="estado" value="{{ estado }}">
 
@@ -20,6 +20,27 @@
     {{ form.prioridad }}
     {% if form.prioridad.errors %}
       <div class="text-danger small mt-1">{{ form.prioridad.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
+    {{ form.fecha_vencimiento }}
+    {% if form.fecha_vencimiento.errors %}
+      <div class="text-danger small mt-1">{{ form.fecha_vencimiento.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
+    {{ form.asignados }}
+    {% if form.asignados.errors %}
+      <div class="text-danger small mt-1">{{ form.asignados.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
+    {{ form.etiquetas }}
+    {% if form.etiquetas.errors %}
+      <div class="text-danger small mt-1">{{ form.etiquetas.errors|join:", " }}</div>
     {% endif %}
   </div>
 

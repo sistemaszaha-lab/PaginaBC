@@ -1,8 +1,13 @@
-<form
-  method="post"
-  class="panel-cotizacion-inline-form"
-  data-panel-cotizacion-inline-form="1"
-  data-estado="{{ estado }}">
+<div data-panel-cotizacion-inline-form-fragment="1">
+  <div class="small text-muted mb-2">
+    Nueva cotizacion en <strong data-panel-cotizacion-inline-destination="1">{{ estado_texto }}</strong>
+  </div>
+  <form
+    method="post"
+    action="{% url 'panel_cotizaciones:crear_inline' %}"
+    class="panel-cotizacion-inline-form"
+    data-panel-cotizacion-inline-form="1"
+    data-estado="{{ estado }}">
   {% csrf_token %}
   <input type="hidden" name="estado" value="{{ estado }}">
 
@@ -40,4 +45,5 @@
     <button type="button" class="btn btn-sm btn-light" data-panel-cotizacion-inline-cancel="1">Cancelar</button>
     <button type="submit" class="btn btn-sm btn-primary">Guardar</button>
   </div>
-</form>
+  </form>
+</div>

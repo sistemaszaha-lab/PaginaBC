@@ -3,7 +3,8 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count
+from django.db.models import Count, F, Window
+from django.db.models.functions import RowNumber
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -42,6 +43,16 @@ INLINE_FIELD_FORMS = {
     "asignados": PanelCotizacionInlineAsignadosForm,
 }
 
+ESTADOS_KANBAN = (
+    (PanelCotizacion.Estado.REQUERIMIENTO, "Requerimiento"),
+    (PanelCotizacion.Estado.EN_PROGRESO, "En progreso"),
+    (PanelCotizacion.Estado.ENVIADA, "Enviada"),
+)
+ESTADOS_VISIBLES = frozenset(estado for estado, _label in ESTADOS_KANBAN)
+INITIAL_CARDS_PER_COLUMN = 10
+CARDS_PAGE_SIZE = 10
+PANEL_ORDERING = ("-fecha_creacion", "-id")
+
 
 def _safe_next_url(request: HttpRequest):
     next_url = (request.POST.get("next") or request.GET.get("next") or "").strip()
@@ -73,28 +84,100 @@ def _get_usuarios_filter(request: HttpRequest):
     return list(User.objects.filter(pk__in=ids).order_by("first_name", "id"))
 
 
+def _get_usuarios_filter_estricto(request: HttpRequest):
+    raw_ids = [
+        value.strip()
+        for value in request.GET.getlist("usuario")
+        if (value or "").strip()
+    ]
+    if not raw_ids:
+        return [], None
+    if any(not value.isdigit() or int(value) <= 0 for value in raw_ids):
+        return [], JsonResponse(
+            {"ok": False, "error": "Filtro de usuario invalido."},
+            status=400,
+        )
+    ids = list(dict.fromkeys(int(value) for value in raw_ids))
+    usuarios = list(
+        User.objects.filter(pk__in=ids).order_by("first_name", "id")
+    )
+    if len(usuarios) != len(ids):
+        return [], JsonResponse(
+            {"ok": False, "error": "Filtro de usuario invalido."},
+            status=400,
+        )
+    return usuarios, None
+
+
 def _board_queryset(usuarios):
     qs = (
-        PanelCotizacion.objects.all()
+        PanelCotizacion.objects.filter(estado__in=ESTADOS_VISIBLES)
         .select_related("creado_por")
         .prefetch_related("asignados")
         .annotate(comentarios_count=Count("comentarios"))
     )
     if usuarios:
         qs = qs.filter(asignados__in=usuarios).distinct()
-    return qs
+    return qs.order_by(*PANEL_ORDERING)
 
 
-def _columnas_kanban(qs):
-    estados = [
-        (PanelCotizacion.Estado.REQUERIMIENTO, "Requerimiento"),
-        (PanelCotizacion.Estado.EN_PROGRESO, "En progreso"),
-        (PanelCotizacion.Estado.ENVIADA, "Enviada"),
+def _columnas_kanban(usuarios):
+    objetos = list(
+        _board_queryset(usuarios)
+        .annotate(
+            posicion_columna=Window(
+                expression=RowNumber(),
+                partition_by=[F("estado")],
+                order_by=[
+                    F("fecha_creacion").desc(),
+                    F("id").desc(),
+                ],
+            ),
+            total_columna=Window(
+                expression=Count("id"),
+                partition_by=[F("estado")],
+            ),
+        )
+        .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
+    )
+    items_por_estado = {estado: [] for estado, _label in ESTADOS_KANBAN}
+    totales = {estado: 0 for estado, _label in ESTADOS_KANBAN}
+    for obj in objetos:
+        if obj.estado in items_por_estado:
+            items_por_estado[obj.estado].append(obj)
+            totales[obj.estado] = obj.total_columna
+
+    return [
+        {
+            "estado": estado,
+            "estado_texto": label,
+            "items": items_por_estado[estado],
+            "count": totales[estado],
+            "loaded": len(items_por_estado[estado]),
+            "has_more": totales[estado] > len(items_por_estado[estado]),
+            "remaining": max(
+                0, totales[estado] - len(items_por_estado[estado])
+            ),
+            "load_url": reverse(
+                "panel_cotizaciones:tarjetas_columna",
+                kwargs={"estado": estado},
+            ),
+        }
+        for estado, label in ESTADOS_KANBAN
     ]
-    columnas = []
-    for estado, label in estados:
-        columnas.append((estado, label, [c for c in qs if c.estado == estado]))
-    return columnas
+
+
+def _parse_loaded_ids(request: HttpRequest, offset: int):
+    raw_ids = (request.GET.get("loaded") or "").strip()
+    if not raw_ids:
+        return [] if offset == 0 else None
+    parts = raw_ids.split(",")
+    if any(not value.isdigit() or int(value) <= 0 for value in parts):
+        return None
+    loaded_ids = list(dict.fromkeys(int(value) for value in parts))
+    if len(loaded_ids) != len(parts) or len(loaded_ids) != offset:
+        return None
+    return loaded_ids
 
 
 def _guardar_adjuntos_enlaces(
@@ -144,6 +227,24 @@ def _render_inline_field(
         "asignados": "panel_cotizaciones/_inline_field_asignados.html",
     }
     return render_to_string(templates[field_name], {"c": obj}, request=request)
+
+
+def _render_inline_editor(
+    request: HttpRequest,
+    obj: PanelCotizacion,
+    field_name: str,
+    form=None,
+) -> str:
+    form = form or INLINE_FIELD_FORMS[field_name](instance=obj)
+    return render_to_string(
+        "panel_cotizaciones/_inline_editor_form.html",
+        {
+            "c": obj,
+            "field_name": field_name,
+            "bound_field": form[field_name],
+        },
+        request=request,
+    )
 
 
 def _get_cotizacion_detalle(pk: int) -> PanelCotizacion:
@@ -204,22 +305,18 @@ def _preservar_vacios_cotizacion(form, objeto):
 @require_GET
 def panel_cotizaciones(request: HttpRequest) -> HttpResponse:
     usuarios = _get_usuarios_filter(request)
-    qs = list(_board_queryset(usuarios))
-    inline_fake_c = PanelCotizacion(pk="__PK__")
     context = {
         "current": "panel_cotizaciones",
         "usuario_filter_form": PanelCotizacionUserFilterForm(
             initial={"usuario": [usuario.pk for usuario in usuarios]}
         ),
-        "columnas_kanban": _columnas_kanban(qs),
-        "inline_form": PanelCotizacionInlineCreateForm(),
-        "inline_fake_c": inline_fake_c,
-        "inline_titulo_form": PanelCotizacionInlineTituloForm(),
-        "inline_prioridad_form": PanelCotizacionInlinePrioridadForm(),
-        "inline_vencimiento_form": PanelCotizacionInlineVencimientoForm(),
-        "inline_cliente_form": PanelCotizacionInlineClienteForm(),
-        "inline_asignados_form": PanelCotizacionInlineAsignadosForm(),
-        "estado_update_url": reverse("panel_cotizaciones:estado_update"),
+        "columnas_kanban": _columnas_kanban(usuarios),
+        "panel_config": {
+            "estadoUpdateUrl": reverse("panel_cotizaciones:estado_update"),
+            "boardUrl": reverse("panel_cotizaciones:tablero_partial"),
+            "inlineCreateUrl": reverse("panel_cotizaciones:crear_inline"),
+            "inlineFormUrl": reverse("panel_cotizaciones:formulario_inline"),
+        },
     }
     return render(request, "panel_cotizaciones/panel.html", context)
 
@@ -228,13 +325,88 @@ def panel_cotizaciones(request: HttpRequest) -> HttpResponse:
 @require_GET
 def tablero_partial(request: HttpRequest) -> HttpResponse:
     usuarios = _get_usuarios_filter(request)
-    qs = list(_board_queryset(usuarios))
     return render(
         request,
         "panel_cotizaciones/_tablero.html",
         {
-            "columnas_kanban": _columnas_kanban(qs),
-            "inline_form": PanelCotizacionInlineCreateForm(),
+            "columnas_kanban": _columnas_kanban(usuarios),
+        },
+    )
+
+
+@login_required
+@require_GET
+def tarjetas_columna(request: HttpRequest, estado: str) -> JsonResponse:
+    if estado not in ESTADOS_VISIBLES:
+        return JsonResponse(
+            {"ok": False, "error": "Estado no encontrado."},
+            status=404,
+        )
+
+    raw_offset = (request.GET.get("offset") or "").strip()
+    if not raw_offset.isdigit():
+        return JsonResponse(
+            {"ok": False, "error": "Offset invalido."},
+            status=400,
+        )
+    offset = int(raw_offset)
+    usuarios, error = _get_usuarios_filter_estricto(request)
+    if error is not None:
+        return error
+    loaded_ids = _parse_loaded_ids(request, offset)
+    if loaded_ids is None:
+        return JsonResponse(
+            {"ok": False, "error": "Tarjetas cargadas invalidas."},
+            status=400,
+        )
+
+    columna = _board_queryset(usuarios).filter(estado=estado)
+    total = columna.count()
+    recognized_loaded_ids = set(
+        columna.filter(pk__in=loaded_ids).values_list("pk", flat=True)
+    )
+    stale_ids = [
+        pk for pk in loaded_ids if pk not in recognized_loaded_ids
+    ]
+    siguientes = list(
+        columna.exclude(pk__in=loaded_ids)[: CARDS_PAGE_SIZE + 1]
+    )
+    has_more = len(siguientes) > CARDS_PAGE_SIZE
+    objetos = siguientes[:CARDS_PAGE_SIZE]
+    html = "".join(
+        render_to_string(
+            "panel_cotizaciones/_tarjeta.html",
+            {"c": obj},
+            request=request,
+        )
+        for obj in objetos
+    )
+    loaded = len(objetos)
+    return JsonResponse(
+        {
+            "ok": True,
+            "estado": estado,
+            "html": html,
+            "loaded": loaded,
+            "next_offset": len(recognized_loaded_ids) + loaded,
+            "has_more": has_more,
+            "total": total,
+            "stale_ids": stale_ids,
+        }
+    )
+
+
+@login_required
+@require_GET
+def formulario_inline(request: HttpRequest) -> HttpResponse:
+    estado = PanelCotizacion.Estado.REQUERIMIENTO
+    return render(
+        request,
+        "panel_cotizaciones/_inline_create_form.html",
+        {
+            "form": PanelCotizacionInlineCreateForm(),
+            "estado": estado,
+            "estado_texto": PanelCotizacion.Estado(estado).label,
         },
     )
 
@@ -269,6 +441,30 @@ def crear_panel_cotizacion(request: HttpRequest) -> HttpResponse:
             "enlace_form": enlace_form,
             "next_url": next_url,
         },
+    )
+
+
+@login_required
+@require_GET
+def inline_editor(request: HttpRequest, pk: int) -> JsonResponse:
+    field_name = (request.GET.get("field") or "").strip()
+    if field_name not in INLINE_FIELD_FORMS:
+        return JsonResponse(
+            {"ok": False, "errors": {"field": ["Campo no permitido."]}},
+            status=400,
+        )
+
+    obj = get_object_or_404(
+        PanelCotizacion.objects.prefetch_related("asignados"),
+        pk=pk,
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "id": obj.pk,
+            "field": field_name,
+            "html": _render_inline_editor(request, obj, field_name),
+        }
     )
 
 
@@ -346,7 +542,18 @@ def inline_update(request: HttpRequest, pk: int) -> JsonResponse:
     form = form_class(request.POST, instance=obj)
     if not form.is_valid():
         return JsonResponse(
-            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            {
+                "ok": False,
+                "id": obj.pk,
+                "field": field_name,
+                "errors": form.errors.get_json_data(escape_html=True),
+                "html": _render_inline_editor(
+                    request,
+                    obj,
+                    field_name,
+                    form=form,
+                ),
+            },
             status=400,
         )
 

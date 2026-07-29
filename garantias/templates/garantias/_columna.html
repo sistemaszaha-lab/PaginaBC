@@ -1,11 +1,16 @@
 <div class="col-12 col-xl-3 col-md-6">
-  <section class="garantias-column card h-100 border-0 shadow-sm">
+  <section
+    class="garantias-column card h-100 border-0 shadow-sm"
+    data-garantia-column="1"
+    data-estado="{{ estado }}"
+    data-total="{{ count }}"
+    data-loaded="{{ loaded }}">
     <div class="card-header garantias-column__header">
       <div>
         <p class="garantias-column__eyebrow mb-1">Etapa</p>
         <h2 class="garantias-column__title mb-0">{{ estado_texto }}</h2>
       </div>
-      <span class="badge garantias-column__count" data-garantias-column-count="1">{{ items|length }}</span>
+      <span class="badge garantias-column__count" data-garantias-column-count="1">{{ count }}</span>
     </div>
 
     <div class="garantias-column__actions px-3 pt-3">
@@ -13,13 +18,10 @@
         type="button"
         class="btn btn-sm garantias-column__add-btn"
         data-garantia-inline-open="1"
-        data-estado="{{ estado }}">
+        data-estado="{{ estado }}"
+        data-estado-label="{{ estado_texto }}">
         + Nueva garantia
       </button>
-    </div>
-
-    <div class="px-3 pt-3 d-none" data-garantia-inline-container="1" data-estado="{{ estado }}">
-      {% include "garantias/_inline_create_form.html" with form=inline_form estado=estado only %}
     </div>
 
     <div class="card-body kanban-col garantias-column__body" data-estado="{{ estado }}">
@@ -28,6 +30,27 @@
       {% empty %}
         <div class="garantia-empty">Sin garantias.</div>
       {% endfor %}
+    </div>
+
+    <div class="px-3 pb-3 text-center">
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary"
+        data-garantia-load-more="1"
+        data-load-url="{{ load_url }}"
+        {% if not has_more %}hidden{% endif %}>
+        Cargar más{% if remaining %} ({{ remaining }}){% endif %}
+      </button>
+      <div
+        class="small text-muted mt-2 d-none"
+        data-garantia-load-indicator="1"
+        role="status">
+        Cargando...
+      </div>
+      <div
+        class="small text-danger mt-2 d-none"
+        data-garantia-load-error="1"
+        role="alert"></div>
     </div>
   </section>
 </div>

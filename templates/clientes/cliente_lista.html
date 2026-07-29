@@ -12,7 +12,7 @@
                value="{{ query }}">
         <button class="btn btn-outline-primary" type="submit">Buscar</button>
     </form>
-    <a class="btn btn-success" href="{% url 'cliente_crear' %}">+ Nuevo cliente</a>
+    <a class="btn btn-success" href="{% url 'cliente_crear' %}?next={{ return_url|urlencode }}">+ Nuevo cliente</a>
 </div>
 
 <h3 class="mt-4">Clientes existentes</h3>
@@ -20,5 +20,6 @@
 
 <h3 class="mt-4">Nuevos clientes</h3>
 {% include "clientes/_clientes_table.html" with clientes=clientes_nuevos %}
-{% endblock %}
 
+{% include "clientes/_pagination.html" %}
+{% endblock %}

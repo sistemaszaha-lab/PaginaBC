@@ -1,4 +1,8 @@
-<form method="post" class="garantia-inline-form" data-garantia-inline-form="1">
+<div data-garantia-inline-form-fragment="1">
+  <div class="small text-muted mb-2">
+    Nueva garantia en <strong data-garantia-inline-destination="1">{{ estado_texto }}</strong>
+  </div>
+<form method="post" action="{% url 'garantias:crear_garantia_inline' %}" class="garantia-inline-form" data-garantia-inline-form="1">
   {% csrf_token %}
   <input type="hidden" name="estado" value="{{ estado }}">
 
@@ -32,3 +36,4 @@
     <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
   </div>
 </form>
+</div>

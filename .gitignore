@@ -22,8 +22,8 @@ Thumbs.db
 railway_backup.dump
 
 # Generated local files
-static/
-uploads/
+/static/
+/uploads/
 .codex-runserver.err
 .codex-runserver.out
 fase11_candidates.json

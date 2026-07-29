@@ -28,6 +28,7 @@
                 <td>
                     <form method="post" action="{% url 'cliente_cambiar_estado' cliente.pk %}">
                         {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ return_url }}">
                         {% if cliente.estado == 'activo' %}
                             <button type="submit" class="btn btn-sm btn-success">Activo</button>
                         {% else %}
@@ -36,11 +37,16 @@
                     </form>
                 </td>
                 <td class="d-flex gap-2 flex-wrap">
-                    <a class="btn btn-sm btn-primary" href="{% url 'cliente_editar' cliente.pk %}">Editar</a>
-                    <a class="btn btn-sm btn-danger" href="{% url 'cliente_eliminar' cliente.pk %}">Eliminar</a>
+                    <a class="btn btn-sm btn-primary" href="{% url 'cliente_editar' cliente.pk %}?next={{ return_url|urlencode }}">Editar</a>
+                    <form method="post" action="{% url 'cliente_eliminar' cliente.pk %}" class="d-inline" onsubmit="return confirm('Eliminar este cliente? Si tiene registros relacionados no se eliminara.');">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ return_url }}">
+                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                    </form>
                     {% if cliente.tipo_cliente == 'nuevo' %}
                         <form method="post" action="{% url 'cliente_convertir_existente' cliente.pk %}" class="d-inline">
                             {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ return_url }}">
                             <button type="submit" class="btn btn-sm btn-outline-primary">Convertir</button>
                         </form>
                     {% endif %}

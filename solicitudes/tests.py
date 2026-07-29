@@ -1,12 +1,20 @@
 ﻿from datetime import date
 
+import re
+from io import StringIO
+
 from django.contrib.auth.models import User
+from django.core.management import call_command
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from clientes.models import Cliente
+from operaciones.models import Operacion
 from .forms import CLIENTE_NUEVO_LABEL, CLIENTE_NUEVO_VALUE, CotizacionForm, ReferenciaForm, SolicitudForm
-from .models import Cotizacion, Referencia, Solicitud
+from .models import Cotizacion, Referencia, Solicitud, UserProfile
+from .services import actualizar_estados_cotizaciones
 from .views import _importar_referencias_desde_filas
 
 
@@ -930,3 +938,692 @@ class ReferenciaClienteNormalizacionTests(TestCase):
         referencia.save()
         referencia.refresh_from_db()
         self.assertEqual(referencia.cliente, "MÉXICO & CIA. - LOG / SUR")
+
+
+class UsuariosPaginationFase9BTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username="admin_fase9b",
+            password="admin123",
+            first_name="Admin",
+            last_name="Principal",
+            email="admin@example.com",
+            is_superuser=True,
+            is_staff=True,
+        )
+        self.client.force_login(self.admin)
+
+    def _completar_total(self, total, *, superusers=False, active=True):
+        current = User.objects.count()
+        User.objects.bulk_create(
+            [
+                User(
+                    username=f"fase9b_{index:04d}",
+                    first_name=f"Nombre {index:04d}",
+                    last_name=f"Apellido {index:04d}",
+                    email=f"fase9b_{index:04d}@example.com",
+                    is_superuser=superusers,
+                    is_staff=superusers,
+                    is_active=active,
+                )
+                for index in range(current, total)
+            ]
+        )
+
+    def test_listado_conserva_permisos_reales(self):
+        response = self.client.get(reverse("lista_usuarios"))
+        self.assertEqual(response.status_code, 200)
+
+        self.client.logout()
+        anonymous = self.client.get(reverse("lista_usuarios"))
+        self.assertEqual(anonymous.status_code, 302)
+        self.assertIn("/login/", anonymous.url)
+
+        executive = User.objects.create_user(
+            username="ejecutivo_sin_permiso",
+            password="pass12345",
+        )
+        self.client.force_login(executive)
+        forbidden = self.client.get(reverse("lista_usuarios"))
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_limites_renderizan_como_maximo_25_usuarios(self):
+        for total in (1, 25, 26, 50, 51, 100, 250, 500):
+            with self.subTest(total=total):
+                User.objects.exclude(pk=self.admin.pk).delete()
+                self._completar_total(total)
+
+                response = self.client.get(reverse("lista_usuarios"))
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    len(response.context["usuarios"]),
+                    min(total, 25),
+                )
+                self.assertEqual(
+                    response.context["page_obj"].paginator.count,
+                    total,
+                )
+
+    def test_25_no_muestra_siguiente_y_26_si(self):
+        self._completar_total(25)
+        exact = self.client.get(reverse("lista_usuarios"))
+        self.assertNotContains(exact, 'rel="next"')
+
+        self._completar_total(26)
+        overflow = self.client.get(reverse("lista_usuarios"))
+        self.assertContains(overflow, 'rel="next"')
+        self.assertContains(overflow, "?page=2")
+
+    def test_orden_y_ausencia_de_duplicados_entre_paginas(self):
+        self._completar_total(51)
+
+        rendered_ids = []
+        for page in (1, 2, 3):
+            response = self.client.get(
+                reverse("lista_usuarios"),
+                {"page": page},
+            )
+            rendered_ids.extend(
+                user.pk for user in response.context["usuarios"]
+            )
+
+        expected = list(
+            User.objects.order_by("first_name", "username").values_list(
+                "pk", flat=True
+            )
+        )
+        self.assertEqual(rendered_ids, expected)
+        self.assertEqual(len(set(rendered_ids)), 51)
+
+    def test_paginas_invalidas_no_producen_500(self):
+        self._completar_total(51)
+        expected = {"texto": 1, "0": 3, "-2": 3, "999": 3}
+
+        for value, page_number in expected.items():
+            with self.subTest(page=value):
+                response = self.client.get(
+                    reverse("lista_usuarios"),
+                    {"page": value},
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.context["page_obj"].number,
+                    page_number,
+                )
+
+    def test_preserva_parametros_duplicados_y_caracteres_especiales(self):
+        self._completar_total(26)
+
+        response = self.client.get(
+            f"{reverse('lista_usuarios')}?tag=uno&tag=dos&valor=%26+especial",
+        )
+
+        self.assertContains(
+            response,
+            "?tag=uno&amp;tag=dos&amp;valor=%26+especial&amp;page=2",
+        )
+
+    def test_navegacion_compacta_y_accesible(self):
+        self._completar_total(250)
+
+        response = self.client.get(
+            reverse("lista_usuarios"),
+            {"page": 5},
+        )
+
+        self.assertContains(
+            response,
+            'aria-label="Paginacion de usuarios"',
+        )
+        self.assertContains(response, 'aria-current="page"')
+        self.assertContains(response, "Anterior")
+        self.assertContains(response, "Siguiente")
+        self.assertContains(response, "&hellip;", html=True)
+        self.assertNotContains(response, "?page=8")
+
+    def test_consultas_son_constantes_y_sin_n_mas_uno(self):
+        self._completar_total(25)
+        with CaptureQueriesContext(connection) as queries_25:
+            response_25 = self.client.get(reverse("lista_usuarios"))
+        self._completar_total(250)
+        with CaptureQueriesContext(connection) as queries_250:
+            response_250 = self.client.get(reverse("lista_usuarios"))
+
+        self.assertEqual(response_25.status_code, 200)
+        self.assertEqual(response_250.status_code, 200)
+        self.assertEqual(len(queries_25), len(queries_250))
+        self.assertEqual(len(queries_250), 4)
+        profile_queries = [
+            query["sql"]
+            for query in queries_250
+            if 'FROM "solicitudes_userprofile"' in query["sql"]
+        ]
+        self.assertEqual(profile_queries, [])
+
+    def test_get_no_realiza_escrituras(self):
+        self._completar_total(51)
+        before = list(
+            User.objects.order_by("pk").values_list(
+                "pk", "is_active", "is_superuser", "last_login"
+            )
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(
+                reverse("lista_usuarios"),
+                {"page": 2},
+            )
+
+        writes = [
+            query["sql"]
+            for query in queries
+            if re.match(r"^\s*(UPDATE|INSERT|DELETE)\b", query["sql"], re.I)
+        ]
+        after = list(
+            User.objects.order_by("pk").values_list(
+                "pk", "is_active", "is_superuser", "last_login"
+            )
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(writes, [])
+        self.assertEqual(after, before)
+
+    def test_fila_conserva_nombre_rol_y_formulario_post(self):
+        user = User.objects.create_user(
+            username="nombre_completo_9b",
+            password="pass12345",
+            first_name="Maria",
+            last_name="Lopez",
+            email="maria@example.com",
+        )
+        UserProfile.objects.create(user=user, segundo_nombre="Elena")
+
+        response = self.client.get(reverse("lista_usuarios"))
+
+        self.assertContains(response, "Maria Elena Lopez")
+        self.assertContains(response, "Ejecutivo")
+        self.assertContains(
+            response,
+            reverse("eliminar_usuario", args=[user.pk]),
+        )
+        self.assertContains(response, 'name="csrfmiddlewaretoken"')
+        self.assertContains(response, 'name="next"')
+
+    def test_sesion_actual_conserva_proteccion_de_eliminacion(self):
+        response = self.client.get(reverse("lista_usuarios"))
+        self.assertContains(response, "Sesion actual")
+
+        delete = self.client.post(
+            reverse("eliminar_usuario", args=[self.admin.pk]),
+        )
+
+        self.assertRedirects(
+            delete,
+            reverse("lista_usuarios"),
+            fetch_redirect_response=False,
+        )
+        self.assertTrue(User.objects.filter(pk=self.admin.pk).exists())
+
+    def test_crear_conserva_retorno_y_error_de_validacion(self):
+        return_url = "/usuarios/?page=2&tag=equipo"
+        invalid = self.client.post(
+            reverse("crear_usuario"),
+            {
+                "username": "nuevo_9b",
+                "primer_nombre": "Nuevo",
+                "segundo_nombre": "",
+                "apellidos": "Usuario",
+                "email": "nuevo@example.com",
+                "password1": "distintas123",
+                "password2": "distintas456",
+                "rol": "usuario",
+                "next": return_url,
+            },
+        )
+        self.assertEqual(invalid.status_code, 200)
+        self.assertContains(
+            invalid,
+            'value="/usuarios/?page=2&amp;tag=equipo"',
+        )
+        self.assertContains(
+            invalid,
+            'href="/usuarios/?page=2&amp;tag=equipo"',
+        )
+
+        valid = self.client.post(
+            reverse("crear_usuario"),
+            {
+                "username": "nuevo_9b",
+                "primer_nombre": "Nuevo",
+                "segundo_nombre": "",
+                "apellidos": "Usuario",
+                "email": "nuevo@example.com",
+                "password1": "Segura12345!!",
+                "password2": "Segura12345!!",
+                "rol": "usuario",
+                "next": return_url,
+            },
+        )
+        self.assertRedirects(
+            valid,
+            return_url,
+            fetch_redirect_response=False,
+        )
+
+    def test_editar_y_cambiar_rol_conserva_retorno(self):
+        user = User.objects.create_user(
+            username="editar_9b",
+            password="pass12345",
+        )
+        return_url = "/usuarios/?page=2&vista=actual"
+
+        response = self.client.post(
+            reverse("editar_usuario", args=[user.pk]),
+            {
+                "username": "editar_9b",
+                "primer_nombre": "Editado",
+                "segundo_nombre": "",
+                "apellidos": "Fase",
+                "email": "editado@example.com",
+                "rol": "admin",
+                "password1": "",
+                "password2": "",
+                "next": return_url,
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            return_url,
+            fetch_redirect_response=False,
+        )
+        user.refresh_from_db()
+        self.assertTrue(user.is_superuser)
+        self.assertEqual(user.first_name, "Editado")
+
+    def test_eliminar_conserva_retorno_y_metodo_http(self):
+        user = User.objects.create_user(
+            username="eliminar_9b",
+            password="pass12345",
+        )
+        return_url = "/usuarios/?page=2&vista=actual"
+
+        get_response = self.client.get(
+            reverse("eliminar_usuario", args=[user.pk])
+        )
+        post_response = self.client.post(
+            reverse("eliminar_usuario", args=[user.pk]),
+            {"next": return_url},
+        )
+
+        self.assertEqual(get_response.status_code, 405)
+        self.assertRedirects(
+            post_response,
+            return_url,
+            fetch_redirect_response=False,
+        )
+        self.assertFalse(User.objects.filter(pk=user.pk).exists())
+
+    def test_eliminar_ultimo_elemento_ajusta_ultima_pagina(self):
+        self._completar_total(26)
+        last_page = self.client.get(
+            reverse("lista_usuarios"),
+            {"page": 2},
+        )
+        user = last_page.context["usuarios"][0]
+
+        deleted = self.client.post(
+            reverse("eliminar_usuario", args=[user.pk]),
+            {"next": "/usuarios/?page=2"},
+            follow=True,
+        )
+
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.context["page_obj"].number, 1)
+        self.assertFalse(User.objects.filter(pk=user.pk).exists())
+
+    def test_next_externo_es_rechazado(self):
+        user = User.objects.create_user(
+            username="next_externo_9b",
+            password="pass12345",
+        )
+
+        response = self.client.post(
+            reverse("eliminar_usuario", args=[user.pk]),
+            {"next": "//evil.test/phishing"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("lista_usuarios"),
+            fetch_redirect_response=False,
+        )
+
+    def test_solo_administradores_solo_ejecutivos_y_mezcla(self):
+        User.objects.exclude(pk=self.admin.pk).delete()
+        self._completar_total(25, superusers=True)
+        only_admins = self.client.get(reverse("lista_usuarios"))
+        self.assertTrue(
+            all(user.is_superuser for user in only_admins.context["usuarios"])
+        )
+
+        User.objects.exclude(pk=self.admin.pk).delete()
+        self._completar_total(25, superusers=False)
+        mixed = self.client.get(reverse("lista_usuarios"))
+        self.assertEqual(
+            sum(
+                user.is_superuser
+                for user in mixed.context["usuarios"]
+            ),
+            1,
+        )
+
+        self.admin.is_superuser = False
+        self.admin.is_staff = False
+        self.admin.save(update_fields=["is_superuser", "is_staff"])
+        self.assertEqual(
+            User.objects.filter(is_superuser=False).count(),
+            25,
+        )
+
+
+class ListadosRendimientoFase3Tests(TestCase):
+    def setUp(self):
+        self.ejecutivo = User.objects.create_user(
+            username="ejecutivo_fase3",
+            password="pass",
+            first_name="Elena",
+            last_name="Rendimiento",
+        )
+        self.client.force_login(self.ejecutivo)
+
+    def _crear_solicitud(self, indice, con_referencia=False):
+        solicitud = Solicitud.objects.create(
+            anio=2026,
+            sg=f"SG-F3-{indice:03d}",
+            cliente=f"Cliente solicitud {indice}",
+            fecha_recepcion=date(2026, 1, 1),
+            tipo="Importación",
+            ejecutivo=self.ejecutivo,
+            aerea=True,
+            estado_aereo="Pendiente",
+        )
+        if con_referencia:
+            Referencia.objects.create(
+                referencia=f"REF-F3-S-{indice:03d}",
+                consecutivo=1000 + indice,
+                ejecutivo=self.ejecutivo,
+                cliente=solicitud.cliente,
+                servicio="importacion",
+                fecha=date(2026, 1, 2),
+                solicitud_origen=solicitud,
+            )
+        return solicitud
+
+    def _crear_referencia(self, indice, con_operacion=False):
+        referencia = Referencia.objects.create(
+            referencia=f"REF-F3-{indice:03d}",
+            consecutivo=2000 + indice,
+            ejecutivo=self.ejecutivo,
+            cliente=f"Cliente referencia {indice}",
+            servicio="importacion",
+            fecha=date(2026, 1, 2),
+        )
+        if con_operacion:
+            Operacion.objects.create(
+                titulo=f"Operacion fase 3 {indice}",
+                creado_por=self.ejecutivo,
+                referencia_origen=referencia,
+            )
+        return referencia
+
+    def _crear_cotizacion(self, indice, **overrides):
+        datos = {
+            "anio": 2026,
+            "consecutivo": f"COT-F3-{indice:03d}",
+            "cliente": f"Prospecto fase 3 {indice}",
+            "fecha_solicitud": date(2026, 1, 1),
+            "fecha_envio": date(2099, 1, 1),
+            "tipo": "Servicio",
+            "ejecutivo": self.ejecutivo,
+            "estado": "Pendiente",
+        }
+        datos.update(overrides)
+        return Cotizacion.objects.create(**datos)
+
+    def _consultas_get(self, nombre_url, params=None):
+        with CaptureQueriesContext(connection) as consultas:
+            response = self.client.get(reverse(nombre_url), params or {})
+        self.assertEqual(response.status_code, 200)
+        return len(consultas), response
+
+    def test_solicitudes_conserva_relaciones_ausentes_filtros_y_paginacion(self):
+        con_referencia = self._crear_solicitud(1, con_referencia=True)
+        self._crear_solicitud(2, con_referencia=False)
+
+        response = self.client.get(
+            reverse("lista_solicitudes"),
+            {"anio": 2026, "q": con_referencia.sg},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Elena")
+        self.assertContains(response, "Enviada a Referencias")
+        self.assertNotContains(response, "SG-F3-002")
+
+        response = self.client.get(
+            reverse("lista_solicitudes"),
+            {"anio": 2026, "q": "SG-F3-002"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Enviar a Referencias")
+
+        for indice in range(3, 27):
+            self._crear_solicitud(indice)
+        response = self.client.get(
+            reverse("lista_solicitudes"),
+            {"anio": 2026, "page": 2},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertEqual(len(response.context["solicitudes"]), 1)
+
+    def test_solicitudes_mantiene_constante_el_numero_de_consultas(self):
+        self._crear_solicitud(1, con_referencia=True)
+        consultas_una, _ = self._consultas_get(
+            "lista_solicitudes",
+            {"anio": 2026},
+        )
+        for indice in range(2, 10):
+            self._crear_solicitud(indice, con_referencia=indice % 2 == 0)
+        consultas_varias, response = self._consultas_get(
+            "lista_solicitudes",
+            {"anio": 2026},
+        )
+
+        self.assertEqual(consultas_varias, consultas_una)
+        self.assertEqual(len(response.context["solicitudes"]), 9)
+
+    def test_referencias_conserva_relaciones_ausentes_orden_y_paginacion(self):
+        con_operacion = self._crear_referencia(1, con_operacion=True)
+        sin_operacion = self._crear_referencia(2, con_operacion=False)
+
+        response = self.client.get(reverse("lista_referencias"), {"orden": "asc"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Elena")
+        self.assertContains(response, "Enviada a Operaciones")
+        self.assertContains(response, "Enviar a Operaciones")
+        contenido = response.content.decode()
+        self.assertLess(
+            contenido.find(con_operacion.referencia),
+            contenido.find(sin_operacion.referencia),
+        )
+
+        response = self.client.get(reverse("lista_referencias"), {"orden": "desc"})
+        contenido = response.content.decode()
+        self.assertLess(
+            contenido.find(sin_operacion.referencia),
+            contenido.find(con_operacion.referencia),
+        )
+
+        for indice in range(3, 27):
+            self._crear_referencia(indice)
+        response = self.client.get(
+            reverse("lista_referencias"),
+            {"orden": "asc", "page": 2},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertEqual(len(response.context["referencias"]), 1)
+
+    def test_referencias_mantiene_constante_el_numero_de_consultas(self):
+        self._crear_referencia(1, con_operacion=True)
+        consultas_una, _ = self._consultas_get("lista_referencias")
+        for indice in range(2, 10):
+            self._crear_referencia(indice, con_operacion=indice % 2 == 0)
+        consultas_varias, response = self._consultas_get("lista_referencias")
+
+        self.assertEqual(consultas_varias, consultas_una)
+        self.assertEqual(len(response.context["referencias"]), 9)
+
+    def test_cotizaciones_muestra_ejecutivo_y_consultas_constantes(self):
+        self._crear_cotizacion(1)
+        consultas_una, response = self._consultas_get(
+            "lista_cotizaciones",
+            {"anio": 2026},
+        )
+        self.assertContains(response, "Elena")
+
+        for indice in range(2, 10):
+            self._crear_cotizacion(indice)
+        consultas_varias, response = self._consultas_get(
+            "lista_cotizaciones",
+            {"anio": 2026},
+        )
+
+        self.assertEqual(consultas_varias, consultas_una)
+        self.assertEqual(len(response.context["cotizaciones"]), 9)
+
+    def test_get_cotizaciones_no_escribe_y_muestra_estado_vigente(self):
+        cotizacion = self._crear_cotizacion(
+            1,
+            fecha_envio=date(2020, 1, 1),
+            estado="Pendiente",
+        )
+        creado_original = cotizacion.creado
+
+        with CaptureQueriesContext(connection) as consultas:
+            response = self.client.get(
+                reverse("lista_cotizaciones"),
+                {"anio": 2026},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Fuera de plazo")
+        escrituras = [
+            consulta["sql"]
+            for consulta in consultas
+            if re.match(r"^\s*(UPDATE|INSERT|DELETE)\b", consulta["sql"], re.I)
+        ]
+        self.assertEqual(escrituras, [])
+        cotizacion.refresh_from_db()
+        self.assertEqual(cotizacion.estado, "Pendiente")
+        self.assertEqual(cotizacion.creado, creado_original)
+
+    def test_listados_conservan_login_required(self):
+        self.client.logout()
+        for nombre_url in (
+            "lista_solicitudes",
+            "lista_referencias",
+            "lista_cotizaciones",
+        ):
+            response = self.client.get(reverse(nombre_url))
+            self.assertEqual(response.status_code, 302)
+            self.assertIn("/login/", response.url)
+
+    def test_servicio_actualiza_solo_regla_original_y_es_idempotente(self):
+        fecha_referencia = date(2026, 7, 28)
+        vencida = self._crear_cotizacion(
+            1,
+            fecha_envio=date(2026, 7, 27),
+            estado="Pendiente",
+        )
+        hoy = self._crear_cotizacion(
+            2,
+            fecha_envio=fecha_referencia,
+            estado="Pendiente",
+        )
+        futura = self._crear_cotizacion(
+            3,
+            fecha_envio=date(2026, 7, 29),
+            estado="Pendiente",
+        )
+        sin_fecha = self._crear_cotizacion(
+            4,
+            fecha_envio=None,
+            estado="Pendiente",
+        )
+        cumplida = self._crear_cotizacion(
+            5,
+            fecha_envio=date(2026, 7, 20),
+            estado="Cumplido",
+        )
+        fuera_previa = self._crear_cotizacion(
+            6,
+            fecha_envio=date(2026, 7, 20),
+            estado="Fuera de plazo",
+        )
+
+        resultado = actualizar_estados_cotizaciones(fecha_referencia)
+
+        self.assertEqual(resultado.examinados, 4)
+        self.assertEqual(resultado.necesitaban_actualizacion, 1)
+        self.assertEqual(resultado.actualizados, 1)
+        vencida.refresh_from_db()
+        hoy.refresh_from_db()
+        futura.refresh_from_db()
+        sin_fecha.refresh_from_db()
+        cumplida.refresh_from_db()
+        fuera_previa.refresh_from_db()
+        self.assertEqual(vencida.estado, "Fuera de plazo")
+        self.assertEqual(hoy.estado, "Pendiente")
+        self.assertEqual(futura.estado, "Pendiente")
+        self.assertEqual(sin_fecha.estado, "Pendiente")
+        self.assertEqual(cumplida.estado, "Cumplido")
+        self.assertEqual(fuera_previa.estado, "Fuera de plazo")
+
+        repeticion = actualizar_estados_cotizaciones(fecha_referencia)
+        self.assertEqual(repeticion.necesitaban_actualizacion, 0)
+        self.assertEqual(repeticion.actualizados, 0)
+
+    def test_management_command_reporta_cambios_y_cero_cambios(self):
+        vencida = self._crear_cotizacion(
+            1,
+            fecha_envio=date(2020, 1, 1),
+            estado="Pendiente",
+        )
+        cumplida = self._crear_cotizacion(
+            2,
+            fecha_envio=date(2020, 1, 1),
+            estado="Cumplido",
+        )
+        salida = StringIO()
+
+        call_command("actualizar_estados_cotizaciones", stdout=salida)
+
+        texto = salida.getvalue()
+        self.assertIn("Cotizaciones pendientes examinadas: 1", texto)
+        self.assertIn("Cotizaciones que necesitaban actualizacion: 1", texto)
+        self.assertIn("Cotizaciones actualizadas: 1", texto)
+        vencida.refresh_from_db()
+        cumplida.refresh_from_db()
+        self.assertEqual(vencida.estado, "Fuera de plazo")
+        self.assertEqual(cumplida.estado, "Cumplido")
+
+        salida = StringIO()
+        call_command("actualizar_estados_cotizaciones", stdout=salida)
+        texto = salida.getvalue()
+        self.assertIn("Cotizaciones que necesitaban actualizacion: 0", texto)
+        self.assertIn("Cotizaciones actualizadas: 0", texto)
+        self.assertIn("No habia estados pendientes de actualizacion.", texto)

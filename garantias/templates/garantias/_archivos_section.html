@@ -1,0 +1,37 @@
+<section class="garantia-files-section" data-garantia-files-section="1" data-garantia-id="{{ garantia.id }}" aria-busy="false">
+  <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+    <h5 class="mb-0">Archivos</h5>
+    <span class="badge text-bg-light border" data-garantia-files-count="1">{{ archivos|length }}</span>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" action="{% url 'garantias:agregar_archivos' garantia.id %}" data-garantia-files-form="1" class="mb-3">
+    {% csrf_token %}
+    <label for="{{ archivos_form.archivos.id_for_label }}" class="visually-hidden">Adjuntar archivos</label>
+    {{ archivos_form.archivos }}
+    {% if archivos_form.archivos.errors %}
+      <div class="invalid-feedback d-block">{{ archivos_form.archivos.errors|join:", " }}</div>
+    {% endif %}
+    <div class="form-text">Hasta 5 archivos de 10 MB; PDF, Office, imágenes, TXT o ZIP.</div>
+    <button type="submit" class="btn btn-sm btn-outline-primary mt-2">Subir archivos</button>
+  </form>
+
+  <div data-garantia-files-list="1">
+    {% for archivo in archivos %}
+      <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 small gap-2">
+        <div class="min-w-0">
+          <div class="fw-semibold text-truncate">{{ archivo.archivo.name }}</div>
+          <div class="text-muted">{{ archivo.fecha|date:"Y-m-d H:i" }}</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'garantias:descargar_archivo' garantia.id archivo.id %}">Descargar</a>
+          <form method="post" action="{% url 'garantias:eliminar_archivo' garantia.id archivo.id %}" data-garantia-file-delete-form="1">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+          </form>
+        </div>
+      </div>
+    {% empty %}
+      <div class="text-muted small">Sin archivos.</div>
+    {% endfor %}
+  </div>
+</section>

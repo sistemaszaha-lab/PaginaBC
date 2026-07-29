@@ -3,7 +3,8 @@
   id="garantia-{{ g.id }}"
   class="garantia-card card border-0 shadow-sm mb-3"
   data-garantia-card="1"
-  data-garantia-id="{{ g.id }}">
+  data-garantia-id="{{ g.id }}"
+  data-garantia-state="{{ g.estado }}">
   <div class="card-body p-3">
     <div class="garantia-card__header">
       <div class="garantia-card__heading" data-garantia-inline-slot="titulo">
@@ -15,7 +16,7 @@
           <svg class="garantia-card__comments-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             <path fill="currentColor" d="M2 2.75A1.75 1.75 0 0 1 3.75 1h8.5A1.75 1.75 0 0 1 14 2.75v6.5A1.75 1.75 0 0 1 12.25 11H6.56l-2.9 2.42A.75.75 0 0 1 2.5 12.84V11A1.75 1.75 0 0 1 1 9.25z"/>
           </svg>
-          <span>{{ g.comentarios_count|default:0 }}</span>
+          <span data-garantia-card-comments-count="1">{{ g.comentarios_count|default:0 }}</span>
         </div>
 
         <div data-garantia-inline-slot="prioridad">
@@ -51,6 +52,10 @@
     </div>
 
     <div class="garantia-card__section garantia-card__footer">
+      <div class="small text-muted d-flex gap-2" aria-label="Recursos adjuntos">
+        <span data-garantia-card-files-count="1">Archivos: {{ g.archivos_count|default:0 }}</span>
+        <span data-garantia-card-links-count="1">Enlaces: {{ g.enlaces_count|default:0 }}</span>
+      </div>
       <div class="garantia-card__status-group">
         <span class="badge garantia-card__status-badge" data-garantia-state-badge="1">{{ g.get_estado_display }}</span>
         <select

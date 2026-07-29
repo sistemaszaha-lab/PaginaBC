@@ -1,0 +1,32 @@
+<section class="garantia-links-section" data-garantia-links-section="1" data-garantia-id="{{ garantia.id }}" aria-busy="false">
+  <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+    <h5 class="mb-0">Enlaces</h5>
+    <span class="badge text-bg-light border" data-garantia-links-count="1">{{ enlaces|length }}</span>
+  </div>
+
+  <form method="post" action="{% url 'garantias:agregar_enlace' garantia.id %}" data-garantia-links-form="1" class="mb-3">
+    {% csrf_token %}
+    <div class="row g-2">
+      <div class="col-md-4">{{ enlace_form.titulo }}{{ enlace_form.titulo.errors }}</div>
+      <div class="col-md-8">{{ enlace_form.url }}{{ enlace_form.url.errors }}</div>
+    </div>
+    <button type="submit" class="btn btn-sm btn-outline-primary mt-2">Agregar enlace</button>
+  </form>
+
+  <div data-garantia-links-list="1">
+    {% for enlace in enlaces %}
+      <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 small gap-2">
+        <div class="min-w-0">
+          <div class="fw-semibold">{{ enlace.titulo }}</div>
+          <a href="{{ enlace.url }}" target="_blank" rel="noopener" class="text-decoration-none text-break">{{ enlace.url }}</a>
+        </div>
+        <form method="post" action="{% url 'garantias:eliminar_enlace' garantia.id enlace.id %}" data-garantia-link-delete-form="1">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+        </form>
+      </div>
+    {% empty %}
+      <div class="text-muted small">Sin enlaces.</div>
+    {% endfor %}
+  </div>
+</section>

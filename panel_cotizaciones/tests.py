@@ -1,9 +1,15 @@
-from datetime import date
+import re
+from datetime import date, timedelta
+from pathlib import Path
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase
+from django.db import connection
+from django.test import Client, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 
 from clientes.models import Cliente
 
@@ -11,6 +17,13 @@ from .forms import PanelCotizacionCreateForm
 from .models import PanelCotizacion
 
 User = get_user_model()
+PANEL_JS_PATH = (
+    Path(__file__).resolve().parent
+    / "static"
+    / "panel_cotizaciones"
+    / "js"
+    / "panel.js"
+)
 
 
 class PanelCotizacionClienteNormalizacionTests(TestCase):
@@ -174,6 +187,369 @@ class PanelCotizacionFiltroTests(TestCase):
         self.assertNotContains(response, "Cotizacion Dos")
 
 
+@override_settings(PERFORMANCE_DEBUG=False)
+class PanelCotizacionCargaProgresivaTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="panel_fase7b",
+            password="panel123",
+            first_name="Fase",
+        )
+        self.asignado = User.objects.create_user(
+            username="panel_fase7b_asignado",
+            password="panel123",
+            first_name="Asignado",
+        )
+        self.client.force_login(self.user)
+        self.base = PanelCotizacion.objects.create(
+            titulo="Base 7B",
+            estado=PanelCotizacion.Estado.REQUERIMIENTO,
+            creado_por=self.user,
+        )
+
+    def _bulk(self, cantidad, estado=None):
+        estado = estado or PanelCotizacion.Estado.REQUERIMIENTO
+        base = timezone.now() + timedelta(minutes=1)
+        PanelCotizacion.objects.bulk_create(
+            [
+                PanelCotizacion(
+                    titulo=f"Fase 7B {estado} {index:03d}",
+                    estado=estado,
+                    creado_por=self.user,
+                    fecha_creacion=base + timedelta(seconds=index),
+                )
+                for index in range(cantidad)
+            ]
+        )
+
+    def _columna(self, response, estado):
+        return next(
+            columna
+            for columna in response.context["columnas_kanban"]
+            if columna["estado"] == estado
+        )
+
+    def _endpoint(self, estado, loaded_ids=(), **params):
+        params.setdefault("offset", len(loaded_ids))
+        params.setdefault(
+            "loaded", ",".join(str(value) for value in loaded_ids)
+        )
+        return self.client.get(
+            reverse(
+                "panel_cotizaciones:tarjetas_columna",
+                args=[estado],
+            ),
+            params,
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+    @staticmethod
+    def _ids(html):
+        return [
+            int(value)
+            for value in re.findall(
+                r'id="panel-cotizacion-(\d+)"',
+                html,
+            )
+        ]
+
+    def test_get_limita_diez_con_total_real_y_sin_escrituras(self):
+        self._bulk(20)
+        before = PanelCotizacion.objects.count()
+        response = self.client.get(
+            reverse("panel_cotizaciones:panel_cotizaciones")
+        )
+        columna = self._columna(
+            response, PanelCotizacion.Estado.REQUERIMIENTO
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["columnas_kanban"]), 3)
+        self.assertEqual(columna["count"], 21)
+        self.assertEqual(columna["loaded"], 10)
+        self.assertEqual(len(columna["items"]), 10)
+        self.assertTrue(columna["has_more"])
+        self.assertContains(response, 'data-total="21"')
+        self.assertContains(response, "Cargar más (11 restantes)")
+        self.assertEqual(
+            response.content.decode().count(
+                'data-panel-cotizacion-card="1"'
+            ),
+            10,
+        )
+        self.assertEqual(PanelCotizacion.objects.count(), before)
+
+    def test_limites_uno_diez_once_veinte_y_veintiuno(self):
+        estado = PanelCotizacion.Estado.REQUERIMIENTO
+        scenarios = (
+            (1, 1, False),
+            (10, 10, False),
+            (11, 10, True),
+            (20, 10, True),
+            (21, 10, True),
+        )
+        for total, visible, has_more in scenarios:
+            PanelCotizacion.objects.exclude(pk=self.base.pk).delete()
+            if total > 1:
+                self._bulk(total - 1)
+            response = self.client.get(
+                reverse("panel_cotizaciones:panel_cotizaciones")
+            )
+            columna = self._columna(response, estado)
+            self.assertEqual(columna["count"], total)
+            self.assertEqual(columna["loaded"], visible)
+            self.assertEqual(columna["has_more"], has_more)
+
+    def test_las_tres_columnas_pueden_limitarse_independientemente(self):
+        self._bulk(10, PanelCotizacion.Estado.REQUERIMIENTO)
+        self._bulk(11, PanelCotizacion.Estado.EN_PROGRESO)
+        self._bulk(11, PanelCotizacion.Estado.ENVIADA)
+        response = self.client.get(
+            reverse("panel_cotizaciones:panel_cotizaciones")
+        )
+
+        self.assertEqual(
+            [
+                columna["loaded"]
+                for columna in response.context["columnas_kanban"]
+            ],
+            [10, 10, 10],
+        )
+        self.assertEqual(
+            sum(
+                1
+                for columna in response.context["columnas_kanban"]
+                if columna["has_more"]
+            ),
+            3,
+        )
+
+    def test_get_y_endpoint_mantienen_consultas_constantes(self):
+        panel_url = reverse("panel_cotizaciones:panel_cotizaciones")
+        endpoint_url = reverse(
+            "panel_cotizaciones:tarjetas_columna",
+            args=[PanelCotizacion.Estado.REQUERIMIENTO],
+        )
+        with CaptureQueriesContext(connection) as panel_small_queries:
+            self.client.get(panel_url)
+        with CaptureQueriesContext(connection) as endpoint_small_queries:
+            self.client.get(
+                endpoint_url,
+                {"offset": "0", "loaded": ""},
+            )
+
+        self._bulk(99)
+        with CaptureQueriesContext(connection) as panel_large_queries:
+            response = self.client.get(panel_url)
+        with CaptureQueriesContext(connection) as endpoint_large_queries:
+            endpoint = self.client.get(
+                endpoint_url,
+                {"offset": "0", "loaded": ""},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(endpoint.status_code, 200)
+        self.assertEqual(
+            len(panel_small_queries), len(panel_large_queries)
+        )
+        self.assertEqual(
+            len(endpoint_small_queries), len(endpoint_large_queries)
+        )
+
+    def test_endpoint_tres_cargas_sin_repetidos_y_en_orden(self):
+        self._bulk(20)
+        panel = self.client.get(
+            reverse("panel_cotizaciones:panel_cotizaciones")
+        )
+        first_ids = [
+            obj.pk
+            for obj in self._columna(
+                panel, PanelCotizacion.Estado.REQUERIMIENTO
+            )["items"]
+        ]
+        second = self._endpoint(
+            PanelCotizacion.Estado.REQUERIMIENTO,
+            first_ids,
+        )
+        second_data = second.json()
+        second_ids = self._ids(second_data["html"])
+        third = self._endpoint(
+            PanelCotizacion.Estado.REQUERIMIENTO,
+            first_ids + second_ids,
+        )
+        third_data = third.json()
+        third_ids = self._ids(third_data["html"])
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second_data["loaded"], 10)
+        self.assertTrue(second_data["has_more"])
+        self.assertEqual(second_data["next_offset"], 20)
+        self.assertEqual(third_data["loaded"], 1)
+        self.assertFalse(third_data["has_more"])
+        expected = list(
+            PanelCotizacion.objects.filter(
+                estado=PanelCotizacion.Estado.REQUERIMIENTO
+            )
+            .order_by("-fecha_creacion", "-id")
+            .values_list("pk", flat=True)
+        )
+        combined = first_ids + second_ids + third_ids
+        self.assertEqual(combined, expected)
+        self.assertEqual(len(combined), len(set(combined)))
+        self.assertNotIn("<html", second_data["html"].lower())
+        self.assertIn(
+            'data-panel-cotizacion-modal-open="1"',
+            second_data["html"],
+        )
+        self.assertIn(
+            "data-panel-cotizacion-editor-url=",
+            second_data["html"],
+        )
+        self.assertIn(
+            'data-panel-cotizacion-state-select="1"',
+            second_data["html"],
+        )
+
+    def test_endpoint_reconcilia_movimiento_eliminacion_y_offset_mayor(self):
+        self._bulk(10)
+        loaded_ids = list(
+            PanelCotizacion.objects.filter(
+                estado=PanelCotizacion.Estado.REQUERIMIENTO
+            )
+            .order_by("-fecha_creacion", "-id")
+            .values_list("pk", flat=True)[:10]
+        )
+        moved_id = loaded_ids[-1]
+        PanelCotizacion.objects.filter(pk=moved_id).update(
+            estado=PanelCotizacion.Estado.ENVIADA
+        )
+        response = self._endpoint(
+            PanelCotizacion.Estado.REQUERIMIENTO,
+            loaded_ids,
+        )
+        data = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["stale_ids"], [moved_id])
+        self.assertNotIn(moved_id, self._ids(data["html"]))
+
+        empty = self._endpoint(
+            PanelCotizacion.Estado.EN_PROGRESO,
+            [999998, 999999],
+        )
+        self.assertEqual(empty.status_code, 200)
+        self.assertEqual(empty.json()["next_offset"], 0)
+        self.assertEqual(
+            empty.json()["stale_ids"], [999998, 999999]
+        )
+
+    def test_creacion_y_cambio_de_orden_entre_cargas_no_duplican(self):
+        self._bulk(15)
+        estado = PanelCotizacion.Estado.REQUERIMIENTO
+        first_ids = list(
+            PanelCotizacion.objects.filter(estado=estado)
+            .order_by("-fecha_creacion", "-id")
+            .values_list("pk", flat=True)[:10]
+        )
+        created = PanelCotizacion.objects.create(
+            titulo="Creada entre cargas",
+            estado=estado,
+            creado_por=self.user,
+        )
+        PanelCotizacion.objects.filter(pk=first_ids[-1]).update(
+            fecha_creacion=timezone.now() + timedelta(days=2)
+        )
+        loaded_ids = [created.pk] + first_ids
+        response = self._endpoint(estado, loaded_ids)
+        returned_ids = self._ids(response.json()["html"])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(created.pk, returned_ids)
+        self.assertTrue(set(first_ids).isdisjoint(returned_ids))
+
+    def test_endpoint_valida_estado_offset_filtro_metodos_y_anonimo(self):
+        estado = PanelCotizacion.Estado.REQUERIMIENTO
+        url = reverse(
+            "panel_cotizaciones:tarjetas_columna",
+            args=[estado],
+        )
+        for params in (
+            {"offset": "-1"},
+            {"offset": "texto"},
+            {"offset": "1", "loaded": "abc"},
+            {"offset": "2", "loaded": "1,1"},
+            {"offset": "0", "usuario": "invalido"},
+            {"offset": "0", "usuario": "999999"},
+        ):
+            self.assertEqual(
+                self.client.get(url, params).status_code,
+                400,
+            )
+        invalid_state = reverse(
+            "panel_cotizaciones:tarjetas_columna",
+            args=["ESTADO_INEXISTENTE"],
+        )
+        self.assertEqual(
+            self.client.get(
+                invalid_state, {"offset": "0", "loaded": ""}
+            ).status_code,
+            404,
+        )
+        self.assertEqual(self.client.post(url).status_code, 405)
+        self.assertEqual(self.client.put(url).status_code, 405)
+        self.assertEqual(self.client.delete(url).status_code, 405)
+        self.client.logout()
+        anonymous = self.client.get(
+            url, {"offset": "0", "loaded": ""}
+        )
+        self.assertEqual(anonymous.status_code, 302)
+        self.assertIn("/login/", anonymous.url)
+
+    def test_endpoint_respeta_filtro_multiple_y_lectura_compartida(self):
+        estado = PanelCotizacion.Estado.EN_PROGRESO
+        matching = []
+        for index in range(12):
+            obj = PanelCotizacion.objects.create(
+                titulo=f"Filtrada {index}",
+                estado=estado,
+                creado_por=self.user,
+            )
+            if index < 11:
+                obj.asignados.add(self.asignado)
+                matching.append(obj)
+        response = self._endpoint(
+            estado,
+            usuario=[str(self.asignado.pk)],
+        )
+        data = response.json()
+        self.assertEqual(data["total"], 11)
+        self.assertEqual(data["loaded"], 10)
+        self.assertTrue(data["has_more"])
+        self.assertNotIn("Filtrada 11", data["html"])
+
+        other = User.objects.create_user(
+            username="panel_fase7b_lector",
+            password="panel123",
+        )
+        self.client.force_login(other)
+        self.assertEqual(self._endpoint(estado).status_code, 200)
+
+    def test_javascript_deduplica_aborta_y_reconstruye_tablero(self):
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        self.assertIn("const columnLoadRequests = new Map()", javascript)
+        self.assertIn("if (existing) return existing.promise", javascript)
+        self.assertIn("entry.controller.abort()", javascript)
+        self.assertIn("boardRefreshController?.abort()", javascript)
+        self.assertIn("requestVersion !== boardVersion", javascript)
+        self.assertIn("Tarjeta duplicada o incompatible.", javascript)
+        self.assertIn("data-panel-cotizacion-load-more", javascript)
+        self.assertIn("if (duplicateCard) duplicateCard.remove()", javascript)
+        self.assertEqual(javascript.count("Sortable.create("), 1)
+        self.assertEqual(
+            javascript.count("document.addEventListener('click'"), 1
+        )
+        self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
+
+
 class PanelCotizacionInlineCreateTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -184,6 +560,167 @@ class PanelCotizacionInlineCreateTests(TestCase):
         self.cliente = Cliente.objects.create(nombre=" cliente demo ")
         self.client = Client()
         self.client.force_login(self.user)
+
+    def test_panel_no_instancia_formulario_inline_y_conserva_columnas(self):
+        with patch(
+            "panel_cotizaciones.views.PanelCotizacionInlineCreateForm",
+            side_effect=AssertionError("No debe instanciarse en el GET inicial"),
+        ):
+            response = self.client.get(
+                reverse("panel_cotizaciones:panel_cotizaciones")
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("inline_form", response.context)
+        html = response.content.decode()
+        self.assertEqual(
+            len(re.findall(r"<form\b[^>]*data-panel-cotizacion-inline-form=", html)),
+            0,
+        )
+        self.assertEqual(
+            len(re.findall(r"<button\b[^>]*data-panel-cotizacion-inline-open=", html)),
+            3,
+        )
+        self.assertEqual(
+            len(re.findall(r"<section\b[^>]*panel-cotizacion-column", html)),
+            3,
+        )
+        self.assertEqual(
+            len(re.findall(r"<div\b[^>]*data-panel-cotizacion-inline-shared-slot=", html)),
+            1,
+        )
+        self.assertEqual(
+            len(
+                re.findall(
+                    r'<form\b[^>]*data-panel-cotizacion-inline-editor="1"',
+                    html,
+                )
+            ),
+            0,
+        )
+        self.assertNotIn("_inline_editor_form.html", html)
+
+    def test_tablero_partial_tampoco_instancia_formulario_inline(self):
+        with patch(
+            "panel_cotizaciones.views.PanelCotizacionInlineCreateForm",
+            side_effect=AssertionError("No debe instanciarse al refrescar el tablero"),
+        ):
+            response = self.client.get(
+                reverse("panel_cotizaciones:tablero_partial"),
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "data-panel-cotizacion-inline-form=")
+
+    def test_endpoint_formulario_inline_autenticado_y_solo_get(self):
+        url = reverse("panel_cotizaciones:formulario_inline")
+        total = PanelCotizacion.objects.count()
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-panel-cotizacion-inline-form-fragment="1"')
+        self.assertContains(response, 'data-panel-cotizacion-inline-form="1"')
+        for field_name in ("titulo", "cliente", "prioridad", "estado"):
+            self.assertContains(response, f'name="{field_name}"')
+        self.assertEqual(PanelCotizacion.objects.count(), total)
+        self.assertEqual(self.client.post(url).status_code, 405)
+        self.assertEqual(self.client.put(url).status_code, 405)
+
+    def test_endpoint_formulario_inline_anonimo_redirige(self):
+        self.client.logout()
+        response = self.client.get(
+            reverse("panel_cotizaciones:formulario_inline")
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+
+    def test_javascript_carga_unica_reintento_y_tom_select_seguro(self):
+        response = self.client.get(
+            reverse("panel_cotizaciones:panel_cotizaciones")
+        )
+        html = response.content.decode()
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('id="panel-cotizaciones-config"', html)
+        self.assertIn("/static/panel_cotizaciones/js/panel.js", html)
+        self.assertNotIn("let inlineFormLoadPromise = null", html)
+        self.assertEqual(javascript.count("let inlineFormLoadPromise = null"), 1)
+        self.assertIn("if (inlineFormLoadPromise) return inlineFormLoadPromise", javascript)
+        self.assertIn("latestInlineTarget = target", javascript)
+        self.assertIn("inlineFormLoadPromise = null", javascript)
+        self.assertIn("redirect: 'error'", javascript)
+        self.assertIn("if (inlineForm.dataset.submitting === 'true') return", javascript)
+        self.assertIn("if (select.tomselect) return", javascript)
+        self.assertIn("select.tomselect.destroy()", javascript)
+        self.assertIn("if (hasActiveFilter) {\n              refreshBoard();", javascript)
+        self.assertEqual(javascript.count("document.addEventListener('submit'"), 1)
+        self.assertIn("const inlineEditorRequests = new Map()", javascript)
+        self.assertIn("inlineEditorRequests.get(cardId)", javascript)
+        self.assertIn("existing.fieldName === fieldName", javascript)
+        self.assertIn("existing.controller.abort()", javascript)
+        self.assertIn("data-panel-cotizacion-inline-editor-loading", javascript)
+        self.assertIn("No se pudo cargar el editor. Intenta nuevamente.", javascript)
+        self.assertNotIn("{% filter escapejs %}", javascript)
+
+    def test_endpoint_editor_inline_get_real_solo_lectura_y_metodos_seguros(self):
+        cotizacion = PanelCotizacion.objects.create(
+            titulo="Editor real",
+            cliente="Cliente real",
+            creado_por=self.user,
+        )
+        cotizacion.asignados.add(self.user)
+        url = reverse("panel_cotizaciones:inline_editor", args=[cotizacion.pk])
+        before = {
+            "objetos": PanelCotizacion.objects.count(),
+            "asignados": list(cotizacion.asignados.values_list("pk", flat=True)),
+            "titulo": cotizacion.titulo,
+        }
+
+        response = self.client.get(url, {"field": "asignados"})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["id"], cotizacion.pk)
+        self.assertEqual(data["field"], "asignados")
+        self.assertIn('data-panel-cotizacion-inline-editor="1"', data["html"])
+        self.assertIn(
+            f'data-panel-cotizacion-editor-id="{cotizacion.pk}"',
+            data["html"],
+        )
+        cotizacion.refresh_from_db()
+        self.assertEqual(
+            {
+                "objetos": PanelCotizacion.objects.count(),
+                "asignados": list(cotizacion.asignados.values_list("pk", flat=True)),
+                "titulo": cotizacion.titulo,
+            },
+            before,
+        )
+        self.assertEqual(self.client.post(url, {"field": "titulo"}).status_code, 405)
+        self.assertEqual(self.client.put(url, {"field": "titulo"}).status_code, 405)
+        self.assertEqual(self.client.get(url, {"field": "estado"}).status_code, 400)
+        self.assertEqual(
+            self.client.get(
+                reverse("panel_cotizaciones:inline_editor", args=[999999]),
+                {"field": "titulo"},
+            ).status_code,
+            404,
+        )
+
+    def test_endpoint_editor_inline_requiere_autenticacion(self):
+        cotizacion = PanelCotizacion.objects.create(
+            titulo="Privada",
+            creado_por=self.user,
+        )
+        self.client.logout()
+        response = self.client.get(
+            reverse("panel_cotizaciones:inline_editor", args=[cotizacion.pk]),
+            {"field": "titulo"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
 
     def test_creacion_inline_devuelve_json_y_tarjeta_renderizada(self):
         response = self.client.post(
@@ -223,6 +760,24 @@ class PanelCotizacionInlineCreateTests(TestCase):
         data = response.json()
         self.assertFalse(data["ok"])
         self.assertIn("estado", data["errors"])
+
+        response = self.client.post(
+            reverse("panel_cotizaciones:crear_inline"),
+            {
+                "estado": PanelCotizacion.Estado.EN_PROGRESO,
+                "titulo": "Demo",
+                "prioridad": "INVALIDA",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("prioridad", data["errors"])
+        self.assertIn('data-panel-cotizacion-inline-form-fragment="1"', data["html"])
+        self.assertIn(
+            f'value="{PanelCotizacion.Estado.EN_PROGRESO}"',
+            data["html"],
+        )
 
     def test_creacion_inline_sin_ajax_falla(self):
         response = self.client.post(
@@ -327,6 +882,23 @@ class PanelCotizacionInlineUpdateTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json()["ok"])
+
+    def test_inline_update_invalido_devuelve_solo_editor_con_errores(self):
+        response = self.client.post(
+            reverse("panel_cotizaciones:inline_update", args=[self.panel.pk]),
+            {"field": "fecha_vencimiento", "fecha_vencimiento": "invalida"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data["ok"])
+        self.assertEqual(data["id"], self.panel.pk)
+        self.assertEqual(data["field"], "fecha_vencimiento")
+        self.assertIn('data-panel-cotizacion-inline-editor="1"', data["html"])
+        self.assertIn("Introduzca una fecha válida", data["html"])
+        self.panel.refresh_from_db()
+        self.assertIsNone(self.panel.fecha_vencimiento)
 
 
 class PanelCotizacionDetalleUpdateTests(TestCase):

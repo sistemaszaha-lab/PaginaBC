@@ -1,7 +1,8 @@
 <div
   class="garantia-inline-value"
-  data-garantia-inline-field="cliente"
-  data-update-url="{% url 'garantias:actualizar_garantia_inline' g.id %}">
+  data-garantia-quick-edit-open="1"
+  data-current-value="{{ g.cliente_id|default:'' }}"
+  data-garantia-quick-edit-url="{% url 'garantias:actualizar_garantia_inline' g.id %}">
   <div class="garantia-card__client">
     {% if g.cliente %}
       {{ g.cliente }}

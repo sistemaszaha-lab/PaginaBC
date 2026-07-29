@@ -6,7 +6,13 @@ app_name = "garantias"
 
 urlpatterns = [
     path("", views.panel_garantias, name="panel_garantias"),
+    path(
+        "columna/<str:estado>/tarjetas/",
+        views.tarjetas_columna,
+        name="tarjetas_columna",
+    ),
     path("nueva/", views.crear_garantia, name="crear_garantia"),
+    path("crear-inline/formulario/", views.formulario_garantia_inline, name="formulario_garantia_inline"),
     path("crear-inline/", views.crear_garantia_inline, name="crear_garantia_inline"),
     path("actualizar-estado/", views.actualizar_estado_garantia, name="actualizar_estado_garantia"),
     path("<int:pk>/actualizar-inline/", views.actualizar_garantia_inline, name="actualizar_garantia_inline"),
@@ -16,7 +22,9 @@ urlpatterns = [
     path("<int:pk>/eliminar/", views.eliminar_garantia, name="eliminar_garantia"),
     path("<int:pk>/estado/", views.cambiar_estado_garantia, name="cambiar_estado_garantia"),
     path("<int:pk>/comentario/", views.agregar_comentario, name="agregar_comentario"),
+    path("<int:pk>/archivos/", views.agregar_archivos, name="agregar_archivos"),
     path("<int:pk>/archivos/<int:archivo_id>/descargar/", views.descargar_archivo, name="descargar_archivo"),
     path("<int:pk>/archivos/<int:archivo_id>/eliminar/", views.eliminar_archivo, name="eliminar_archivo"),
+    path("<int:pk>/enlaces/", views.agregar_enlace, name="agregar_enlace"),
     path("<int:pk>/enlaces/<int:enlace_id>/eliminar/", views.eliminar_enlace, name="eliminar_enlace"),
 ]

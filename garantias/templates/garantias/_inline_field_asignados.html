@@ -1,9 +1,9 @@
 {% load garantias_extras %}
 <div
   class="garantia-inline-value"
-  data-garantia-inline-field="asignados"
+  data-garantia-quick-edit-open="1"
   data-selected-ids="{% for u in g.asignados.all %}{{ u.id }}{% if not forloop.last %},{% endif %}{% endfor %}"
-  data-update-url="{% url 'garantias:actualizar_garantia_inline' g.id %}">
+  data-garantia-quick-edit-url="{% url 'garantias:actualizar_garantia_inline' g.id %}">
   <div class="garantia-card__assignees">
     {% for u in g.asignados.all %}
       {% if u.first_name %}

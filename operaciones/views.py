@@ -1,14 +1,18 @@
+import logging
+
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count
+from django.db.models import Count, F, Window
 from django.db import IntegrityError, transaction
+from django.db.models.functions import RowNumber
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 # pyrefly: ignore [missing-import]
 from .forms import (
@@ -36,13 +40,19 @@ from .models import (
 )
 from solicitudes.models import Referencia
 from .services import obtener_initial_operacion_desde_referencia
+from cuenta_gastos.services import crear_cuenta_gastos_desde_operacion_si_corresponde
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 # El orden del tablero es una regla de presentacion compartida por la vista y
 # los parciales. No modifica los estados persistidos en el modelo.
 COLUMNAS = list(Operacion.Estado.choices)
+INITIAL_CARDS_PER_COLUMN = 5
+CARDS_PAGE_SIZE = 10
+OPERACION_ORDERING = ("-fecha_creacion", "-id")
+ESTADOS_VISIBLES = frozenset(estado for estado, _label in COLUMNAS)
 
 
 def _estado_label(estado):
@@ -50,7 +60,8 @@ def _estado_label(estado):
 
 
 def _estados_disponibles():
-    return [choice[0] for choice in Operacion.Estado.choices]
+    campo_estado = Operacion._meta.get_field("estado")
+    return {valor for valor, _etiqueta in campo_estado.choices}
 
 
 def _nombre_corto_usuario(usuario):
@@ -82,6 +93,59 @@ def _operacion_queryset():
         )
         .order_by("-fecha_creacion", "-id")
     )
+
+
+def _board_queryset(usuario=None):
+    queryset = _operacion_queryset().filter(estado__in=ESTADOS_VISIBLES)
+    if usuario is not None:
+        queryset = queryset.filter(asignados__id=usuario.id).distinct()
+    return queryset.order_by(*OPERACION_ORDERING)
+
+
+def _columnas_kanban(usuario=None):
+    operaciones = list(
+        _board_queryset(usuario)
+        .annotate(
+            posicion_columna=Window(
+                expression=RowNumber(),
+                partition_by=[F("estado")],
+                order_by=[
+                    F("fecha_creacion").desc(),
+                    F("id").desc(),
+                ],
+            ),
+            total_columna=Window(
+                expression=Count("id"),
+                partition_by=[F("estado")],
+            ),
+        )
+        .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
+    )
+    items_por_estado = {estado: [] for estado, _label in COLUMNAS}
+    totales = {estado: 0 for estado, _label in COLUMNAS}
+    for operacion in operaciones:
+        items_por_estado[operacion.estado].append(operacion)
+        totales[operacion.estado] = operacion.total_columna
+
+    return [
+        {
+            "posicion": posicion,
+            "estado": estado,
+            "titulo": titulo,
+            "items": items_por_estado[estado],
+            "count": totales[estado],
+            "loaded": len(items_por_estado[estado]),
+            "has_more": totales[estado] > len(items_por_estado[estado]),
+            "remaining": max(
+                0, totales[estado] - len(items_por_estado[estado])
+            ),
+            "load_url": reverse(
+                "operaciones:tarjetas_columna",
+                kwargs={"estado": estado},
+            ),
+        }
+        for posicion, (estado, titulo) in enumerate(COLUMNAS, start=1)
+    ]
 
 
 def _construir_columnas(operaciones):
@@ -121,11 +185,59 @@ def _puede_modificar_operacion(user, operacion):
     return operacion.asignados.filter(id=user.id).exists()
 
 
+def _puede_mover_operacion(user):
+    """Los usuarios autenticados del sistema son administradores o ejecutivos."""
+    return bool(user and user.is_authenticated)
+
+
 def _get_usuario_filter(request):
     usuario_id = (request.GET.get("usuario") or "").strip()
     if not usuario_id.isdigit():
         return None
     return User.objects.filter(pk=int(usuario_id)).first()
+
+
+def _get_usuario_filter_estricto(request):
+    raw_values = [
+        value.strip()
+        for value in request.GET.getlist("usuario")
+        if (value or "").strip()
+    ]
+    if not raw_values:
+        return None, None
+    if (
+        len(raw_values) != 1
+        or not raw_values[0].isdigit()
+        or int(raw_values[0]) <= 0
+    ):
+        return None, JsonResponse(
+            {"ok": False, "error": "Filtro de usuario invalido."},
+            status=400,
+        )
+    usuario = User.objects.filter(pk=int(raw_values[0])).first()
+    if usuario is None:
+        return None, JsonResponse(
+            {"ok": False, "error": "Filtro de usuario invalido."},
+            status=400,
+        )
+    return usuario, None
+
+
+def _parse_loaded_ids(request, offset):
+    raw_values = request.GET.getlist("loaded")
+    parts = []
+    for raw_value in raw_values:
+        parts.extend(
+            value.strip()
+            for value in raw_value.split(",")
+            if value.strip()
+        )
+    if any(not value.isdigit() or int(value) <= 0 for value in parts):
+        return None
+    loaded_ids = list(dict.fromkeys(int(value) for value in parts))
+    if len(loaded_ids) != len(parts) or len(loaded_ids) != offset:
+        return None
+    return loaded_ids
 
 
 def _usuarios_filtro(selected_user_id=None):
@@ -330,6 +442,18 @@ def _render_inline_create_form(request, form, estado):
     )
 
 
+def _json_error(error_code, *, message=None, errors=None, status=400, **extra):
+    payload = {"ok": False, "error_code": error_code}
+    if status == 400:
+        payload["status"] = "error"
+    if message:
+        payload["message"] = message
+    if errors is not None:
+        payload["errors"] = errors
+    payload.update(extra)
+    return JsonResponse(payload, status=status)
+
+
 def _render_quick_edit_form(request, operacion, form=None):
     return render_to_string(
         "operaciones/_quick_edit_form.html",
@@ -341,33 +465,90 @@ def _render_quick_edit_form(request, operacion, form=None):
     )
 
 
+def _preservar_campos_no_enviados(form, post_data, *field_names):
+    for field_name in field_names:
+        present_marker = f"{field_name}_present"
+        if present_marker not in post_data and field_name not in post_data:
+            form.fields.pop(field_name, None)
+
+
 @login_required
 def panel_operaciones(request):
-
     usuario = _get_usuario_filter(request)
-
-    operaciones = _operacion_queryset()
-
-    # limpiar vacíos y valores inválidos
-    if usuario:
-        operaciones = (
-            operaciones
-            .filter(
-                asignados__id=usuario.id
-            )
-            .distinct()
-        )
-
-    
-    columnas = _construir_columnas(operaciones)
+    columnas = _columnas_kanban(usuario)
 
     return render(request, "operaciones/panel_operaciones.html", {
         "columnas": columnas,
         "estados": COLUMNAS,
-        "inline_form": OperacionInlineCreateForm(),
         "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
         "current": "panel_operaciones",
+        "panel_config": {
+            "inlineCreateUrl": reverse("operaciones:crear_operacion_inline"),
+            "inlineFormUrl": reverse("operaciones:formulario_operacion_inline"),
+        },
     })
+
+
+@login_required
+@require_GET
+def tarjetas_columna(request, estado):
+    if estado not in ESTADOS_VISIBLES:
+        return JsonResponse(
+            {"ok": False, "error": "Estado no encontrado."},
+            status=404,
+        )
+
+    raw_offset = (request.GET.get("offset") or "").strip()
+    if not raw_offset.isdigit():
+        return JsonResponse(
+            {"ok": False, "error": "Offset invalido."},
+            status=400,
+        )
+    offset = int(raw_offset)
+    usuario, error = _get_usuario_filter_estricto(request)
+    if error is not None:
+        return error
+    loaded_ids = _parse_loaded_ids(request, offset)
+    if loaded_ids is None:
+        return JsonResponse(
+            {"ok": False, "error": "Tarjetas cargadas invalidas."},
+            status=400,
+        )
+
+    columna = _board_queryset(usuario).filter(estado=estado)
+    total = columna.count()
+    recognized_loaded_ids = set(
+        columna.filter(pk__in=loaded_ids).values_list("pk", flat=True)
+    )
+    stale_ids = [
+        pk for pk in loaded_ids if pk not in recognized_loaded_ids
+    ]
+    siguientes = list(
+        columna.exclude(pk__in=loaded_ids)[: CARDS_PAGE_SIZE + 1]
+    )
+    has_more = len(siguientes) > CARDS_PAGE_SIZE
+    operaciones = siguientes[:CARDS_PAGE_SIZE]
+    html = "".join(
+        render_to_string(
+            "operaciones/_operacion_card.html",
+            {"operacion": operacion, "estados": COLUMNAS},
+            request=request,
+        )
+        for operacion in operaciones
+    )
+    loaded = len(operaciones)
+    return JsonResponse(
+        {
+            "ok": True,
+            "estado": estado,
+            "html": html,
+            "loaded": loaded,
+            "next_offset": len(recognized_loaded_ids) + loaded,
+            "has_more": has_more,
+            "total": total,
+            "stale_ids": stale_ids,
+        }
+    )
 
 
 @login_required
@@ -393,7 +574,7 @@ def crear_operacion(request):
                     "id": operacion.id,
                 })
             
-            messages.success(request, "Operación creada exitosamente.")
+            messages.success(request, "OperaciÃ³n creada exitosamente.")
             if next_url:
                 return redirect(next_url)
             return redirect("operaciones:panel_operaciones")
@@ -412,9 +593,9 @@ def crear_operacion(request):
 @login_required
 def enviar_referencia_a_operaciones(request, pk):
     referencia = get_object_or_404(Referencia, pk=pk)
-    # La vista ya está protegida por login_required. La creación manual de
+    # La vista ya estÃ¡ protegida por login_required. La creaciÃ³n manual de
     # Operaciones admite a cualquier usuario autenticado, por lo que la
-    # conversión mantiene la misma regla para administradores y ejecutivos.
+    # conversiÃ³n mantiene la misma regla para administradores y ejecutivos.
     if getattr(referencia, "operacion_generada", None):
         messages.info(request, "Esta referencia ya fue enviada a Operaciones.")
         return redirect("operaciones:panel_operaciones")
@@ -429,7 +610,9 @@ def enviar_referencia_a_operaciones(request, pk):
                     operacion = form.save(commit=False)
                     operacion.creado_por = request.user
                     operacion.referencia_origen = referencia
-                    operacion.estado = Operacion.Estado.PENDIENTE
+                    # El estado se impone en el servidor para que un POST
+                    # manipulado no pueda sacar la conversiÃ³n de Pick up.
+                    operacion.estado = Operacion.Estado.COORDINAR_PICKUP
                     operacion.save()
                     form.save_m2m()
                     if archivos_form.is_valid() and enlace_form.is_valid():
@@ -437,7 +620,7 @@ def enviar_referencia_a_operaciones(request, pk):
             except IntegrityError:
                 messages.error(request, "Esta referencia ya fue enviada a Operaciones.")
                 return redirect("operaciones:panel_operaciones")
-            messages.success(request, "Operación creada en Pendientes desde la referencia.")
+            messages.success(request, "La referencia se enviÃ³ correctamente a Operaciones en la columna Pick up.")
             return redirect("operaciones:panel_operaciones")
     else:
         form = OperacionForm(initial=obtener_initial_operacion_desde_referencia(referencia))
@@ -451,56 +634,65 @@ def enviar_referencia_a_operaciones(request, pk):
 
 
 @login_required
+@require_GET
+def formulario_operacion_inline(request):
+    return render(
+        request,
+        "operaciones/_inline_create_form.html",
+        {"form": OperacionInlineCreateForm(), "estado": ""},
+    )
+
+
+@login_required
 @require_POST
 def crear_operacion_inline(request):
-    if not _es_ajax(request):
-        return JsonResponse(
-            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+    estados_recibidos = request.POST.getlist("estado")
+    estado = (estados_recibidos[0] if len(estados_recibidos) == 1 else "").strip()
+    if len(estados_recibidos) != 1 or estado not in _estados_disponibles():
+        return _json_error(
+            "INVALID_STATE",
+            message="Estado invalido.",
+            errors={"estado": [{"message": "Estado invalido.", "code": "invalid"}]},
             status=400,
         )
 
-    estado = (request.POST.get("estado") or "").strip()
-    if estado not in _estados_disponibles():
-        return JsonResponse(
-            {"ok": False, "errors": {"estado": ["Estado invalido."]}},
-            status=400,
-        )
-
-    form = OperacionInlineCreateForm(request.POST)
+    form = OperacionInlineCreateForm(request.POST, request.FILES)
     if not form.is_valid():
-        return JsonResponse(
-            {
-                "ok": False,
-                "errors": form.errors.get_json_data(escape_html=True),
-                "html": _render_inline_create_form(request, form, estado),
-            },
+        return _json_error(
+            "FORM_INVALID",
+            message="No se pudo crear la operacion.",
+            errors=form.errors.get_json_data(escape_html=True),
+            html_form=_render_inline_create_form(request, form, estado),
             status=400,
         )
 
-    operacion = form.save(commit=False)
-    operacion.estado = estado
-    operacion.creado_por = request.user
-    operacion.save()
+    with transaction.atomic():
+        operacion = form.save(commit=False)
+        operacion.estado = estado
+        operacion.creado_por = request.user
+        operacion.save()
+        form.save_m2m()
+        cuenta_gastos, cuenta_gastos_creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
+            operacion, creado_por=request.user
+        )
 
     return JsonResponse(
         {
             "ok": True,
             "html": _render_card_html(request, operacion),
+            "operacion_id": operacion.id,
             "id": operacion.id,
             "estado": operacion.estado,
-        }
+            "cuenta_gastos_creada": cuenta_gastos_creada,
+            "cuenta_gastos_id": cuenta_gastos.pk if cuenta_gastos else None,
+        },
+        status=201,
     )
 
 
 @login_required
 @require_http_methods(["GET", "POST"])
 def editar_operacion_rapida(request, operacion_id):
-    if not _es_ajax(request):
-        return JsonResponse(
-            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
-            status=400,
-        )
-
     operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar esta operacion.")
@@ -510,14 +702,16 @@ def editar_operacion_rapida(request, operacion_id):
             {"ok": True, "html": _render_quick_edit_form(request, operacion)}
         )
 
-    form = OperacionQuickEditForm(request.POST, instance=operacion)
+    post_data = request.POST.copy()
+    form = OperacionQuickEditForm(post_data, instance=operacion)
+    _preservar_campos_no_enviados(form, post_data, "titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados")
     if not form.is_valid():
-        return JsonResponse(
-            {
-                "ok": False,
-                "errors": form.errors.get_json_data(escape_html=True),
-                "html": _render_quick_edit_form(request, operacion, form),
-            },
+        return _json_error(
+            "FORM_INVALID",
+            message="No se pudo guardar la edicion rapida.",
+            errors=form.errors.get_json_data(escape_html=True),
+            html_form=_render_quick_edit_form(request, operacion, form),
+            html=_render_quick_edit_form(request, operacion, form),
             status=400,
         )
 
@@ -544,16 +738,19 @@ def detalle_operacion_modal(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
     if request.method == "POST":
         form = OperacionEditarForm(request.POST, request.FILES, instance=operacion)
+        _preservar_campos_no_enviados(
+            form,
+            request.POST,
+            "titulo",
+            "descripcion",
+            "cliente",
+            "prioridad",
+            "fecha_vencimiento",
+            "asignados",
+            "etiquetas",
+            "opciones",
+        )
         if form.is_valid():
-            original = Operacion.objects.get(id=operacion_id)
-            for campo in form.fields:
-                valor = form.cleaned_data.get(campo)
-                if valor in (None, '', [], {}) or (hasattr(valor, 'exists') and not valor.exists()):
-                    actual = getattr(original, campo)
-                    if hasattr(actual, 'all'):
-                        form.cleaned_data[campo] = actual.all()
-                    else:
-                        setattr(form.instance, campo, actual)
             obj = form.save(commit=False)
             obj.save()
             form.save_m2m()
@@ -563,7 +760,7 @@ def detalle_operacion_modal(request, operacion_id):
                     "success": True,
                     "html": _render_card_html(request, operacion),
                 })
-            messages.success(request, "Operación actualizada exitosamente.")
+            messages.success(request, "OperaciÃ³n actualizada exitosamente.")
             return redirect("operaciones:panel_operaciones")
     else:
         form = OperacionEditarForm(instance=operacion)
@@ -580,19 +777,22 @@ def detalle_operacion_modal(request, operacion_id):
 def editar_operacion(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
-        raise PermissionDenied("No tienes permisos para modificar esta operación.")
+        raise PermissionDenied("No tienes permisos para modificar esta operaciÃ³n.")
     form = OperacionEditarForm(request.POST, request.FILES, instance=operacion)
+    _preservar_campos_no_enviados(
+        form,
+        request.POST,
+        "titulo",
+        "descripcion",
+        "cliente",
+        "prioridad",
+        "fecha_vencimiento",
+        "asignados",
+        "etiquetas",
+        "opciones",
+    )
 
     if form.is_valid():
-        original = Operacion.objects.get(id=operacion_id)
-        for campo in form.fields:
-            valor = form.cleaned_data.get(campo)
-            if valor in (None, '', [], {}) or (hasattr(valor, 'exists') and not valor.exists()):
-                actual = getattr(original, campo)
-                if hasattr(actual, 'all'):
-                    form.cleaned_data[campo] = actual.all()
-                else:
-                    setattr(form.instance, campo, actual)
         obj = form.save(commit=False)
         obj.save()
         form.save_m2m()
@@ -605,7 +805,7 @@ def editar_operacion(request, operacion_id):
                 "html": _render_card_html(request, operacion),
             })
 
-        messages.success(request, "Operación actualizada exitosamente.")
+        messages.success(request, "OperaciÃ³n actualizada exitosamente.")
         return redirect("operaciones:panel_operaciones")
 
     contexto = _contexto_modal_operacion(operacion, form=form)
@@ -620,7 +820,7 @@ def editar_operacion(request, operacion_id):
 def agregar_comentario(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
-        raise PermissionDenied("No tienes permisos para comentar esta operación.")
+        raise PermissionDenied("No tienes permisos para comentar esta operaciÃ³n.")
     if not _es_ajax(request):
         return JsonResponse({"success": False, "error": "Solicitud AJAX requerida."}, status=400)
 
@@ -656,7 +856,7 @@ def agregar_comentario(request, operacion_id):
 def agregar_archivo(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
-        raise PermissionDenied("No tienes permisos para modificar esta operación.")
+        raise PermissionDenied("No tienes permisos para modificar esta operaciÃ³n.")
     if not _es_ajax(request):
         return JsonResponse({"success": False, "error": "Solicitud AJAX requerida."}, status=400)
 
@@ -693,7 +893,7 @@ def agregar_archivo(request, operacion_id):
 def eliminar_archivo(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
-        raise PermissionDenied("No tienes permisos para eliminar archivos de esta operación.")
+        raise PermissionDenied("No tienes permisos para eliminar archivos de esta operaciÃ³n.")
     if not _es_ajax(request):
         return JsonResponse({"success": False, "error": "Solicitud AJAX requerida."}, status=400)
 
@@ -754,7 +954,7 @@ def agregar_enlace(request, operacion_id):
 def eliminar_enlace(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
-        raise PermissionDenied("No tienes permisos para eliminar enlaces de esta operación.")
+        raise PermissionDenied("No tienes permisos para eliminar enlaces de esta operaciÃ³n.")
     if not _es_ajax(request):
         return JsonResponse({"success": False, "error": "Solicitud AJAX requerida."}, status=400)
 
@@ -948,7 +1148,7 @@ def editar_etiqueta(request, etiqueta_id):
     if not nombre:
         return JsonResponse({"success": False, "error": "Nombre requerido"}, status=400)
     if not color or not color.startswith("#") or len(color) != 7:
-        return JsonResponse({"success": False, "error": "Color inválido"}, status=400)
+        return JsonResponse({"success": False, "error": "Color invÃ¡lido"}, status=400)
 
     etiqueta.nombre = nombre
     etiqueta.color = color
@@ -976,45 +1176,40 @@ def eliminar_etiqueta(request, etiqueta_id):
 
 @login_required
 @require_POST
-def mover_operacion(
-    request,
-    operacion_id
-):
-
-    if request.method=="POST":
-
-        operacion=get_object_or_404(
-           Operacion,
-           id=operacion_id
+def mover_operacion(request, operacion_id):
+    operacion = get_object_or_404(Operacion, id=operacion_id)
+    if not _puede_mover_operacion(request.user):
+        logger.warning(
+            "Movimiento rechazado. Usuario=%s operacion=%s",
+            request.user.pk,
+            operacion.pk,
         )
-        if not _puede_modificar_operacion(request.user, operacion):
-            raise PermissionDenied("No tienes permisos para mover esta operación.")
+        return _json_error("FORBIDDEN", message="No tienes permiso para mover operaciones.", status=403)
 
-        estado=request.POST.get(
-           "estado"
+    estado = (request.POST.get("estado") or "").strip()
+    if estado not in _estados_disponibles():
+        return _json_error(
+            "INVALID_STATE",
+            message="Estado invalido.",
+            errors={"estado": [{"message": "Estado invalido.", "code": "invalid"}]},
+            status=400,
         )
 
-        if estado not in _estados_disponibles():
-            return JsonResponse(
-                {"status": "error", "error": "Estado invalido."},
-                status=400,
-            )
-
-        if estado:
-
-            operacion.estado=estado
-
-            operacion.save(update_fields=["estado"])
-
-            return JsonResponse({
-                "status":"ok",
-                "id": operacion.id,
-                "estado": operacion.estado,
-                "estado_label": _estado_label(operacion.estado),
-            })
+    with transaction.atomic():
+        operacion.estado = estado
+        operacion.save(update_fields=["estado"])
+        cuenta_gastos, cuenta_gastos_creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
+            operacion, creado_por=request.user
+        )
 
     return JsonResponse({
-        "status":"error"
+        "ok": True,
+        "status": "ok",
+        "id": operacion.id,
+        "estado": operacion.estado,
+        "estado_label": _estado_label(operacion.estado),
+        "cuenta_gastos_creada": cuenta_gastos_creada,
+        "cuenta_gastos_id": cuenta_gastos.pk if cuenta_gastos else None,
     })
 
 @login_required
@@ -1022,11 +1217,11 @@ def mover_operacion(
 def eliminar_operacion(request, operacion_id):
     operacion = get_object_or_404(Operacion, id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
-        raise PermissionDenied("No tienes permisos para eliminar esta operación.")
+        raise PermissionDenied("No tienes permisos para eliminar esta operaciÃ³n.")
     operacion.delete()
     
     if _es_ajax(request):
         return JsonResponse({"success": True, "redirect": True, "id": operacion_id})
     
-    messages.success(request, "Operación eliminada exitosamente.")
+    messages.success(request, "OperaciÃ³n eliminada exitosamente.")
     return redirect("operaciones:panel_operaciones")

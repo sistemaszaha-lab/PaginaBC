@@ -6,8 +6,14 @@ app_name = "operaciones"
 
 urlpatterns = [
     path("", views.panel_operaciones, name="panel_operaciones"),
+    path(
+        "columna/<str:estado>/tarjetas/",
+        views.tarjetas_columna,
+        name="tarjetas_columna",
+    ),
     path("nueva/", views.crear_operacion, name="crear_operacion"),
     path("referencias/<int:pk>/enviar-a-operaciones/", views.enviar_referencia_a_operaciones, name="enviar_referencia_a_operaciones"),
+    path("nueva/inline/formulario/", views.formulario_operacion_inline, name="formulario_operacion_inline"),
     path("nueva/inline/", views.crear_operacion_inline, name="crear_operacion_inline"),
     path("opcion/crear/", views.crear_opcion, name="crear_opcion"),
     path("etiqueta/crear/", views.crear_etiqueta, name="crear_etiqueta"),

@@ -12,19 +12,6 @@
         <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
         {{ form.as_p }}
 
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Adjuntar archivos</label>
-          {{ archivos_form.archivos }}
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Agregar enlace</label>
-          <div class="row g-2">
-            <div class="col-md-4">{{ enlace_form.titulo }}</div>
-            <div class="col-md-8">{{ enlace_form.url }}</div>
-          </div>
-        </div>
-
         <div class="d-flex gap-2 flex-wrap">
           <button type="submit" class="btn btn-primary">Guardar</button>
         </div>
@@ -38,50 +25,13 @@
 
       <hr class="my-4" />
 
-      <h5 class="mb-3">Archivos</h5>
-      {% if garantia.archivos.all %}
-        <div class="mb-3">
-          {% for archivo in garantia.archivos.all %}
-            <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 small">
-              <div class="min-w-0">
-                <div class="fw-semibold text-truncate">{{ archivo.archivo.name }}</div>
-                <div class="text-muted">{{ archivo.fecha|date:"Y-m-d H:i" }}</div>
-              </div>
-              <div class="d-flex gap-2 flex-wrap">
-                <a class="btn btn-sm btn-outline-primary" href="{% url 'garantias:descargar_archivo' garantia.id archivo.id %}">Descargar</a>
-                <form method="post" action="{% url 'garantias:eliminar_archivo' garantia.id archivo.id %}" data-garantia-modal-refresh="1">
-                  {% csrf_token %}
-                  <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
-                  <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
-                </form>
-              </div>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="text-muted small mb-3">Sin archivos.</div>
-      {% endif %}
+      <div class="mt-4">
+        {% include "garantias/_archivos_section.html" with garantia=garantia archivos=archivos archivos_form=archivos_form only %}
+      </div>
 
-      <h5 class="mb-3">Enlaces</h5>
-      {% if garantia.enlaces.all %}
-        <div class="mb-3">
-          {% for enlace in garantia.enlaces.all %}
-            <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 small">
-              <div class="min-w-0">
-                <div class="fw-semibold">{{ enlace.titulo }}</div>
-                <a href="{{ enlace.url }}" target="_blank" rel="noopener" class="text-decoration-none">{{ enlace.url }}</a>
-              </div>
-              <form method="post" action="{% url 'garantias:eliminar_enlace' garantia.id enlace.id %}" data-garantia-modal-refresh="1">
-                {% csrf_token %}
-                <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
-                <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
-              </form>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="text-muted small mb-3">Sin enlaces.</div>
-      {% endif %}
+      <div class="mt-4">
+        {% include "garantias/_enlaces_section.html" with garantia=garantia enlaces=enlaces enlace_form=enlace_form only %}
+      </div>
     </div>
 
     <div class="col-12 col-lg-4">

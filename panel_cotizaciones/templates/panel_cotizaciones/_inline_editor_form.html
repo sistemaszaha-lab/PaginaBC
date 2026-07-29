@@ -1,13 +1,17 @@
 <form
   class="panel-cotizacion-inline-editor"
   data-panel-cotizacion-inline-editor="1"
+  data-panel-cotizacion-editor-id="{{ c.id }}"
+  data-update-url="{% url 'panel_cotizaciones:inline_update' c.id %}"
   data-field="{{ field_name }}">
   {% csrf_token %}
   <input type="hidden" name="field" value="{{ field_name }}">
   <div class="panel-cotizacion-inline-editor__control">
     {{ bound_field }}
   </div>
-  <div class="panel-cotizacion-inline-editor__error text-danger small mt-1" data-panel-cotizacion-inline-error="1"></div>
+  <div class="panel-cotizacion-inline-editor__error text-danger small mt-1" data-panel-cotizacion-inline-error="1">
+    {% for error in bound_field.errors %}{{ error }}{% endfor %}
+  </div>
   <div class="panel-cotizacion-inline-editor__actions">
     <button type="submit" class="btn btn-sm btn-primary">Guardar</button>
     <button type="button" class="btn btn-sm btn-light" data-panel-cotizacion-inline-field-cancel="1">Cancelar</button>

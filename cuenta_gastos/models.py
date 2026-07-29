@@ -18,7 +18,7 @@ class CuentaGastos(models.Model):
 
         SOLICITUD_PAGO = "SOLICITUD_PAGO", "Solicitud de pago"
         SOLICITUD_FACTURAS = "SOLICITUD_FACTURAS", "Solicitud de facturas"
-        SOLICITUD_CUENTA_GASTOS = "SOLICITUD_CUENTA_GASTOS", "Solicitud de cuenta de gastos"
+        SOLICITUD_CUENTA_GASTOS = "SOLICITUD_CUENTA_GASTOS", "Solicitud de cuenta de agencia aduanal"
         FACTURA_ANTICIPO = "FACTURA_ANTICIPO", "Factura por Anticipo"
         FLETE_ESPERA_PAGO = "FLETE_ESPERA_PAGO", "Flete en espera de pago"
         EN_PROCESO = "EN_PROCESO", "En Proceso"
@@ -100,6 +100,11 @@ class CuentaGastos(models.Model):
         "CuentaGastosOpcion",
         blank=True,
         related_name="cuentas_gastos"
+    )
+    operacion_origen = models.OneToOneField(
+        "operaciones.Operacion", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="cuenta_gastos_generada",
+        editable=False,
     )
 
     class Meta:

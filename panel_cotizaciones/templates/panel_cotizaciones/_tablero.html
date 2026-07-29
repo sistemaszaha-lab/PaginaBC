@@ -1,5 +1,5 @@
 <div class="row g-3">
-  {% for estado, estado_texto, items in columnas_kanban %}
-    {% include "panel_cotizaciones/_columna.html" with estado=estado estado_texto=estado_texto items=items inline_form=inline_form only %}
+  {% for columna in columnas_kanban %}
+    {% include "panel_cotizaciones/_columna.html" with columna=columna only %}
   {% endfor %}
 </div>

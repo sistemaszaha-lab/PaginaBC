@@ -59,7 +59,7 @@ class OperacionInlineCreateForm(forms.ModelForm):
 
     class Meta:
         model = Operacion
-        fields = ["titulo", "cliente", "prioridad"]
+        fields = ["titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas"]
         widgets = {
             "titulo": forms.TextInput(
                 attrs={
@@ -69,6 +69,21 @@ class OperacionInlineCreateForm(forms.ModelForm):
             ),
             "cliente": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "fecha_vencimiento": forms.DateInput(
+                attrs={"class": "form-control form-control-sm", "type": "date"}
+            ),
+            "asignados": forms.SelectMultiple(
+                attrs={
+                    "class": "form-select form-select-sm garantia-asignados-select",
+                    "data-operacion-tags-select": "1",
+                }
+            ),
+            "etiquetas": forms.SelectMultiple(
+                attrs={
+                    "class": "form-select form-select-sm",
+                    "data-operacion-tags-select": "1",
+                }
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -76,7 +91,15 @@ class OperacionInlineCreateForm(forms.ModelForm):
         self.fields["titulo"].required = True
         self.fields["cliente"].required = False
         self.fields["prioridad"].required = False
+        self.fields["fecha_vencimiento"].required = False
+        self.fields["asignados"].required = False
+        self.fields["etiquetas"].required = False
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
+        User = get_user_model()
+        self.fields["asignados"].queryset = User.objects.all().order_by("first_name", "last_name", "username", "id")
+        self.fields["asignados"].label_from_instance = lambda obj: obj.first_name or obj.username
+        self.fields["etiquetas"].queryset = OperacionEtiqueta.objects.order_by("nombre", "id")
+        self.fields["etiquetas"].label_from_instance = lambda obj: obj.nombre
 
 
 class OperacionQuickEditForm(forms.ModelForm):

@@ -1,11 +1,30 @@
+from pathlib import Path
+import re
+from datetime import timedelta
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.test.utils import override_settings
-from django.urls import reverse
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
+from django.urls import resolve, reverse
+from django.utils import timezone
 
 from .models import Operacion, OperacionArchivo, OperacionComentario, OperacionEnlace, OperacionEtiqueta, OperacionOpcion
 from solicitudes.models import Referencia
+from clientes.models import Cliente
+from cuenta_gastos.models import CuentaGastos
+from cuenta_gastos.services import crear_cuenta_gastos_desde_operacion_si_corresponde
+
+PANEL_JS_PATH = (
+    Path(__file__).resolve().parent
+    / "static"
+    / "operaciones"
+    / "js"
+    / "panel_operaciones.js"
+)
 
 
 @override_settings(
@@ -21,14 +40,22 @@ class ReferenciaAOperacionTests(TestCase):
         )
         self.client.force_login(self.usuario)
 
-    def test_crea_operacion_pendiente_vinculada_y_no_duplica(self):
+    def test_crea_operacion_pickup_vinculada_y_no_duplica(self):
         url = reverse("operaciones:enviar_referencia_a_operaciones", args=[self.referencia.pk])
         self.assertEqual(self.client.get(url).status_code, 200)
-        response = self.client.post(url, {"titulo": "Referencia BC261001", "descripcion": "detalle"})
+        response = self.client.post(url, {
+            "titulo": "Referencia BC261001",
+            "descripcion": "detalle",
+            "estado": Operacion.Estado.PENDIENTE,
+        })
         self.assertRedirects(response, reverse("operaciones:panel_operaciones"))
         operacion = Operacion.objects.get(referencia_origen=self.referencia)
-        self.assertEqual(operacion.estado, Operacion.Estado.PENDIENTE)
+        self.assertEqual(operacion.estado, Operacion.Estado.COORDINAR_PICKUP)
+        self.assertNotEqual(operacion.estado, Operacion.Estado.PENDIENTE)
         self.assertEqual(operacion.creado_por, self.usuario)
+        self.referencia.refresh_from_db()
+        self.assertEqual(self.referencia.referencia, "BC261001")
+        self.assertEqual(self.referencia.ejecutivo, self.usuario)
         self.assertEqual(self.client.get(url).status_code, 302)
         self.assertEqual(Operacion.objects.filter(referencia_origen=self.referencia).count(), 1)
 
@@ -53,6 +80,61 @@ class ReferenciaAOperacionTests(TestCase):
         self.client.force_login(otro)
         response = self.client.get(reverse("lista_referencias"))
         self.assertContains(response, "Enviar a Operaciones")
+
+
+@override_settings(
+    STORAGES={"staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}}
+)
+class OperacionACuentaGastosTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.usuario = User.objects.create_user(username="movedor-cg", password="pass")
+        self.asignado = User.objects.create_user(username="asignado-cg", password="pass")
+        self.cliente = Cliente.objects.create(nombre="CLIENTE CG")
+        self.operacion = Operacion.objects.create(
+            titulo="Operación origen", descripcion="Descripción origen", cliente=self.cliente,
+            prioridad=Operacion.Prioridad.ALTA, fecha_vencimiento="2026-08-01",
+            creado_por=self.usuario,
+        )
+        self.operacion.asignados.add(self.asignado)
+        self.client.force_login(self.usuario)
+
+    def test_mover_a_solicitud_cuenta_gastos_crea_tarjeta_mapeada(self):
+        response = self.client.post(
+            reverse("operaciones:mover_operacion", args=[self.operacion.pk]),
+            {"estado": Operacion.Estado.SOLICITUD_CUENTA_GASTOS},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["cuenta_gastos_creada"])
+        cuenta = CuentaGastos.objects.get(operacion_origen=self.operacion)
+        self.assertEqual(cuenta.estado, CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS)
+        self.assertEqual(cuenta.titulo, self.operacion.titulo)
+        self.assertEqual(cuenta.descripcion, self.operacion.descripcion)
+        self.assertEqual(cuenta.cliente, self.cliente)
+        self.assertEqual(cuenta.prioridad, CuentaGastos.Prioridad.ALTA)
+        self.assertEqual(str(cuenta.fecha_vencimiento), str(self.operacion.fecha_vencimiento))
+        self.assertEqual(list(cuenta.asignados.all()), [self.asignado])
+        self.operacion.refresh_from_db()
+        self.assertEqual(self.operacion.estado, Operacion.Estado.SOLICITUD_CUENTA_GASTOS)
+
+    def test_servicio_es_idempotente_y_no_crea_fuera_del_estado_destino(self):
+        cuenta, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
+            self.operacion, creado_por=self.usuario
+        )
+        self.assertIsNone(cuenta)
+        self.assertFalse(creada)
+        self.operacion.estado = Operacion.Estado.SOLICITUD_CUENTA_GASTOS
+        self.operacion.save(update_fields=["estado"])
+        primera, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
+            self.operacion, creado_por=self.usuario
+        )
+        segunda, creada_dos = crear_cuenta_gastos_desde_operacion_si_corresponde(
+            self.operacion, creado_por=self.usuario
+        )
+        self.assertTrue(creada)
+        self.assertFalse(creada_dos)
+        self.assertEqual(primera.pk, segunda.pk)
+        self.assertEqual(CuentaGastos.objects.filter(operacion_origen=self.operacion).count(), 1)
 
 
 @override_settings(
@@ -100,10 +182,22 @@ class OperacionesPanelFiltroUsuariosTests(TestCase):
         self.assertContains(resp, 'data-panel-operacion-card="1"')
         self.assertContains(resp, 'data-estado="PENDIENTE"')
         self.assertContains(resp, 'class="btn btn-sm operaciones-column__add-btn"', count=9)
-        self.assertContains(resp, 'class="operaciones-inline-form"', count=9)
+        self.assertNotContains(resp, 'class="operaciones-inline-form"')
+        self.assertContains(resp, '<div class="px-3 pt-3 d-none" data-operacion-inline-container="1"', count=1)
+        self.assertContains(resp, '<div data-operacion-inline-form-slot="1"></div>', count=1)
         self.assertContains(resp, 'data-operacion-quick-edit-open="1"')
         self.assertContains(resp, 'id="OperacionDetalleDrawer"')
         self.assertContains(resp, 'id="OperacionDetalleDrawerContent"')
+        self.assertContains(resp, "Pick up")
+
+    def test_panel_no_crea_el_formulario_inline_en_el_get_inicial(self):
+        with patch("operaciones.views.OperacionInlineCreateForm") as inline_form_class:
+            resp = self.client.get(reverse("operaciones:panel_operaciones"))
+
+        self.assertEqual(resp.status_code, 200)
+        inline_form_class.assert_not_called()
+        self.assertNotIn("inline_form", resp.context)
+        self.assertNotContains(resp, 'class="operaciones-inline-form"')
 
 
 @override_settings(
@@ -161,11 +255,7 @@ class OperacionesDetalleModalTests(TestCase):
 
         # Hacemos un POST mandando valores vacíos/None
         post_data = {
-            "titulo": "",
-            "fecha_vencimiento": "",
             "prioridad": "MEDIA",  # Queremos cambiar solo la prioridad
-            "asignados": [],
-            "etiquetas": [],
         }
         
         resp = self.client.post(
@@ -291,12 +381,12 @@ class OperacionesMovimientoTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {
-            "status": "ok",
-            "id": self.operacion.id,
-            "estado": Operacion.Estado.SEGUROS,
-            "estado_label": "Seguros",
-        })
+        self.assertEqual(response.json()["status"], "ok")
+        self.assertEqual(response.json()["id"], self.operacion.id)
+        self.assertEqual(response.json()["estado"], Operacion.Estado.SEGUROS)
+        self.assertEqual(response.json()["estado_label"], "Seguros")
+        self.assertFalse(response.json()["cuenta_gastos_creada"])
+        self.assertIsNone(response.json()["cuenta_gastos_id"])
         self.operacion.refresh_from_db()
         self.assertEqual(self.operacion.estado, Operacion.Estado.SEGUROS)
 
@@ -320,14 +410,18 @@ class OperacionesMovimientoTests(TestCase):
         self.operacion.refresh_from_db()
         self.assertEqual(self.operacion.estado, Operacion.Estado.EN_ADUANA)
 
-    def test_usuario_sin_permiso_no_puede_mover(self):
+    def test_ejecutivo_no_asignado_puede_mover(self):
         self.client.force_login(self.other_user)
 
         response = self.client.post(self.move_url, {"estado": Operacion.Estado.SEGUROS})
 
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 200)
         self.operacion.refresh_from_db()
-        self.assertEqual(self.operacion.estado, Operacion.Estado.PENDIENTE)
+        self.assertEqual(self.operacion.estado, Operacion.Estado.SEGUROS)
+
+    def test_mover_requiere_autenticacion(self):
+        response = self.client.post(self.move_url, {"estado": Operacion.Estado.SEGUROS})
+        self.assertEqual(response.status_code, 302)
 
     def test_mover_requiere_post(self):
         self.client.force_login(self.owner)
@@ -349,6 +443,38 @@ class OperacionesInlineCreateTests(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
         self.inline_url = reverse("operaciones:crear_operacion_inline")
+        self.inline_form_url = reverse("operaciones:formulario_operacion_inline")
+
+    def test_endpoint_get_devuelve_formulario_completo_sin_crear_operaciones(self):
+        response = self.client.get(self.inline_form_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="operaciones-inline-form"', count=1)
+        self.assertContains(response, 'name="titulo"')
+        self.assertContains(response, 'name="cliente"')
+        self.assertContains(response, 'name="prioridad"')
+        self.assertContains(response, 'name="fecha_vencimiento"')
+        self.assertContains(response, 'name="asignados"')
+        self.assertContains(response, 'name="etiquetas"')
+        self.assertFalse(Operacion.objects.exists())
+
+    def test_endpoint_get_formulario_requiere_autenticacion(self):
+        response = Client().get(self.inline_form_url)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])
+
+    def test_endpoint_formulario_acepta_usuario_autenticado_regular(self):
+        self.assertFalse(self.user.is_superuser)
+
+        response = self.client.get(self.inline_form_url)
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_endpoint_formulario_solo_acepta_get(self):
+        response = self.client.post(self.inline_form_url)
+
+        self.assertEqual(response.status_code, 405)
 
     def test_crea_operacion_en_el_estado_de_la_columna(self):
         response = self.client.post(
@@ -361,10 +487,12 @@ class OperacionesInlineCreateTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertTrue(data["ok"])
+        self.assertEqual(data["operacion_id"], data["id"])
         self.assertEqual(data["estado"], Operacion.Estado.EN_ADUANA)
+        self.assertIn(f'id="panel-operacion-{data["operacion_id"]}"', data["html"])
         self.assertIn('data-panel-operacion-card="1"', data["html"])
         self.assertIn('data-operacion-state-select="1"', data["html"])
 
@@ -373,6 +501,68 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertEqual(operacion.estado, Operacion.Estado.EN_ADUANA)
         self.assertEqual(operacion.prioridad, Operacion.Prioridad.ALTA)
         self.assertEqual(operacion.creado_por, self.user)
+
+    def test_cada_choice_crea_inline_y_persiste_en_su_columna(self):
+        choices = list(Operacion._meta.get_field("estado").choices)
+
+        for estado, _etiqueta in choices:
+            with self.subTest(estado=estado):
+                response = self.client.post(
+                    self.inline_url,
+                    {"titulo": f"Operacion {estado}", "estado": estado},
+                )
+
+                self.assertEqual(response.status_code, 201)
+                data = response.json()
+                self.assertEqual(data["estado"], estado)
+                operacion = Operacion.objects.get(pk=data["id"])
+                self.assertEqual(operacion.estado, estado)
+
+    def test_crea_operacion_con_vencimiento_asignados_y_etiquetas(self):
+        User = get_user_model()
+        asignado = User.objects.create_user(username="inline_asignado", first_name="Ana")
+        etiqueta = OperacionEtiqueta.objects.create(nombre="Urgente", color="#FF0000")
+
+        response = self.client.post(
+            self.inline_url,
+            {
+                "titulo": "Operacion con relaciones",
+                "fecha_vencimiento": "2026-08-10",
+                "asignados": [asignado.pk],
+                "etiquetas": [etiqueta.pk],
+                "estado": Operacion.Estado.SEGUROS,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        operacion = Operacion.objects.get(pk=data["id"])
+        self.assertEqual(str(operacion.fecha_vencimiento), "2026-08-10")
+        self.assertEqual(list(operacion.asignados.all()), [asignado])
+        self.assertEqual(list(operacion.etiquetas.all()), [etiqueta])
+        self.assertIn("Urgente", data["html"])
+    def test_crea_operacion_con_titulo_cliente_y_prioridad(self):
+        cliente = Cliente.objects.create(nombre="Cliente inline")
+        response = self.client.post(
+            self.inline_url,
+            {
+                "titulo": "Operacion inline completa",
+                "cliente": cliente.pk,
+                "prioridad": Operacion.Prioridad.ALTA,
+                "estado": Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["estado"], Operacion.Estado.SOLICITUD_CUENTA_GASTOS)
+        operacion = Operacion.objects.get(pk=data["id"])
+        self.assertEqual(operacion.cliente, cliente)
+        self.assertEqual(operacion.prioridad, Operacion.Prioridad.ALTA)
 
     def test_errores_de_formulario_devuelven_el_parcial_inline(self):
         response = self.client.post(
@@ -384,34 +574,182 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertEqual(response.status_code, 400)
         data = response.json()
         self.assertFalse(data["ok"])
-        self.assertIn('data-operacion-inline-form="1"', data["html"])
-        self.assertIn("Este campo es obligatorio", data["html"])
+        self.assertIn("titulo", data["errors"])
+        self.assertEqual(data["error_code"], "FORM_INVALID")
+        self.assertIn('data-operacion-inline-form="1"', data["html_form"])
+        self.assertIn("Este campo es obligatorio", data["html_form"])
+        self.assertIn(
+            f'name="estado" value="{Operacion.Estado.PENDIENTE}"',
+            data["html_form"],
+        )
         self.assertFalse(Operacion.objects.exists())
 
-    def test_estado_invalido_no_crea_operacion(self):
+    def test_estado_vacio_etiqueta_visual_y_desconocido_se_rechazan(self):
+        for estado in ("", "Pendientes", "NO_EXISTE"):
+            with self.subTest(estado=estado):
+                response = self.client.post(
+                    self.inline_url,
+                    {"titulo": "Operacion invalida", "estado": estado},
+                )
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json()["error_code"], "INVALID_STATE")
+                self.assertFalse(response.json()["ok"])
+        self.assertFalse(Operacion.objects.exists())
+
+    def test_estado_duplicado_se_rechaza(self):
         response = self.client.post(
             self.inline_url,
-            {"titulo": "Operacion invalida", "estado": "NO_EXISTE"},
-            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            {
+                "titulo": "Operacion con estado duplicado",
+                "estado": [
+                    Operacion.Estado.PENDIENTE,
+                    Operacion.Estado.EN_ADUANA,
+                ],
+            },
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertFalse(response.json()["ok"])
+        self.assertEqual(response.json()["error_code"], "INVALID_STATE")
         self.assertFalse(Operacion.objects.exists())
 
-    def test_creacion_inline_requiere_solicitud_ajax(self):
+    def test_tablero_renderiza_placeholder_vacio_y_choices_exactos(self):
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        html = response.content.decode()
+        choices = list(Operacion._meta.get_field("estado").choices)
+
+        for estado, etiqueta in choices:
+            with self.subTest(estado=estado):
+                self.assertIn(f'data-estado="{estado}"', html)
+                self.assertIn(etiqueta, html)
+
+        self.assertEqual(
+            html.count('<input type="hidden" name="estado"'),
+            0,
+        )
+        self.assertEqual(
+            html.count('class="btn btn-sm operaciones-column__add-btn"'),
+            len(choices),
+        )
+        self.assertEqual(html.count('class="operaciones-inline-form"'), 0)
+        self.assertIn('<div data-operacion-inline-form-slot="1"></div>', html)
+        self.assertNotIn('name="estado" value="Pendientes"', html)
+
+    def test_javascript_configura_estado_y_destino_del_formulario_compartido(self):
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        html = response.content.decode()
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('id="panel-operaciones-config"', html)
+        self.assertIn("/static/operaciones/js/panel_operaciones.js", html)
+        self.assertNotIn("inlineRequestedTarget = {estado};", html)
+        self.assertIn("const estado = inlineOpenButton.dataset.estado", javascript)
+        self.assertIn("inlineRequestedTarget = {estado};", javascript)
+        self.assertIn("loadSharedInlineForm();", javascript)
+        self.assertIn("const form = resetSharedInlineForm(target.estado);", javascript)
+        self.assertIn("stateInput.value = estado;", javascript)
+        self.assertIn("targetLabel.textContent = estadoLabel;", javascript)
+        self.assertIn("actions.insertAdjacentElement('afterend', inlineContainer);", javascript)
+
+    def test_javascript_carga_formulario_una_sola_vez_y_permite_reintento(self):
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        html = response.content.decode()
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+
+        self.assertIn(
+            '"inlineFormUrl": "/operaciones/nueva/inline/formulario/"',
+            html,
+        )
+        self.assertIn("const inlineFormUrl = config.inlineFormUrl;", javascript)
+        self.assertIn("if (inlineFormLoaded)", javascript)
+        self.assertIn("if (inlineFormLoadPromise) return inlineFormLoadPromise;", javascript)
+        self.assertIn("setInlineOpenButtonsLoading(true);", javascript)
+        self.assertIn("inlineFormLoadPromise = getHtml(inlineFormUrl)", javascript)
+        self.assertIn("inlineFormLoadPromise = null;", javascript)
+        self.assertIn("showInlineLoadFeedback({error: true});", javascript)
+
+    def test_javascript_evitar_insertar_tarjeta_ajena_al_filtro_activo(self):
+        response = self.client.get(
+            reverse("operaciones:panel_operaciones"),
+            {"usuario": self.user.pk},
+        )
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("const selectedUserId = document.getElementById('OperacionesUserFilter')?.value", javascript)
+        self.assertIn("const shouldInsertCard = !selectedUserId || assignedUserIds.includes(selectedUserId);", javascript)
+        self.assertIn("if (shouldInsertCard && !insertCardFromHtml(targetColumn, data.html))", javascript)
+
+    def test_javascript_tom_select_se_inicializa_y_destruye_una_sola_vez(self):
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("if (select.tomselect) return;", javascript)
+        self.assertIn("if (select.tomselect) select.tomselect.destroy();", javascript)
+        self.assertEqual(javascript.count("document.addEventListener('submit', (e) => {"), 1)
+
+    def test_javascript_serializa_antes_de_deshabilitar_el_formulario(self):
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        self.assertEqual(response.status_code, 200)
+        create_start = javascript.index("function createOperacionInline(form)")
+        post_start = javascript.index(
+            "postForm(form.action || inlineCreateUrl",
+            create_start,
+        )
+        create_block = javascript[create_start:post_start]
+
+        self.assertLess(
+            create_block.index("const formData = new FormData(form);"),
+            create_block.index("setInlineFormPending(form, true);"),
+        )
+
+    def test_creacion_inline_no_depende_del_encabezado_ajax(self):
+        match = resolve(self.inline_url)
+        self.assertEqual(match.func.__module__, "operaciones.views")
+
         response = self.client.post(
             self.inline_url,
             {"titulo": "Operacion sin AJAX", "estado": Operacion.Estado.PENDIENTE},
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertFalse(Operacion.objects.exists())
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(Operacion.objects.filter(pk=data["id"]).exists())
+
+    def test_url_inline_resuelve_a_la_vista_esperada(self):
+        match = resolve(self.inline_url)
+
+        self.assertEqual(self.inline_url, "/operaciones/nueva/inline/")
+        self.assertEqual(match.func.__module__, "operaciones.views")
+        self.assertEqual(match.view_name, "operaciones:crear_operacion_inline")
+        self.assertEqual(match.url_name, "crear_operacion_inline")
+        self.assertEqual(match.namespace, "operaciones")
+
+        form_match = resolve(self.inline_form_url)
+        self.assertEqual(self.inline_form_url, "/operaciones/nueva/inline/formulario/")
+        self.assertEqual(form_match.func.__module__, "operaciones.views")
+        self.assertEqual(form_match.view_name, "operaciones:formulario_operacion_inline")
 
     def test_creacion_inline_requiere_post(self):
         response = self.client.get(self.inline_url)
 
         self.assertEqual(response.status_code, 405)
+
+    def test_creacion_inline_sin_csrf_es_rechazada(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+
+        response = client.post(
+            self.inline_url,
+            {"titulo": "Operacion sin CSRF", "estado": Operacion.Estado.PENDIENTE},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Operacion.objects.exists())
 
 
 @override_settings(
@@ -456,6 +794,7 @@ class OperacionesQuickEditTests(TestCase):
                 "titulo": "Operacion actualizada",
                 "prioridad": Operacion.Prioridad.ALTA,
                 "fecha_vencimiento": "2026-06-30",
+                "asignados_present": "1",
                 "asignados": [self.assigned_user.id],
                 "estado": Operacion.Estado.SEGUROS,
                 "descripcion": "No debe cambiar",
@@ -476,6 +815,39 @@ class OperacionesQuickEditTests(TestCase):
         self.assertEqual(self.operacion.estado, Operacion.Estado.PENDIENTE)
         self.assertEqual(self.operacion.descripcion, "Descripcion que no se edita rapido")
         self.assertEqual(list(self.operacion.asignados.all()), [self.assigned_user])
+
+    def test_conserva_asignados_si_el_campo_no_se_envia(self):
+        self.operacion.asignados.add(self.assigned_user)
+
+        response = self.client.post(
+            self.edit_url,
+            {
+                "titulo": "Operacion sin asignados en POST",
+                "prioridad": Operacion.Prioridad.MEDIA,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.operacion.refresh_from_db()
+        self.assertEqual(list(self.operacion.asignados.all()), [self.assigned_user])
+
+    def test_vacia_asignados_si_el_campo_se_envia_vacio_intencionalmente(self):
+        self.operacion.asignados.add(self.assigned_user)
+
+        response = self.client.post(
+            self.edit_url,
+            {
+                "titulo": "Operacion sin asignados",
+                "prioridad": Operacion.Prioridad.MEDIA,
+                "asignados_present": "1",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.operacion.refresh_from_db()
+        self.assertEqual(list(self.operacion.asignados.all()), [])
 
     def test_errores_de_formulario_devuelven_editor_inline(self):
         response = self.client.post(
@@ -505,9 +877,10 @@ class OperacionesQuickEditTests(TestCase):
         self.operacion.refresh_from_db()
         self.assertEqual(self.operacion.titulo, "Operacion original")
 
-    def test_edicion_rapida_requiere_ajax_y_metodo_permitido(self):
+    def test_edicion_rapida_no_depende_de_ajax_y_metodo_permitido(self):
         response = self.client.get(self.edit_url)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
 
         response = self.client.put(self.edit_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
         self.assertEqual(response.status_code, 405)
@@ -1116,3 +1489,321 @@ class OperacionesOpcionesAjaxTests(TestCase):
         self.assertEqual(method_response.status_code, 405)
         self.assertFalse(self.operacion.opciones.exists())
         self.assertFalse(OperacionOpcion.objects.filter(nombre="Sin AJAX").exists())
+
+
+class OperacionesProgressiveLoadingTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin-phase7d",
+            password="pass",
+            is_superuser=True,
+            is_staff=True,
+        )
+        self.ejecutivo = User.objects.create_user(
+            username="ejecutivo-phase7d",
+            password="pass",
+            first_name="Ejecutivo",
+        )
+        self.client.force_login(self.admin)
+
+    def _bulk(self, cantidad, estado=Operacion.Estado.PENDIENTE):
+        base = timezone.now() + timedelta(minutes=1)
+        Operacion.objects.bulk_create(
+            [
+                Operacion(
+                    titulo=f"Fase 7D {estado} {index:03d}",
+                    estado=estado,
+                    creado_por=self.admin,
+                    fecha_creacion=base + timedelta(seconds=index),
+                )
+                for index in range(cantidad)
+            ]
+        )
+
+    @staticmethod
+    def _columna(response, estado):
+        return next(
+            columna
+            for columna in response.context["columnas"]
+            if columna["estado"] == estado
+        )
+
+    def _endpoint(self, estado, loaded_ids=(), **params):
+        params.setdefault("offset", len(loaded_ids))
+        params.setdefault(
+            "loaded", ",".join(str(value) for value in loaded_ids)
+        )
+        return self.client.get(
+            reverse("operaciones:tarjetas_columna", args=[estado]),
+            params,
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+    @staticmethod
+    def _ids(html):
+        return [
+            int(value)
+            for value in re.findall(
+                r'data-panel-operacion-id="(\d+)"', html
+            )
+        ]
+
+    def test_get_inicial_limita_cinco_y_mantiene_nueve_totales_reales(self):
+        self._bulk(21)
+        before = Operacion.objects.count()
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        columna = self._columna(response, Operacion.Estado.PENDIENTE)
+        html = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["columnas"]), 9)
+        self.assertEqual(columna["count"], 21)
+        self.assertEqual(columna["loaded"], 5)
+        self.assertEqual(len(columna["items"]), 5)
+        self.assertTrue(columna["has_more"])
+        self.assertEqual(
+            html.count('data-panel-operacion-card="1"'), 5
+        )
+        self.assertEqual(html.count('data-operaciones-column="1"'), 9)
+        self.assertIn('data-total="21"', html)
+        self.assertIn("Cargar más (16)", html)
+        self.assertNotIn('data-operacion-inline-form="1"', html)
+        self.assertNotIn('data-operacion-quick-edit-form="1"', html)
+        self.assertEqual(Operacion.objects.count(), before)
+
+    def test_limites_y_nueve_columnas_independientes_e_historicos(self):
+        estado = Operacion.Estado.PENDIENTE
+        for total, visible, has_more in (
+            (0, 0, False),
+            (1, 1, False),
+            (5, 5, False),
+            (6, 5, True),
+            (10, 5, True),
+            (11, 5, True),
+            (20, 5, True),
+            (21, 5, True),
+        ):
+            Operacion.objects.all().delete()
+            self._bulk(total)
+            columna = self._columna(
+                self.client.get(reverse("operaciones:panel_operaciones")),
+                estado,
+            )
+            self.assertEqual(columna["count"], total)
+            self.assertEqual(columna["loaded"], visible)
+            self.assertEqual(columna["has_more"], has_more)
+
+        Operacion.objects.all().delete()
+        for value in Operacion.Estado.values:
+            self._bulk(6, value)
+        Operacion.objects.create(
+            titulo="Estado historico invisible",
+            estado="ESTADO_HISTORICO",
+            creado_por=self.admin,
+        )
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        self.assertEqual(
+            [column["loaded"] for column in response.context["columnas"]],
+            [5] * 9,
+        )
+        self.assertNotContains(response, "Estado historico invisible")
+
+    def test_endpoint_cargas_consecutivas_orden_desempate_y_parcial_real(self):
+        estado = Operacion.Estado.SEGUROS
+        self._bulk(21, estado)
+        panel = self.client.get(reverse("operaciones:panel_operaciones"))
+        first_ids = [
+            operacion.pk for operacion in self._columna(panel, estado)["items"]
+        ]
+        second = self._endpoint(estado, first_ids)
+        second_data = second.json()
+        second_ids = self._ids(second_data["html"])
+        third = self._endpoint(estado, first_ids + second_ids)
+        third_data = third.json()
+        third_ids = self._ids(third_data["html"])
+        expected = list(
+            Operacion.objects.filter(estado=estado)
+            .order_by("-fecha_creacion", "-id")
+            .values_list("pk", flat=True)
+        )
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second_data["loaded"], 10)
+        self.assertTrue(second_data["has_more"])
+        self.assertEqual(second_data["next_offset"], 15)
+        self.assertEqual(third_data["loaded"], 6)
+        self.assertFalse(third_data["has_more"])
+        self.assertEqual(first_ids + second_ids + third_ids, expected)
+        self.assertNotIn("<html", second_data["html"].lower())
+        for marker in (
+            'data-operacion-state-select="1"',
+            'data-panel-operacion-modal-open="1"',
+            'data-operacion-quick-edit-open="1"',
+            'data-operacion-card-tags="1"',
+            'data-operacion-card-comments-count="1"',
+            'data-operacion-card-files-count="1"',
+            'data-operacion-card-links-count="1"',
+        ):
+            self.assertIn(marker, second_data["html"])
+
+    def test_endpoint_reconcilia_eliminacion_movimiento_creacion_y_filtro(self):
+        estado = Operacion.Estado.EN_ADUANA
+        self._bulk(16, estado)
+        ordered = list(
+            Operacion.objects.filter(estado=estado)
+            .order_by("-fecha_creacion", "-id")
+        )
+        for operacion in ordered[:12]:
+            operacion.asignados.add(self.ejecutivo)
+        first_ids = [operacion.pk for operacion in ordered[:5]]
+        deleted_id, moved_id = first_ids[-2:]
+        Operacion.objects.filter(pk=deleted_id).delete()
+        Operacion.objects.filter(pk=moved_id).update(
+            estado=Operacion.Estado.PRUEBA_VALOR
+        )
+        created = Operacion.objects.create(
+            titulo="Creada entre lotes",
+            estado=estado,
+            creado_por=self.admin,
+        )
+        created.asignados.add(self.ejecutivo)
+        stale_assignment_id = first_ids[-3]
+        Operacion.objects.get(pk=stale_assignment_id).asignados.remove(
+            self.ejecutivo
+        )
+        loaded_ids = [created.pk] + first_ids
+        response = self._endpoint(
+            estado,
+            loaded_ids,
+            usuario=str(self.ejecutivo.pk),
+        )
+        data = response.json()
+        returned = self._ids(data["html"])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            data["stale_ids"],
+            [stale_assignment_id, deleted_id, moved_id],
+        )
+        self.assertNotIn(created.pk, returned)
+        self.assertTrue(set(first_ids).isdisjoint(returned))
+        self.assertEqual(data["total"], 10)
+
+    def test_endpoint_valida_parametros_metodos_y_permisos_reales(self):
+        estado = Operacion.Estado.PENDIENTE
+        url = reverse("operaciones:tarjetas_columna", args=[estado])
+        for params in (
+            {"offset": "-1"},
+            {"offset": "texto"},
+            {"offset": "1", "loaded": "abc"},
+            {"offset": "2", "loaded": "1,1"},
+            {"offset": "0", "usuario": "invalido"},
+            {"offset": "0", "usuario": "999999"},
+            {"offset": "0", "usuario": ["1", "2"]},
+        ):
+            self.assertEqual(self.client.get(url, params).status_code, 400)
+        invalid_state = reverse(
+            "operaciones:tarjetas_columna",
+            args=["ESTADO_INEXISTENTE"],
+        )
+        self.assertEqual(
+            self.client.get(
+                invalid_state, {"offset": "0", "loaded": ""}
+            ).status_code,
+            404,
+        )
+        self.assertEqual(self.client.post(url).status_code, 405)
+        self.assertEqual(self.client.put(url).status_code, 405)
+        self.assertEqual(self.client.delete(url).status_code, 405)
+
+        self.client.force_login(self.ejecutivo)
+        self.assertEqual(self._endpoint(estado).status_code, 200)
+        self.assertEqual(
+            self.client.get(reverse("operaciones:panel_operaciones")).status_code,
+            200,
+        )
+        self.client.logout()
+        anonymous = self.client.get(url, {"offset": "0", "loaded": ""})
+        self.assertEqual(anonymous.status_code, 302)
+        self.assertIn("/login/", anonymous.url)
+
+    def test_get_y_endpoint_consultas_constantes_y_solo_lectura(self):
+        panel_url = reverse("operaciones:panel_operaciones")
+        endpoint_url = reverse(
+            "operaciones:tarjetas_columna",
+            args=[Operacion.Estado.PENDIENTE],
+        )
+        self._bulk(1)
+        with CaptureQueriesContext(connection) as panel_small:
+            self.client.get(panel_url)
+        with CaptureQueriesContext(connection) as endpoint_small:
+            self.client.get(endpoint_url, {"offset": "0", "loaded": ""})
+        self._bulk(100)
+        before = Operacion.objects.count()
+        with CaptureQueriesContext(connection) as panel_large:
+            self.client.get(panel_url)
+        with CaptureQueriesContext(connection) as endpoint_large:
+            self.client.get(endpoint_url, {"offset": "0", "loaded": ""})
+
+        self.assertEqual(len(panel_small), len(panel_large))
+        self.assertEqual(len(endpoint_small), len(endpoint_large))
+        self.assertEqual(Operacion.objects.count(), before)
+        writes = re.compile(r"^\s*(INSERT|UPDATE|DELETE|REPLACE)\b", re.I)
+        self.assertFalse(
+            any(
+                writes.match(query["sql"])
+                for query in list(panel_large) + list(endpoint_large)
+            )
+        )
+
+    def test_segundo_lote_conserva_relaciones_y_acciones(self):
+        estado = Operacion.Estado.EXPEDIENTE_CG
+        self._bulk(6, estado)
+        oldest = (
+            Operacion.objects.filter(estado=estado)
+            .order_by("-fecha_creacion", "-id")
+            .last()
+        )
+        tag = OperacionEtiqueta.objects.create(
+            nombre="Urgente 7D", color="#FF0000"
+        )
+        option = OperacionOpcion.objects.create(nombre="Revisar 7D")
+        oldest.etiquetas.add(tag)
+        oldest.opciones.add(option)
+        first_ids = list(
+            Operacion.objects.filter(estado=estado)
+            .order_by("-fecha_creacion", "-id")
+            .values_list("pk", flat=True)[:5]
+        )
+        response = self._endpoint(estado, first_ids)
+        html = response.json()["html"]
+
+        self.assertIn("Urgente 7D", html)
+        self.assertIn('data-operacion-state-select="1"', html)
+        self.assertIn('data-operacion-quick-edit-open="1"', html)
+        self.assertIn('data-panel-operacion-modal-open="1"', html)
+        detail = self.client.get(
+            reverse("operaciones:detalle_operacion_modal", args=[oldest.pk])
+        )
+        self.assertContains(detail, "Revisar 7D")
+
+    def test_javascript_concurrencia_reconciliacion_y_delegacion(self):
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        self.assertIn("const columnLoadRequests = new Map()", javascript)
+        self.assertIn("if (existing) return existing.promise", javascript)
+        self.assertIn("entry.controller.abort()", javascript)
+        self.assertIn("requestVersion !== boardVersion", javascript)
+        self.assertIn("Tarjeta duplicada o incompatible.", javascript)
+        self.assertIn("staleIds.forEach", javascript)
+        self.assertIn("data-operacion-load-more", javascript)
+        self.assertIn("No se pudieron cargar las tarjetas.", javascript)
+        self.assertIn("invalidateColumnLoads();", javascript)
+        self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
+        self.assertEqual(javascript.count("Sortable.create("), 1)
+        self.assertEqual(
+            javascript.count("document.addEventListener('click'"), 1
+        )
+        self.assertEqual(
+            javascript.count("document.addEventListener('change'"), 1
+        )

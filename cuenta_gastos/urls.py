@@ -21,6 +21,16 @@ urlpatterns = [
         views.crear_cuenta_gastos_inline,
         name="crear_cuenta_gastos_inline"
     ),
+    path(
+        "nueva/inline/formulario/",
+        views.formulario_cuenta_gastos_inline,
+        name="formulario_cuenta_gastos_inline",
+    ),
+    path(
+        "columna/<str:estado>/tarjetas/",
+        views.tarjetas_columna,
+        name="tarjetas_columna",
+    ),
 
     path(
         "detalle/<int:pk>/",
@@ -31,6 +41,11 @@ urlpatterns = [
         "<int:pk>/inline-update/",
         views.actualizar_cuenta_inline,
         name="actualizar_cuenta_inline"
+    ),
+    path(
+        "<int:pk>/inline-editor/",
+        views.editor_cuenta_inline,
+        name="editor_cuenta_inline",
     ),
 
     path(

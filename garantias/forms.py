@@ -1,3 +1,6 @@
+from pathlib import Path
+from urllib.parse import urlsplit
+
 from django import forms
 from django.contrib.auth import get_user_model
 
@@ -84,6 +87,14 @@ class GarantiaInlineCreateForm(GarantiaForm):
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "cliente" in self.fields:
+            self.fields["cliente"].queryset = (
+                Cliente.objects.only("id", "nombre", "empresa")
+                .order_by("nombre", "empresa", "id")
+            )
+
 
 class GarantiaEditarForm(forms.ModelForm):
     cliente = ClienteChoiceField(
@@ -120,63 +131,16 @@ class GarantiaEditarForm(forms.ModelForm):
                 self.fields[name].required = False
 
 
-class GarantiaInlineTituloForm(forms.ModelForm):
-    class Meta:
-        model = Garantia
-        fields = ["titulo"]
+class GarantiaQuickEditForm(GarantiaEditarForm):
+    """Formulario completo y limitado para la edicion rapida de una tarjeta."""
+
+    class Meta(GarantiaEditarForm.Meta):
+        fields = ["titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados"]
         widgets = {
-            "titulo": forms.TextInput(attrs={"class": "form-control form-control-sm"})
+            "titulo": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control form-control-sm", "type": "date"}),
         }
-
-
-class GarantiaInlinePrioridadForm(forms.ModelForm):
-    class Meta:
-        model = Garantia
-        fields = ["prioridad"]
-        widgets = {
-            "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"})
-        }
-
-
-class GarantiaInlineVencimientoForm(forms.ModelForm):
-    class Meta:
-        model = Garantia
-        fields = ["fecha_vencimiento"]
-        widgets = {
-            "fecha_vencimiento": forms.DateInput(
-                attrs={"class": "form-control form-control-sm", "type": "date"}
-            )
-        }
-
-
-class GarantiaInlineClienteForm(forms.ModelForm):
-    cliente = ClienteChoiceField(
-        queryset=Cliente.objects.all().order_by("nombre", "empresa", "id"),
-        required=False,
-        empty_label="Sin cliente",
-        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
-    )
-
-    class Meta:
-        model = Garantia
-        fields = ["cliente"]
-
-
-class GarantiaInlineAsignadosForm(forms.ModelForm):
-    asignados = FirstNameUserMultipleChoiceField(
-        queryset=User.objects.all().order_by("first_name", "last_name", "username", "id"),
-        required=False,
-        widget=forms.SelectMultiple(
-            attrs={
-                "class": "form-select form-select-sm garantia-asignados-select",
-                "data-garantia-tags-select": "1",
-            }
-        ),
-    )
-
-    class Meta:
-        model = Garantia
-        fields = ["asignados"]
 
 
 class GarantiaComentarioForm(forms.Form):
@@ -188,6 +152,38 @@ class GarantiaComentarioForm(forms.Form):
 
 class GarantiaArchivosForm(forms.Form):
     archivos = MultipleFileField(required=False)
+
+
+class GarantiaArchivoUploadForm(forms.Form):
+    """Valida los adjuntos de la seccion AJAX de una garantia."""
+
+    max_archivos = 5
+    max_tamano_archivo = 10 * 1024 * 1024
+    extensiones_permitidas = {
+        ".pdf", ".csv", ".txt", ".doc", ".docx", ".xls", ".xlsx",
+        ".png", ".jpg", ".jpeg", ".webp", ".zip",
+    }
+
+    archivos = MultipleFileField(required=True)
+
+    def clean_archivos(self):
+        archivos = self.cleaned_data["archivos"]
+        if not archivos:
+            raise forms.ValidationError("Selecciona al menos un archivo.")
+        if len(archivos) > self.max_archivos:
+            raise forms.ValidationError(
+                f"Puedes subir hasta {self.max_archivos} archivos a la vez."
+            )
+        for archivo in archivos:
+            if archivo.size > self.max_tamano_archivo:
+                raise forms.ValidationError(
+                    f"{archivo.name} supera el limite de 10 MB por archivo."
+                )
+            if Path(archivo.name).suffix.lower() not in self.extensiones_permitidas:
+                raise forms.ValidationError(
+                    f"{archivo.name} tiene un formato no permitido."
+                )
+        return archivos
 
 
 class GarantiaEnlaceForm(forms.ModelForm):
@@ -204,3 +200,21 @@ class GarantiaEnlaceForm(forms.ModelForm):
         for name in ["titulo", "url"]:
             if name in self.fields:
                 self.fields[name].required = False
+
+
+class GarantiaEnlaceCreateForm(GarantiaEnlaceForm):
+    """Valida enlaces creados desde la seccion AJAX del detalle."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["titulo"].required = True
+        self.fields["url"].required = True
+
+    def clean_url(self):
+        url = self.cleaned_data["url"]
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise forms.ValidationError("Ingresa una URL HTTP o HTTPS valida.")
+        if parsed.username or parsed.password:
+            raise forms.ValidationError("La URL no puede incluir credenciales.")
+        return url

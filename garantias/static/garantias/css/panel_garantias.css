@@ -142,7 +142,7 @@
   box-shadow: 0 14px 32px rgba(23, 32, 51, 0.08);
 }
 
-.garantia-card[data-pending="1"] {
+.garantia-card[data-pending="true"] {
   opacity: 0.72;
 }
 

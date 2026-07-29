@@ -33,6 +33,7 @@
 
         <form method="post">
             {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next_url }}">
 
             {{ form.as_p }}
 
@@ -46,7 +47,7 @@
                     {% if modo_edicion %}Actualizar{% else %}Guardar{% endif %}
                 </button>
 
-                <a href="{% url cancel_url %}"
+                <a href="{% if cancel_url_is_name %}{% url cancel_url %}{% else %}{{ cancel_url }}{% endif %}"
                    class="btn btn-secondary">
                     Cancelar
                 </a>

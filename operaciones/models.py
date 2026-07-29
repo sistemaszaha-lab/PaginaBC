@@ -19,7 +19,7 @@ class Operacion(models.Model):
         PRUEBA_VALOR = "PRUEBA_VALOR", "Prueba de valor"
         EN_ADUANA = "EN_ADUANA", "En aduana"
         TRANSITO_NACIONAL = "TRANSITO_NACIONAL", "Tránsito nacional"
-        COORDINAR_PICKUP = "COORDINAR_PICKUP", "Por coordinar pickup"
+        COORDINAR_PICKUP = "COORDINAR_PICKUP", "Pick up"
         TRANSITO_INTERNACIONAL = "TRANSITO_INTERNACIONAL", "Tránsito internacional"
         EXPEDIENTE_CG = "EXPEDIENTE_CG", "Expediente CG"
         SOLICITUD_CUENTA_GASTOS = "SOLICITUD_CUENTA_GASTOS", "Solicitud de cuenta gastos"

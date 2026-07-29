@@ -4,6 +4,7 @@
     data-id="{{ cuenta.id }}"
     data-cuenta-card="1"
     data-cuenta-state="{{ cuenta.estado }}"
+    data-cuenta-editor-url="{% url 'cuenta_gastos:editor_cuenta_inline' cuenta.id %}"
 >
     <div class="cuenta-card__accent cuenta-card__accent--{{ cuenta.prioridad|lower }}"></div>
     <div class="cuenta-card__body">

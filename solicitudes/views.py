@@ -33,7 +33,10 @@ from .forms import (
     SolicitudForm,
 )
 from .models import Cotizacion, Referencia, Solicitud
-from .services import obtener_initial_referencia_desde_solicitud
+from .services import (
+    aplicar_estados_vigentes_cotizaciones,
+    obtener_initial_referencia_desde_solicitud,
+)
 
 ESTADOS_SIGUIENTES = {
     "Pendiente": "Cumplido",
@@ -44,6 +47,7 @@ ESTADOS_SIGUIENTES = {
 
 TIPOS_TRANSPORTE = {"aereo", "maritimo", "terrestre"}
 MAX_ADMIN_USERS = 4
+USUARIOS_PAGE_SIZE = 25
 RECENT_DUPLICATE_WINDOW_SECONDS = 30
 
 
@@ -190,6 +194,26 @@ def _safe_next_url(request, default_name):
     ):
         return next_url
     return reverse(default_name)
+
+
+def _pagination_items(page_obj, radius=2):
+    total_pages = page_obj.paginator.num_pages
+    visible_pages = {
+        1,
+        total_pages,
+        *range(
+            max(1, page_obj.number - radius),
+            min(total_pages, page_obj.number + radius) + 1,
+        ),
+    }
+    items = []
+    previous = None
+    for page_number in sorted(visible_pages):
+        if previous is not None and page_number - previous > 1:
+            items.append(None)
+        items.append(page_number)
+        previous = page_number
+    return items
 
 
 def _normalizar_texto(valor):
@@ -655,7 +679,14 @@ def lista_solicitudes(request):
         if anio_param and anio_param.isdigit()
         else (anios[-1] if anios else None)
     )
-    solicitudes_qs = Solicitud.objects.filter(anio=anio) if anio else Solicitud.objects.none()
+    solicitudes_qs = (
+        Solicitud.objects.filter(anio=anio).select_related(
+            "ejecutivo",
+            "referencia_generada",
+        )
+        if anio
+        else Solicitud.objects.none()
+    )
     q = request.GET.get("q", "").strip()
     orden = (request.GET.get("orden") or "").strip().lower()
     orden = "asc" if orden == "asc" else "desc"
@@ -973,13 +1004,32 @@ def cambiar_ejecutivo(request, pk):
 @login_required
 def lista_usuarios(request):
     _requiere_admin(request.user)
-    usuarios = User.objects.select_related("perfil").all().order_by("first_name", "username")
-    return render(request, "usuarios/lista_usuarios.html", {"usuarios": usuarios})
+    usuarios_qs = (
+        User.objects.select_related("perfil")
+        .all()
+        .order_by("first_name", "username")
+    )
+    paginator = Paginator(usuarios_qs, USUARIOS_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    query_params = request.GET.copy()
+    query_params.pop("page", None)
+    return render(
+        request,
+        "usuarios/lista_usuarios.html",
+        {
+            "usuarios": page_obj.object_list,
+            "page_obj": page_obj,
+            "pagination_items": _pagination_items(page_obj),
+            "pagination_query": query_params.urlencode(),
+            "return_url": request.get_full_path(),
+        },
+    )
 
 
 @login_required
 def crear_usuario(request):
     _requiere_admin(request.user)
+    next_url = _safe_next_url(request, "lista_usuarios")
     admin_count = User.objects.filter(is_superuser=True).count()
 
     if request.method == "POST":
@@ -995,7 +1045,7 @@ def crear_usuario(request):
                 user.is_staff = rol == "admin"
                 user.save()
                 form.save_profile(user)
-                return redirect("lista_usuarios")
+                return redirect(next_url)
     else:
         form = CrearUsuarioForm()
 
@@ -1004,7 +1054,9 @@ def crear_usuario(request):
         "usuarios/crear_usuario.html",
         {
             "form": form,
-            "cancel_url": "lista_usuarios",
+            "cancel_url": next_url,
+            "cancel_url_is_name": False,
+            "next_url": next_url,
             "admin_count": admin_count,
             "max_admin_users": MAX_ADMIN_USERS,
         },
@@ -1019,6 +1071,7 @@ def editar_usuario(request, pk):
     usuario = get_object_or_404(User, pk=pk)
     puede_editar_rol = es_admin
     destino = "lista_usuarios" if es_admin else "inicio"
+    next_url = _safe_next_url(request, destino)
 
     if request.method == "POST":
         form = EditarUsuarioForm(request.POST, instance=usuario, can_edit_role=puede_editar_rol)
@@ -1030,17 +1083,23 @@ def editar_usuario(request, pk):
                     form.add_error("rol", f"Solo se permiten {MAX_ADMIN_USERS} usuarios con rol Administrador.")
                 else:
                     form.save()
-                    return redirect(destino)
+                    return redirect(next_url)
             else:
                 form.save()
-                return redirect(destino)
+                return redirect(next_url)
     else:
         form = EditarUsuarioForm(instance=usuario, can_edit_role=puede_editar_rol)
 
     return render(
         request,
         "usuarios/crear_usuario.html",
-        {"form": form, "modo_edicion": True, "cancel_url": destino},
+        {
+            "form": form,
+            "modo_edicion": True,
+            "cancel_url": next_url,
+            "cancel_url_is_name": False,
+            "next_url": next_url,
+        },
     )
 
 
@@ -1048,11 +1107,12 @@ def editar_usuario(request, pk):
 @require_POST
 def eliminar_usuario(request, pk):
     _requiere_admin(request.user)
+    next_url = _safe_next_url(request, "lista_usuarios")
     usuario = get_object_or_404(User, pk=pk)
 
     if usuario != request.user:
         usuario.delete()
-    return redirect("lista_usuarios")
+    return redirect(next_url)
 
 
 @login_required
@@ -1067,8 +1127,7 @@ def cambiar_estado_cotizacion(request, id):
 @login_required
 def lista_cotizaciones(request):
     hoy = timezone.localdate()
-    Cotizacion.objects.filter(estado="Pendiente", fecha_envio__lt=hoy).update(estado="Fuera de plazo")
-    
+
     anios = list(
         Cotizacion.objects.values_list("anio", flat=True).distinct().order_by("anio")
     )
@@ -1078,7 +1137,11 @@ def lista_cotizaciones(request):
         if anio_param and anio_param.isdigit()
         else (anios[-1] if anios else None)
     )
-    cotizaciones_qs = Cotizacion.objects.filter(anio=anio) if anio else Cotizacion.objects.none()
+    cotizaciones_qs = (
+        Cotizacion.objects.filter(anio=anio).select_related("ejecutivo")
+        if anio
+        else Cotizacion.objects.none()
+    )
     q = request.GET.get("q", "").strip()
     orden = (request.GET.get("orden") or "").strip().lower()
     orden = "asc" if orden == "asc" else "desc"
@@ -1103,6 +1166,7 @@ def lista_cotizaciones(request):
     paginator = Paginator(cotizaciones_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     cotizaciones = page_obj.object_list
+    aplicar_estados_vigentes_cotizaciones(cotizaciones, fecha_referencia=hoy)
     ejecutivos = User.objects.all().order_by("first_name", "username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -1318,7 +1382,10 @@ def cambiar_ejecutivo_cotizacion(request, pk):
 
 @login_required
 def lista_referencias(request):
-    referencias_qs = Referencia.objects.all()
+    referencias_qs = Referencia.objects.select_related(
+        "ejecutivo",
+        "operacion_generada",
+    )
     q = request.GET.get("q", "").strip()
     orden = (request.GET.get("orden") or "").strip().lower()
     orden = "asc" if orden == "asc" else "desc"

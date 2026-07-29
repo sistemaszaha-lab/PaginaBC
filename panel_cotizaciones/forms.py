@@ -154,6 +154,11 @@ class PanelCotizacionInlineCreateForm(PanelCotizacionCreateForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if "cliente" in self.fields:
+            self.fields["cliente"].queryset = (
+                Cliente.objects.filter(estado=Cliente.ESTADO_ACTIVO)
+                .only("id", "nombre")
+                .order_by("nombre")
+            )
             self.fields["cliente"].widget.attrs.update(
                 {"class": "form-select rounded"}
             )

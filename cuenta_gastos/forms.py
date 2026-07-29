@@ -79,10 +79,32 @@ class CuentaGastosInlineCreateForm(forms.ModelForm):
         empty_label="Sin cliente",
         widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
     )
+    asignados = FirstNameUserMultipleChoiceField(
+        queryset=get_user_model().objects.all().order_by(
+            "first_name", "last_name", "username", "id"
+        ),
+        required=False,
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "form-select form-select-sm garantia-asignados-select",
+                "data-cuenta-tags-select": "1",
+                "data-garantia-tags-select": "1",
+            }
+        ),
+    )
 
     class Meta:
         model = CuentaGastos
-        fields = ["titulo", "cliente", "prioridad"]
+        fields = [
+            "titulo",
+            "descripcion",
+            "cliente",
+            "prioridad",
+            "fecha_vencimiento",
+            "asignados",
+            "etiquetas",
+            "opciones",
+        ]
         widgets = {
             "titulo": forms.TextInput(
                 attrs={
@@ -90,14 +112,56 @@ class CuentaGastosInlineCreateForm(forms.ModelForm):
                     "placeholder": "Nombre de la cuenta",
                 }
             ),
+            "descripcion": forms.Textarea(
+                attrs={
+                    "class": "form-control form-control-sm",
+                    "placeholder": "Descripción",
+                    "rows": 2,
+                }
+            ),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "fecha_vencimiento": forms.DateInput(
+                attrs={"class": "form-control form-control-sm", "type": "date"}
+            ),
+            "etiquetas": forms.SelectMultiple(
+                attrs={
+                    "class": "form-select form-select-sm",
+                    "data-cuenta-tags-select": "1",
+                    "data-garantia-tags-select": "1",
+                }
+            ),
+            "opciones": forms.CheckboxSelectMultiple(
+                attrs={"class": "form-check-input"}
+            ),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["titulo"].required = True
-        self.fields["cliente"].required = False
-        self.fields["prioridad"].required = False
+        for field_name in [
+            "descripcion",
+            "cliente",
+            "prioridad",
+            "fecha_vencimiento",
+            "asignados",
+            "etiquetas",
+            "opciones",
+        ]:
+            self.fields[field_name].required = False
+
+        self.fields["cliente"].queryset = Cliente.objects.only(
+            "id", "nombre", "empresa"
+        ).order_by("nombre", "empresa", "id")
+        self.fields["asignados"].queryset = get_user_model().objects.only(
+            "id", "first_name", "last_name", "username"
+        ).order_by("first_name", "last_name", "username", "id")
+        self.fields["etiquetas"].queryset = CuentaGastosEtiqueta.objects.only(
+            "id", "nombre"
+        ).order_by("nombre")
+        self.fields["opciones"].queryset = CuentaGastosOpcion.objects.only(
+            "id", "nombre"
+        ).order_by("nombre")
+        self.fields["etiquetas"].label_from_instance = lambda obj: obj.nombre
 
 
 class CuentaGastosEditarForm(forms.ModelForm):
