@@ -6,8 +6,16 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def env_flag(name, default=False):
+    return os.getenv(name, str(default)).lower() in {"1", "true", "yes", "on"}
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "change-me-in-production")
-DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in {"1", "true", "yes", "on"}
+DEBUG = env_flag("DJANGO_DEBUG", False)
+PERFORMANCE_DEBUG = env_flag("PERFORMANCE_DEBUG", DEBUG)
+PERFORMANCE_DEBUG_TOP_QUERIES = int(os.getenv("PERFORMANCE_DEBUG_TOP_QUERIES", "5"))
+PERFORMANCE_DEBUG_SQL_LENGTH = int(os.getenv("PERFORMANCE_DEBUG_SQL_LENGTH", "500"))
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -44,6 +52,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "solicitudes_app.performance.PerformanceDiagnosticsMiddleware",
 ]
 
 ROOT_URLCONF = "solicitudes_app.urls"
@@ -127,6 +136,11 @@ LOGGING = {
             "handlers": ["console"],
             "level": "ERROR",
             "propagate": True,
+        },
+        "performance": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
         },
     },
 }

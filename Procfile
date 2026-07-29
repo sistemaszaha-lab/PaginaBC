@@ -1,1 +1,1 @@
-web: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && python manage.py ensure_superuser && gunicorn solicitudes_app.wsgi --bind 0.0.0.0:${PORT:-8000} --timeout 300 --graceful-timeout 300 --log-file -"
+web: gunicorn solicitudes_app.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 2 --threads 4 --timeout 60 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 50 --access-logfile - --error-logfile -
