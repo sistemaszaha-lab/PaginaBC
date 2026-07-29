@@ -1,0 +1,59 @@
+/* Status Control (Barra segmentada compartida) */
+.kanban-status-control {
+  margin-top: 0.5rem;
+}
+
+.kanban-status-control__label {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--panel-card-muted, #6c757d);
+}
+
+.kanban-status-control__options {
+  display: flex;
+  background-color: var(--panel-card-surface, #ffffff);
+  border: 1px solid var(--panel-card-border, #dee2e6);
+  border-radius: 0.6rem;
+  padding: 0.2rem;
+  gap: 0.15rem;
+}
+
+.kanban-status-control__option {
+  flex: 1;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 0.45rem;
+  padding: 0.4rem 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--panel-card-muted, #6c757d);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1.15;
+}
+
+.kanban-status-control__option:hover:not(:disabled):not(.active) {
+  background-color: rgba(var(--bs-emphasis-color-rgb, 0, 0, 0), 0.04);
+  color: var(--bs-emphasis-color, #000);
+}
+
+.kanban-status-control__option:focus-visible {
+  outline: 2px solid rgba(var(--bs-primary-rgb), 0.5);
+  outline-offset: -2px;
+}
+
+.kanban-status-control__option.active {
+  background-color: rgb(var(--bs-primary-rgb));
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgba(var(--bs-primary-rgb), 0.25);
+}
+
+.kanban-status-control__option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
