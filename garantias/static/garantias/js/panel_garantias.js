@@ -338,6 +338,61 @@
       });
     }
 
+    function submitDetailDeleteForm(deleteForm) {
+      if (!deleteForm || deleteForm.dataset.pending === 'true') return;
+
+      const fd = new FormData(deleteForm);
+      const layout = deleteForm.querySelector('[name="layout"]')?.value || currentDetailLayout || 'modal';
+      const csrfToken = window.getCSRFToken(deleteForm);
+
+      if (!csrfToken) {
+        throw new Error('No se encontro un token CSRF valido para eliminar la garantia.');
+      }
+
+      setFormPending(deleteForm, true);
+      setDrawerBusy(layout === 'drawer');
+
+      window.csrfFetch(deleteForm.getAttribute('action'), {
+        method: 'POST',
+        body: fd,
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+        }
+      })
+        .then((response) => {
+          return readJsonResponse(response).then((data) => ({ ok: response.ok, status: response.status, data }));
+        })
+        .then(({ ok, status, data }) => {
+          if (!ok) {
+            const error = new Error(`Error ${status}`);
+            error.status = status;
+            error.data = data;
+            throw error;
+          }
+          if (!data.deleted) {
+            throw new Error('Respuesta de eliminacion inesperada.');
+          }
+          removeCard(data.id || data.garantia_id);
+          closeDrawer(true);
+          if (modalInstance && modalElement?.classList.contains('show')) {
+            modalInstance.hide();
+          }
+        })
+        .catch((error) => {
+          const rootElement = getDetailRoot(deleteForm);
+          if (rootElement) {
+            showCommentFormError(rootElement, requestErrorMessage(error));
+          }
+          console.error('No se pudo eliminar la garantia:', error);
+        })
+        .finally(() => {
+          if (deleteForm.isConnected) setFormPending(deleteForm, false);
+          setDrawerBusy(false);
+        });
+    }
+
     function syncCardResourceCount(cardId, resource, value) {
       const card = document.querySelector(`[data-garantia-id="${cardId}"]`);
       const node = card?.querySelector(`[data-garantia-card-${resource}-count="1"]`);
@@ -1176,7 +1231,7 @@
         return;
       }
 
-      const refreshForm = e.target.closest('[data-garantia-modal-refresh="1"], [data-garantia-modal-delete="1"]');
+      const refreshForm = e.target.closest('[data-garantia-modal-refresh="1"]');
       if (refreshForm) {
         e.preventDefault();
         const fd = new FormData(refreshForm);
@@ -1298,6 +1353,14 @@
     });
 
     document.addEventListener('submit', (e) => {
+      const deleteForm = e.target.closest('form[data-garantia-modal-delete="1"]');
+      if (deleteForm) {
+        e.preventDefault();
+        e.stopPropagation();
+        submitDetailDeleteForm(deleteForm);
+        return;
+      }
+
       const modalForm = e.target.closest('form[data-garantia-modal-form="1"]');
       if (!modalForm) return;
 

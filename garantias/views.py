@@ -741,16 +741,24 @@ def editar_garantia(request, pk):
 
 @login_required
 @admin_required
+@require_POST
 def eliminar_garantia(request, pk):
     garantia = get_object_or_404(Garantia, pk=pk)
-    if request.method == "POST":
-        garantia.delete()
-        messages.success(request, "Garantía eliminada.")
-        if _es_ajax(request):
-            return JsonResponse({"status": "ok", "deleted": True, "id": pk})
-        return redirect("garantias:panel_garantias")
+    garantia.delete()
+    messages.success(request, "Garantía eliminada.")
+    if _es_ajax(request):
+        return JsonResponse(
+            {
+                "status": "ok",
+                "ok": True,
+                "deleted": True,
+                "id": pk,
+                "garantia_id": pk,
+            }
+        )
+    return redirect("garantias:panel_garantias")
 
-    return render(request, "garantias/eliminar_garantia.html", {"garantia": garantia})
+
 
 
 @login_required

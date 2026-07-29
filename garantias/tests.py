@@ -1049,3 +1049,82 @@ class GarantiaEditarCSRFTests(TestCase):
         self.garantia.refresh_from_db()
         self.assertEqual(self.garantia.titulo, "Nuevo Titulo Con CSRF")
 
+
+class GarantiaEliminarCSRFTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin_csrf_eliminar",
+            password="pass123",
+            is_superuser=True,
+            is_staff=True,
+        )
+        self.garantia = Garantia.objects.create(
+            titulo="Garantia para eliminar",
+            creado_por=self.admin,
+        )
+
+    def _csrf_client(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="admin_csrf_eliminar", password="pass123")
+        client.get(reverse("garantias:panel_garantias"))
+        return client, client.cookies["csrftoken"].value
+
+    def test_post_ajax_con_csrf_elimina_y_devuelve_json(self):
+        client, csrftoken = self._csrf_client()
+        url = reverse("garantias:eliminar_garantia", args=[self.garantia.pk])
+
+        self.assertTrue(Garantia.objects.filter(pk=self.garantia.pk).exists())
+
+        response = client.post(
+            url,
+            {"layout": "drawer", "csrfmiddlewaretoken": csrftoken},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_X_CSRFTOKEN=csrftoken,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "status": "ok",
+                "ok": True,
+                "deleted": True,
+                "id": self.garantia.pk,
+                "garantia_id": self.garantia.pk,
+            },
+        )
+        self.assertFalse(Garantia.objects.filter(pk=self.garantia.pk).exists())
+
+    def test_post_sin_csrf_devuelve_403_y_no_elimina(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="admin_csrf_eliminar", password="pass123")
+        url = reverse("garantias:eliminar_garantia", args=[self.garantia.pk])
+
+        response = client.post(
+            url,
+            {"layout": "modal"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Garantia.objects.filter(pk=self.garantia.pk).exists())
+
+    def test_get_no_elimina_y_responde_405(self):
+        self.client.force_login(self.admin)
+        url = reverse("garantias:eliminar_garantia", args=[self.garantia.pk])
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(Garantia.objects.filter(pk=self.garantia.pk).exists())
+
+    def test_usuario_no_autenticado_no_puede_eliminar(self):
+        url = reverse("garantias:eliminar_garantia", args=[self.garantia.pk])
+
+        response = self.client.post(url, {"layout": "modal"})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+        self.assertTrue(Garantia.objects.filter(pk=self.garantia.pk).exists())
+
