@@ -56,18 +56,7 @@
         <span data-garantia-card-files-count="1">Archivos: {{ g.archivos_count|default:0 }}</span>
         <span data-garantia-card-links-count="1">Enlaces: {{ g.enlaces_count|default:0 }}</span>
       </div>
-      <div class="garantia-card__status-group">
-        <span class="badge garantia-card__status-badge" data-garantia-state-badge="1">{{ g.get_estado_display }}</span>
-        <select
-          class="form-select form-select-sm garantia-status-control"
-          data-garantia-state-select="1"
-          aria-label="Cambiar estado de garantia">
-          <option value="SOLICITUD_NAVIERA" {% if g.estado == "SOLICITUD_NAVIERA" %}selected{% endif %}>Solicitud a naviera</option>
-          <option value="EN_PROCESO" {% if g.estado == "EN_PROCESO" %}selected{% endif %}>En proceso</option>
-          <option value="PAGO_NAVIERA_ZAHA" {% if g.estado == "PAGO_NAVIERA_ZAHA" %}selected{% endif %}>Pago naviera a Zaha</option>
-          <option value="DEVOLUCION_CLIENTE" {% if g.estado == "DEVOLUCION_CLIENTE" %}selected{% endif %}>Devolucion a cliente</option>
-        </select>
-      </div>
+      {% include "components/_kanban_status_control.html" with obj=g select_attr="data-garantia-state-select" only %}
 
       <a
         href="{% url 'garantias:detalle_garantia' g.id %}"

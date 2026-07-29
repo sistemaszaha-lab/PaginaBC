@@ -14,7 +14,6 @@
 <div style="display:none;">{% csrf_token %}</div>
 
 <div class="operaciones-toolbar">
-  <a href="{% url 'operaciones:crear_operacion' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva operacion</a>
   <form method="get" class="operaciones-toolbar__filter">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
     <select id="OperacionesUserFilter" name="usuario" class="form-select">

@@ -6,13 +6,13 @@
   data-loaded="{{ columna.loaded }}"
 >
   <header class="cuenta-column__header">
-    <div class="cuenta-column__eyebrow">Etapa {{ columna.posicion }}</div>
     <div class="d-flex align-items-start justify-content-between gap-3">
       <h3 class="cuenta-column__title mb-0">{{ columna.titulo }}</h3>
       <span class="cuenta-column__count" data-cuenta-column-count="1">{{ columna.count }}</span>
     </div>
   </header>
 
+  {% if es_primera_columna %}
   <div class="cuenta-column__actions px-3 pt-3">
     <button
       type="button"
@@ -24,6 +24,7 @@
       + Nueva cuenta
     </button>
   </div>
+  {% endif %}
 
   <div class="cuenta-column__body columna-drop d-flex flex-column gap-3" data-estado="{{ columna.estado }}">
     {% for cuenta in columna.items %}

@@ -5,11 +5,11 @@
 
 {% block content %}
 <link rel="stylesheet" href="{% static 'garantias/css/panel_garantias.css' %}">
+<link rel="stylesheet" href="{% static 'css/kanban_status_control.css' %}">
 <h2 class="mb-4">Garantias</h2>
 <div class="visually-hidden">{% csrf_token %}</div>
 
 <div class="mb-3 d-flex gap-2 flex-wrap align-items-end">
-  <a href="{% url 'garantias:crear_garantia' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva garantia</a>
   <form method="get" class="ms-auto garantias-filter">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
     <select id="GarantiasUserFilter" name="usuario" class="form-select">
@@ -55,5 +55,6 @@
 {% include "garantias/_asignados_tags_assets.html" %}
 <script src="{% static 'js/kanban-quick-edit.js' %}"></script>
 {{ panel_config|json_script:"panel-garantias-config" }}
+<script src="{% static 'js/kanban_status_control.js' %}"></script>
 <script src="{% static 'garantias/js/panel_garantias.js' %}"></script>
 {% endblock %}

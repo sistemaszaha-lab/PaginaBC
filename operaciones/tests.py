@@ -689,7 +689,7 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("if (select.tomselect) return;", javascript)
         self.assertIn("if (select.tomselect) select.tomselect.destroy();", javascript)
-        self.assertEqual(javascript.count("document.addEventListener('submit', (e) => {"), 1)
+        self.assertEqual(javascript.count("root.addEventListener('submit', (e) => {"), 1)
 
     def test_javascript_serializa_antes_de_deshabilitar_el_formulario(self):
         response = self.client.get(reverse("operaciones:panel_operaciones"))
@@ -1830,8 +1830,8 @@ class OperacionesProgressiveLoadingTests(TestCase):
         self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
         self.assertEqual(javascript.count("Sortable.create("), 1)
         self.assertEqual(
-            javascript.count("document.addEventListener('click'"), 1
+            javascript.count("root.addEventListener('click'"), 1
         )
         self.assertEqual(
-            javascript.count("document.addEventListener('change'"), 1
+            javascript.count("root.addEventListener('change'"), 1
         )

@@ -7,12 +7,12 @@
     data-loaded="{{ loaded }}">
     <div class="card-header garantias-column__header">
       <div>
-        <p class="garantias-column__eyebrow mb-1">Etapa</p>
         <h2 class="garantias-column__title mb-0">{{ estado_texto }}</h2>
       </div>
       <span class="badge garantias-column__count" data-garantias-column-count="1">{{ count }}</span>
     </div>
 
+    {% if es_primera_columna %}
     <div class="garantias-column__actions px-3 pt-3">
       <button
         type="button"
@@ -23,6 +23,7 @@
         + Nueva garantia
       </button>
     </div>
+    {% endif %}
 
     <div class="card-body kanban-col garantias-column__body" data-estado="{{ estado }}">
       {% for g in items %}

@@ -1182,7 +1182,7 @@
         });
     }
 
-    document.addEventListener('change', (e) => {
+    root.addEventListener('change', (e) => {
       if (e.target && e.target.id === 'OperacionesUserFilter') {
         invalidateColumnLoads();
         e.target.form?.submit();
@@ -1217,7 +1217,7 @@
       });
     });
 
-    document.addEventListener('click', (e) => {
+    root.addEventListener('click', (e) => {
       const loadMoreButton = e.target.closest('[data-operacion-load-more="1"]');
       if (loadMoreButton) {
         e.preventDefault();
@@ -1300,7 +1300,7 @@
       if (url) loadDetail(card?.dataset.panelOperacionId, url, 'drawer');
     });
 
-    document.addEventListener('submit', (e) => {
+    root.addEventListener('submit', (e) => {
       const quickEditForm = e.target.closest('[data-operacion-quick-edit-form="1"]');
       if (quickEditForm) {
         e.preventDefault();
@@ -1638,7 +1638,7 @@
         });
     });
 
-    document.addEventListener('keydown', (e) => {
+    root.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && drawerSupported && drawerElement.classList.contains('is-open')) {
         closeDrawer();
       }

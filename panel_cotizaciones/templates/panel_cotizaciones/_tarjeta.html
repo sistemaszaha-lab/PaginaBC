@@ -39,22 +39,7 @@
     </div>
 
     <div class="panel-cotizacion-card__section">
-      <div class="panel-cotizacion-card__state-row">
-        <div>
-          <span class="panel-cotizacion-card__label">Estado</span>
-          <span class="badge panel-cotizacion-card__badge panel-cotizacion-card__badge--state" data-panel-cotizacion-state-badge="1">
-            {{ c.get_estado_display }}
-          </span>
-        </div>
-        <select
-          class="form-select form-select-sm panel-cotizacion-card__state-select"
-          data-panel-cotizacion-state-select="1"
-          aria-label="Cambiar estado de cotizacion">
-          <option value="REQUERIMIENTO" {% if c.estado == "REQUERIMIENTO" %}selected{% endif %}>Requerimiento</option>
-          <option value="EN_PROGRESO" {% if c.estado == "EN_PROGRESO" %}selected{% endif %}>En progreso</option>
-          <option value="ENVIADA" {% if c.estado == "ENVIADA" %}selected{% endif %}>Enviada</option>
-        </select>
-      </div>
+      {% include "components/_kanban_status_control.html" with obj=c select_attr="data-panel-cotizacion-state-select" only %}
     </div>
 
     <div class="panel-cotizacion-card__section panel-cotizacion-card__footer">

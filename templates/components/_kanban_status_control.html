@@ -1,0 +1,30 @@
+{% load kanban_tags %}
+
+<div class="kanban-status-control">
+    <span class="kanban-status-control__label">Cambiar estado</span>
+    
+    <select
+      class="d-none"
+      {{ select_attr }}="1"
+      aria-hidden="true"
+      tabindex="-1">
+      {% for option_value, option_label in obj|get_estado_choices %}
+      <option value="{{ option_value }}" {% if obj.estado == option_value %}selected{% endif %}>{{ option_label }}</option>
+      {% endfor %}
+    </select>
+
+    <div
+      class="kanban-status-control__options"
+      role="group"
+      aria-label="Cambiar estado">
+        {% for option_value, option_label in obj|get_estado_choices %}
+        <button
+            type="button"
+            class="kanban-status-control__option {% if obj.estado == option_value %}active{% endif %}"
+            data-status-option="{{ option_value }}"
+            aria-pressed="{% if obj.estado == option_value %}true{% else %}false{% endif %}">
+            {{ option_label }}
+        </button>
+        {% endfor %}
+    </div>
+</div>

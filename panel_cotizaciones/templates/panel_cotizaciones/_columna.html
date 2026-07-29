@@ -7,12 +7,12 @@
     data-loaded="{{ columna.loaded }}">
     <div class="card-header panel-cotizacion-column__header">
       <div>
-        <p class="panel-cotizacion-column__eyebrow mb-1">Etapa</p>
         <h2 class="panel-cotizacion-column__title mb-0">{{ columna.estado_texto }}</h2>
       </div>
       <span class="badge panel-cotizacion-column__count" data-panel-cotizacion-column-count="1">{{ columna.count }}</span>
     </div>
 
+    {% if es_primera_columna %}
     <div class="panel-cotizacion-column__actions px-3 pt-3">
       <button
         type="button"
@@ -23,6 +23,7 @@
         + Nueva cotizacion
       </button>
     </div>
+    {% endif %}
 
     <div class="card-body panel-cotizaciones-col panel-cotizacion-column__body" data-estado="{{ columna.estado }}">
       {% for c in columna.items %}

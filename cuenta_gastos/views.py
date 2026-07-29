@@ -1,3 +1,4 @@
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
@@ -408,6 +409,7 @@ def _detalle_contexto(cuenta, *, form=None, comentario_form=None, archivos_form=
     }
 
 
+@ensure_csrf_cookie
 @login_required
 def panel_cuenta_gastos(request):
     usuario = _get_usuario_filter(request)

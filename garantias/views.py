@@ -1,3 +1,4 @@
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -334,6 +335,7 @@ def _detalle_template_name(layout: str) -> str:
 
 @login_required
 @admin_required
+@ensure_csrf_cookie
 def panel_garantias(request):
     usuario = _get_usuario_filter(request)
     return render(

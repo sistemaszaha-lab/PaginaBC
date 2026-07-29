@@ -384,6 +384,8 @@
   border: 1px dashed rgba(var(--bs-primary-rgb), 0.35);
 }
 
+
+
 @media (max-width: 991.98px) {
   .panel-cotizacion-column__body {
     min-height: auto;

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -303,6 +304,7 @@ def _preservar_vacios_cotizacion(form, objeto):
 
 @login_required
 @require_GET
+@ensure_csrf_cookie
 def panel_cotizaciones(request: HttpRequest) -> HttpResponse:
     usuarios = _get_usuarios_filter(request)
     context = {

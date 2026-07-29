@@ -129,18 +129,50 @@ window.getCookie = window.getCookie || function (name) {
     return cookieValue;
 };
 
-window.getCSRFToken = window.getCSRFToken || function (form = null) {
+window.getCSRFToken = window.getCSRFToken || function (root = document) {
     let token = window.getCookie("csrftoken");
-    if (!token && form) {
-        const input = form.querySelector('input[type="hidden"][name^="csrf"]');
+    if (!token && root && root.querySelector) {
+        const input = root.querySelector('input[name="csrfmiddlewaretoken"]');
         if (input && input.value) {
             token = input.value;
         }
     }
     if (!token) {
-        console.error("Error CSRF: No se encontró el token CSRF en el formulario ni en la cookie.");
-        alert("Ocurrió un error de seguridad (CSRF). Por favor, recarga la página.");
-        return null;
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta && meta.content) {
+            token = meta.content;
+        }
     }
-    return token;
+    return token || null;
+};
+
+window.csrfFetch = function (url, options = {}) {
+    const requestOptions = { ...options };
+    const headers = new Headers(requestOptions.headers || {});
+    const method = (requestOptions.method || "GET").toUpperCase();
+
+    if (!["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) {
+        const formToken = document.querySelector(
+            'input[name="csrfmiddlewaretoken"]'
+        )?.value;
+
+        const cookieToken = document.cookie
+            .split("; ")
+            .find(row => row.startsWith("csrftoken="))
+            ?.split("=")[1];
+
+        const token = formToken || cookieToken;
+
+        if (!token) {
+            throw new Error("CSRF token not found");
+        }
+
+        headers.set("X-CSRFToken", decodeURIComponent(token));
+    }
+
+    return fetch(url, {
+        ...requestOptions,
+        headers,
+        credentials: "same-origin",
+    });
 };

@@ -5,13 +5,12 @@
 
 {% block content %}
 <link rel="stylesheet" href="{% static 'panel_cotizaciones/css/panel_cotizaciones.css' %}">
+<link rel="stylesheet" href="{% static 'css/kanban_status_control.css' %}">
 {% include "garantias/_asignados_tags_assets.html" %}
 <h2 class="mb-4">Panel de Cotizaciones</h2>
 <div style="display:none;">{% csrf_token %}</div>
 
 <div class="mb-3 d-flex gap-2 flex-wrap align-items-end">
-  <a href="{% url 'panel_cotizaciones:crear' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva cotizacion</a>
-
   <div class="ms-auto panel-cotizacion-filter-box">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
     <div class="d-flex gap-2 align-items-start">
@@ -65,5 +64,6 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 {{ panel_config|json_script:"panel-cotizaciones-config" }}
+<script src="{% static 'js/kanban_status_control.js' %}"></script>
 <script src="{% static 'panel_cotizaciones/js/panel.js' %}"></script>
 {% endblock %}

@@ -1,5 +1,5 @@
 <div id="OperacionesBoard" class="operaciones-board" data-operaciones-board="1">
   {% for columna in columnas %}
-    {% include "operaciones/_columna.html" with columna=columna estados=estados only %}
+    {% include "operaciones/_columna.html" with columna=columna estados=estados es_primera_columna=forloop.first only %}
   {% endfor %}
 </div>

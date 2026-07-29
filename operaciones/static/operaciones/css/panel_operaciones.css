@@ -92,6 +92,8 @@ body.operaciones-drawer-open { overflow: hidden; }
 .panel-operacion-drag { opacity: 0.85; }
 .panel-operacion-ghost { opacity: 0.45; border: 1px dashed #3e9fa2; background: rgba(1, 107, 107, 0.08); }
 
+
+
 @media (max-width: 768px) {
   .operaciones-toolbar__filter { width: 100%; margin-left: 0; }
   .operaciones-column { width: 300px; min-width: 300px; }

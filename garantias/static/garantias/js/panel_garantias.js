@@ -37,25 +37,14 @@
     const columnLoadRequests = new Map();
     let boardVersion = 0;
 
-    function postForm(url, formData, formElement = null) {
-      const token = window.getCSRFToken(formElement);
-      if (!token) return Promise.reject(new Error("CSRF token missing"));
-      return fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-          'X-CSRFToken': token,
-          'X-Requested-With': 'XMLHttpRequest',
-          'Accept': 'application/json',
-        },
-        body: formData,
-      });
-    }
-
     async function readJsonResponse(response) {
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
-        const error = new Error('Respuesta inesperada del servidor.');
+        let errorMsg = 'Respuesta inesperada del servidor.';
+        if (response.status === 403) {
+          errorMsg = 'Tu sesión o el token CSRF no son válidos. Recarga la página e inténtalo nuevamente.';
+        }
+        const error = new Error(errorMsg);
         error.status = response.status;
         throw error;
       }
@@ -358,7 +347,7 @@
     async function postDetailSection(section, form, formData) {
       const version = (sectionRequestVersions.get(section) || 0) + 1;
       sectionRequestVersions.set(section, version);
-      const response = await postForm(form.action, formData, form);
+      const response = await window.csrfFetch(form.action, { method: 'POST', body: formData, headers: {'Accept': 'application/json'} });
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         throw new Error('Respuesta inesperada del servidor.');
@@ -579,7 +568,7 @@
       fd.set('nuevo_estado', targetStatus);
 
       try {
-        const response = await postForm(updateUrl, fd);
+        const response = await window.csrfFetch(updateUrl, { method: 'POST', body: fd, headers: {'Accept': 'application/json'} });
         if (!response.ok) {
           const error = new Error(`Error ${response.status}`);
           error.status = response.status;
@@ -896,7 +885,7 @@
         });
     }
 
-    document.addEventListener('change', (e) => {
+    root.addEventListener('change', (e) => {
       if (e.target && e.target.id === 'GarantiasUserFilter') {
         invalidateColumnLoads();
         e.target.form?.submit();
@@ -947,7 +936,7 @@
       });
     });
 
-    document.addEventListener('click', (e) => {
+    root.addEventListener('click', (e) => {
       const loadMoreButton = e.target.closest('[data-garantia-load-more="1"]');
       if (loadMoreButton) {
         e.preventDefault();
@@ -1021,7 +1010,7 @@
       }
     });
 
-    document.addEventListener('submit', (e) => {
+    root.addEventListener('submit', (e) => {
       const inlineEditor = e.target.closest('[data-garantia-inline-editor="1"]');
       if (inlineEditor) {
         e.preventDefault();
@@ -1032,7 +1021,7 @@
 
         const fd = new FormData(inlineEditor);
         setCardPending(card, true);
-        postForm(inlineEditor.dataset.updateUrl, fd)
+        window.csrfFetch(inlineEditor.dataset.updateUrl, { method: 'POST', body: fd, headers: {'Accept': 'application/json'} })
           .then(async (response) => {
             const data = await response.json();
             if (!response.ok) throw data;
@@ -1070,7 +1059,7 @@
         inlineForm.setAttribute('aria-busy', 'true');
         inlineForm.querySelectorAll('button, input, select').forEach((control) => { control.disabled = true; });
         setInlineCreateButtonsDisabled(true);
-        postForm(inlineCreateUrl, fd)
+        window.csrfFetch(inlineCreateUrl, { method: 'POST', body: fd, headers: {'Accept': 'application/json'} })
           .then((response) => readInlineCreateResponse(response))
           .then((data) => {
             if (!data.ok) return;
@@ -1122,44 +1111,9 @@
         return;
       }
 
-      const modalForm = e.target.closest('[data-garantia-modal-form="1"]');
-      if (modalForm) {
-        e.preventDefault();
-        if (modalForm.dataset.pending === 'true') return;
-        const fd = new FormData(modalForm);
-        setFormPending(modalForm, true);
-        setDrawerBusy((modalForm.querySelector('[name="layout"]')?.value || '') === 'drawer');
-        postForm(modalForm.getAttribute('action'), fd)
-          .then(async (response) => {
-            const data = await readJsonResponse(response);
-            if (!response.ok) throw data;
-            return data;
-          })
-          .then((data) => {
-            const layout = modalForm.querySelector('[name="layout"]')?.value || 'modal';
-            if (!data.html || (data.id && String(data.id) !== String(currentDetailCardId))) throw new Error('Respuesta de garantia inesperada.');
-            if (layout === 'drawer' && drawerContent && drawerRoot?.classList.contains('is-open')) {
-              drawerContent.innerHTML = data.html;
-              if (window.initGarantiaSelects) window.initGarantiaSelects(drawerContent);
-            } else if (modalContent) {
-              modalContent.innerHTML = data.html;
-              if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
-            }
-            if (data.status === 'ok') {
-              replaceCardHtml(data.id, data.card_html);
-            }
-          })
-          .catch((error) => {
-            console.error('No se pudo guardar la garantia:', error);
-            const root = getDetailRoot(modalForm);
-            showCommentFormError(root, requestErrorMessage(error));
-          })
-          .finally(() => {
-            if (modalForm.isConnected) setFormPending(modalForm, false);
-            setDrawerBusy(false);
-          });
-        return;
-      }
+      // El formulario de edición de garantías (data-garantia-modal-form="1") se
+      // delega a document.addEventListener('submit') porque el drawer/modal está
+      // fuera de .garantias-board y sus eventos submit no burbujean hasta root.
 
       const filesForm = e.target.closest('[data-garantia-files-form="1"], [data-garantia-file-delete-form="1"]');
       if (filesForm) {
@@ -1228,7 +1182,7 @@
         const fd = new FormData(refreshForm);
         const layout = refreshForm.querySelector('[name="layout"]')?.value || 'modal';
         setDrawerBusy(layout === 'drawer');
-        postForm(refreshForm.getAttribute('action'), fd)
+        window.csrfFetch(refreshForm.getAttribute('action'), { method: 'POST', body: fd, headers: {'Accept': 'application/json'} })
           .then((response) => {
             if (!response.ok) {
               throw new Error(`Error ${response.status}`);
@@ -1283,7 +1237,7 @@
       commentForm.setAttribute('aria-busy', 'true');
       if (submitButton) submitButton.disabled = true;
       setDrawerBusy(layout === 'drawer');
-      postForm(url, fd, commentForm)
+      window.csrfFetch(url, { method: 'POST', body: fd, headers: {'Accept': 'application/json'} })
         .then((response) => {
           return readJsonResponse(response).then((data) => ({ ok: response.ok, status: response.status, data }));
         })
@@ -1320,7 +1274,7 @@
         });
     });
 
-    document.addEventListener('keydown', (e) => {
+    root.addEventListener('keydown', (e) => {
       const editor = e.target.closest('[data-garantia-inline-editor="1"]');
       if (editor) {
         if (e.key === 'Escape') {
@@ -1341,6 +1295,70 @@
         e.preventDefault();
         closeDrawer(false);
       }
+    });
+
+    document.addEventListener('submit', (e) => {
+      const modalForm = e.target.closest('form[data-garantia-modal-form="1"]');
+      if (!modalForm) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const tokenInput = modalForm.querySelector('input[name="csrfmiddlewaretoken"]');
+
+      const fd = new FormData(modalForm);
+      if (!fd.has("csrfmiddlewaretoken")) {
+        throw new Error(
+          "El formulario de Garantías no contiene csrfmiddlewaretoken."
+        );
+      }
+
+      const csrfToken = tokenInput?.value;
+      if (!csrfToken) {
+        throw new Error(
+          "No se encontró csrfmiddlewaretoken en el formulario de edición."
+        );
+      }
+
+      if (modalForm.dataset.pending === 'true') return;
+      setFormPending(modalForm, true);
+      setDrawerBusy((modalForm.querySelector('[name="layout"]')?.value || '') === 'drawer');
+
+      window.csrfFetch(modalForm.getAttribute('action'), {
+        method: 'POST',
+        body: fd,
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(async (response) => {
+        const data = await readJsonResponse(response);
+        if (!response.ok) throw data;
+        return data;
+      })
+      .then((data) => {
+        const layout = modalForm.querySelector('[name="layout"]')?.value || 'modal';
+        if (!data.html || (data.id && String(data.id) !== String(currentDetailCardId))) {
+          throw new Error('Respuesta de garantia inesperada.');
+        }
+        if (layout === 'drawer' && drawerContent && drawerRoot?.classList.contains('is-open')) {
+          drawerContent.innerHTML = data.html;
+          if (window.initGarantiaSelects) window.initGarantiaSelects(drawerContent);
+        } else if (modalContent) {
+          modalContent.innerHTML = data.html;
+          if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
+        }
+        if (data.status === 'ok') {
+          replaceCardHtml(data.id, data.card_html);
+        }
+      })
+      .catch((error) => {
+        console.error('No se pudo guardar la garantia:', error);
+        const rootElement = getDetailRoot(modalForm);
+        showCommentFormError(rootElement, requestErrorMessage(error));
+      })
+      .finally(() => {
+        if (modalForm.isConnected) setFormPending(modalForm, false);
+        setDrawerBusy(false);
+      });
     });
 
     window.createKanbanQuickEditController({

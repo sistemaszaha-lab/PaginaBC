@@ -547,7 +547,7 @@ class PanelCotizacionCargaProgresivaTests(TestCase):
         self.assertIn("if (duplicateCard) duplicateCard.remove()", javascript)
         self.assertEqual(javascript.count("Sortable.create("), 1)
         self.assertEqual(
-            javascript.count("document.addEventListener('click'"), 1
+            javascript.count("root.addEventListener('click'"), 1
         )
         self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
 
@@ -581,7 +581,7 @@ class PanelCotizacionInlineCreateTests(TestCase):
         )
         self.assertEqual(
             len(re.findall(r"<button\b[^>]*data-panel-cotizacion-inline-open=", html)),
-            3,
+            1,
         )
         self.assertEqual(
             len(re.findall(r"<section\b[^>]*panel-cotizacion-column", html)),
@@ -656,7 +656,7 @@ class PanelCotizacionInlineCreateTests(TestCase):
         self.assertIn("if (select.tomselect) return", javascript)
         self.assertIn("select.tomselect.destroy()", javascript)
         self.assertIn("if (hasActiveFilter) {\n              refreshBoard();", javascript)
-        self.assertEqual(javascript.count("document.addEventListener('submit'"), 1)
+        self.assertEqual(javascript.count("root.addEventListener('submit'"), 1)
         self.assertIn("const inlineEditorRequests = new Map()", javascript)
         self.assertIn("inlineEditorRequests.get(cardId)", javascript)
         self.assertIn("existing.fieldName === fieldName", javascript)

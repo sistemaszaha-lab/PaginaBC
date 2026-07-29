@@ -401,10 +401,10 @@ class GarantiasCargaProgresivaTests(TestCase):
         self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
         self.assertEqual(javascript.count("Sortable.create("), 1)
         self.assertEqual(
-            javascript.count("document.addEventListener('click'"), 1
+            javascript.count("root.addEventListener('click'"), 1
         )
         self.assertEqual(
-            javascript.count("document.addEventListener('change'"), 1
+            javascript.count("root.addEventListener('change'"), 1
         )
 
 
@@ -437,7 +437,7 @@ class GarantiasInlineCreateTests(TestCase):
         )
         self.assertEqual(
             len(re.findall(r"<button\b[^>]*data-garantia-inline-open=", html)),
-            4,
+            1,
         )
         self.assertEqual(
             len(re.findall(r"<section\b[^>]*garantias-column", html)),
@@ -495,7 +495,7 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertIn("if (select.tomselect) return", javascript)
         self.assertIn("select.tomselect.destroy()", javascript)
         self.assertIn("if (!activeFilter) {", javascript)
-        self.assertEqual(javascript.count("document.addEventListener('submit'"), 1)
+        self.assertEqual(javascript.count("root.addEventListener('submit'"), 1)
 
     def test_creacion_inline_devuelve_json_y_tarjeta(self):
         response = self.client.post(
@@ -1001,3 +1001,51 @@ class GarantiasEnlacesAjaxTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json()["success"])
         self.assertFalse(GarantiaEnlace.objects.filter(garantia=self.garantia).exists())
+
+
+class GarantiaEditarCSRFTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin_csrf_editar",
+            password="pass123",
+            is_superuser=True,
+            is_staff=True,
+        )
+        self.garantia = Garantia.objects.create(
+            titulo="Garantia para CSRF",
+            creado_por=self.admin,
+        )
+
+    def test_editar_garantia_csrf_validation(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="admin_csrf_editar", password="pass123")
+
+        # 1. Hacer GET al panel/formulario para obtener cookie csrftoken
+        panel_url = reverse("garantias:panel_garantias")
+        client.get(panel_url)
+
+        # 2. Intentar POST sin cabecera X-CSRFToken -> 403
+        edit_url = reverse("garantias:editar_garantia", args=[self.garantia.pk])
+        response_sin_csrf = client.post(
+            edit_url,
+            {"titulo": "Nuevo Titulo Sin CSRF"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest"
+        )
+        self.assertEqual(response_sin_csrf.status_code, 403)
+
+        # 3. Intentar POST con cabecera X-CSRFToken -> 200 (ya que es AJAX y responde JSON con status 200 en éxito)
+        request = HttpRequest()
+        csrftoken = get_token(request)
+        client.cookies.load({"csrftoken": csrftoken})
+
+        response_con_csrf = client.post(
+            edit_url,
+            {"titulo": "Nuevo Titulo Con CSRF"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_X_CSRFTOKEN=csrftoken
+        )
+        self.assertEqual(response_con_csrf.status_code, 200)
+        self.garantia.refresh_from_db()
+        self.assertEqual(self.garantia.titulo, "Nuevo Titulo Con CSRF")
+
