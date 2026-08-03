@@ -84,7 +84,7 @@ class CuentaGastosTests(TestCase):
         )
         self.assertEqual(
             len(re.findall(r'<button\b[^>]*data-cuenta-inline-open="1"', html)),
-            len(views.COLUMNAS),
+            1,
         )
         self.assertEqual(
             len(re.findall(r'<section\b[^>]*data-cuenta-column="1"', html)),
@@ -203,6 +203,8 @@ class CuentaGastosTests(TestCase):
             "asignados",
             "etiquetas",
             "opciones",
+            "archivos",
+            "enlaces",
             "estado",
         ]:
             self.assertContains(resp, f'name="{field_name}"')
@@ -267,12 +269,14 @@ class CuentaGastosTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
 
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 201)
         self.assertEqual(CuentaGastos.objects.count(), before + 1)
         data = resp.json()
         self.assertTrue(data["ok"])
+        self.assertEqual(data["message"], "La cuenta de gastos se creo correctamente.")
         self.assertEqual(data["estado"], CuentaGastos.Estado.COBRANZA)
-        self.assertIn('data-cuenta-card="1"', data["html"])
+        self.assertEqual(data["cuenta_id"], data["id"])
+        self.assertIn('data-cuenta-card="1"', data["card_html"])
 
         cuenta = CuentaGastos.objects.get(titulo="Cuenta inline completa")
         self.assertEqual(cuenta.descripcion, "Descripción inline")
@@ -298,6 +302,7 @@ class CuentaGastosTests(TestCase):
         self.assertEqual(CuentaGastos.objects.count(), before)
         data = resp.json()
         self.assertFalse(data["ok"])
+        self.assertEqual(data["message"], "Revisa los campos indicados.")
         self.assertIn("titulo", data["errors"])
         self.assertIn('data-cuenta-inline-form-fragment="1"', data["html"])
         self.assertIn(
@@ -316,7 +321,7 @@ class CuentaGastosTests(TestCase):
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 201)
         self.assertTrue(resp.json()["matches_filter"])
 
         otro = get_user_model().objects.create_user(
@@ -332,8 +337,81 @@ class CuentaGastosTests(TestCase):
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 201)
         self.assertFalse(resp.json()["matches_filter"])
+
+    def test_crear_inline_con_archivos_y_enlaces_guarda_todo(self):
+        resp = self.client.post(
+            reverse("cuenta_gastos:crear_cuenta_gastos_inline"),
+            {
+                "titulo": "Cuenta con soporte",
+                "estado": CuentaGastos.Estado.SOLICITUD_PAGO,
+                "enlace_titulo": ["Factura", "Portal"],
+                "enlace_url": [
+                    "https://example.com/factura",
+                    "https://example.com/portal",
+                ],
+                "archivos": [
+                    SimpleUploadedFile("factura.txt", b"contenido"),
+                    SimpleUploadedFile("evidencia.pdf", b"%PDF-1.4"),
+                ],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        cuenta = CuentaGastos.objects.get(pk=data["cuenta_id"])
+        self.assertEqual(cuenta.archivos.count(), 2)
+        self.assertEqual(cuenta.enlaces.count(), 2)
+        self.assertEqual(
+            set(cuenta.enlaces.values_list("titulo", flat=True)),
+            {"Factura", "Portal"},
+        )
+
+    def test_crear_inline_con_datos_invalidos_no_deja_registros_parciales(self):
+        before_cuentas = CuentaGastos.objects.count()
+        before_archivos = CuentaGastosArchivo.objects.count()
+        before_enlaces = CuentaGastosEnlace.objects.count()
+
+        resp = self.client.post(
+            reverse("cuenta_gastos:crear_cuenta_gastos_inline"),
+            {
+                "titulo": "Cuenta invalida",
+                "estado": CuentaGastos.Estado.SOLICITUD_PAGO,
+                "enlace_titulo": ["Portal"],
+                "enlace_url": ["nota-url"],
+                "archivos": [SimpleUploadedFile("factura.txt", b"contenido")],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(CuentaGastos.objects.count(), before_cuentas)
+        self.assertEqual(CuentaGastosArchivo.objects.count(), before_archivos)
+        self.assertEqual(CuentaGastosEnlace.objects.count(), before_enlaces)
+        self.assertIn("enlaces", resp.json()["errors"])
+
+    def test_crear_inline_si_falla_archivo_revierte_transaccion(self):
+        before_cuentas = CuentaGastos.objects.count()
+
+        with patch(
+            "cuenta_gastos.views.CuentaGastosArchivo.objects.create",
+            side_effect=RuntimeError("fallo archivo"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    reverse("cuenta_gastos:crear_cuenta_gastos_inline"),
+                    {
+                        "titulo": "Cuenta rollback",
+                        "estado": CuentaGastos.Estado.SOLICITUD_PAGO,
+                        "archivos": [SimpleUploadedFile("factura.txt", b"contenido")],
+                    },
+                    HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+                )
+
+        self.assertEqual(CuentaGastos.objects.count(), before_cuentas)
 
     def test_crear_inline_anonimo_conserva_permiso_existente(self):
         self.client.logout()

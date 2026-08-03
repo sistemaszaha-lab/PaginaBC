@@ -619,9 +619,48 @@
         destroyInlineTomSelects(inlineSharedSlot);
         form.reset();
         clearInlineFormErrors(inlineSharedSlot);
+        const linksRoot = form.querySelector('[data-cuenta-inline-links="1"]');
+        const rows = linksRoot?.querySelector('[data-cuenta-link-rows="1"]');
+        const template = linksRoot?.querySelector('[data-cuenta-link-template="1"]');
+        if (rows && template) {
+          rows.innerHTML = template.innerHTML.trim();
+        }
       }
       inlineSharedSlot.classList.add('d-none');
       inlineSlotHome.appendChild(inlineSharedSlot);
+    }
+
+    function showInlineNotification(message, level = 'success') {
+      if (!message) return;
+      let container = document.getElementById('cuenta-inline-toast-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'cuenta-inline-toast-container';
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        document.body.appendChild(container);
+      }
+
+      const toast = document.createElement('div');
+      toast.className = `toast align-items-center text-bg-${level} border-0`;
+      toast.setAttribute('role', 'alert');
+      toast.setAttribute('aria-live', 'assertive');
+      toast.setAttribute('aria-atomic', 'true');
+      toast.innerHTML = (
+        '<div class="d-flex">' +
+          `<div class="toast-body">${message}</div>` +
+          '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Cerrar"></button>' +
+        '</div>'
+      );
+      container.appendChild(toast);
+
+      if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+        const instance = bootstrap.Toast.getOrCreateInstance(toast, { delay: 3500 });
+        toast.addEventListener('hidden.bs.toast', () => toast.remove(), { once: true });
+        instance.show();
+        return;
+      }
+
+      window.setTimeout(() => toast.remove(), 3500);
     }
 
     function syncColumnState(column, totalValue) {
@@ -1106,6 +1145,36 @@
         return;
       }
 
+      const linkAddButton = e.target.closest('[data-cuenta-link-add="1"]');
+      if (linkAddButton) {
+        e.preventDefault();
+        const linksRoot = linkAddButton.closest('[data-cuenta-inline-links="1"]');
+        const rows = linksRoot?.querySelector('[data-cuenta-link-rows="1"]');
+        const template = linksRoot?.querySelector('[data-cuenta-link-template="1"]');
+        if (rows && template) {
+          rows.insertAdjacentHTML('beforeend', template.innerHTML.trim());
+          rows.lastElementChild?.querySelector('input')?.focus();
+        }
+        return;
+      }
+
+      const linkRemoveButton = e.target.closest('[data-cuenta-link-remove="1"]');
+      if (linkRemoveButton) {
+        e.preventDefault();
+        const row = linkRemoveButton.closest('[data-cuenta-link-row="1"]');
+        const rows = row?.parentElement;
+        if (!row || !rows) return;
+        if (rows.querySelectorAll('[data-cuenta-link-row="1"]').length === 1) {
+          row.querySelectorAll('input').forEach((input) => {
+            input.value = '';
+          });
+          row.querySelector('input')?.focus();
+          return;
+        }
+        row.remove();
+        return;
+      }
+
       const inlineFieldValue = e.target.closest('[data-cuenta-inline-field]');
       if (inlineFieldValue) {
         e.preventDefault();
@@ -1348,10 +1417,14 @@
 
         const submitButton = inlineForm.querySelector('button[type="submit"]');
         if (submitButton?.disabled) return;
-        if (submitButton) submitButton.disabled = true;
+        const originalSubmitText = submitButton?.textContent;
         inlineForm.dataset.submitting = '1';
 
         const formData = new FormData(inlineForm);
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.textContent = 'Guardando...';
+        }
         const selectedUserId = document.getElementById('CuentaGastosUserFilter')?.value || '';
         if (selectedUserId) formData.set('usuario', selectedUserId);
         fetch(inlineCreateUrl, {
@@ -1372,7 +1445,7 @@
             if (!data.ok) return;
 
             const wrapper = document.createElement('div');
-            wrapper.innerHTML = data.html;
+            wrapper.innerHTML = data.card_html || data.html || '';
             const card = wrapper.firstElementChild;
             if (!card) return;
 
@@ -1391,6 +1464,10 @@
             }
 
             closeInlineCreate({ reset: true });
+            showInlineNotification(
+              data.message || 'La cuenta de gastos se creo correctamente.',
+              'success'
+            );
           })
           .catch((error) => {
             if (error && error.html) {
@@ -1410,9 +1487,16 @@
               return;
             }
             console.error('No se pudo crear la cuenta de gastos:', error);
+            showInlineNotification(
+              error?.message || 'No fue posible crear la cuenta de gastos.',
+              'danger'
+            );
           })
           .finally(() => {
-            if (submitButton) submitButton.disabled = false;
+            if (submitButton) {
+              submitButton.disabled = false;
+              submitButton.textContent = originalSubmitText || 'Guardar';
+            }
             delete inlineForm.dataset.submitting;
         });
         return;

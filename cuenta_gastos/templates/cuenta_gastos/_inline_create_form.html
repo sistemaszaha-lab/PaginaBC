@@ -7,11 +7,15 @@
     method="post"
     action="{% url 'cuenta_gastos:crear_cuenta_gastos_inline' %}"
     class="cuenta-inline-form"
+    enctype="multipart/form-data"
     data-cuenta-inline-form="1">
     {% csrf_token %}
     <input type="hidden" name="estado" value="{{ estado }}">
 
     <div class="mb-2">
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.titulo.id_for_label }}">
+        Titulo <span class="text-danger">*</span>
+      </label>
       {{ form.titulo }}
       {% if form.titulo.errors %}
         <div class="text-danger small mt-1">{{ form.titulo.errors|join:", " }}</div>
@@ -19,6 +23,9 @@
     </div>
 
     <div class="mb-2">
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.descripcion.id_for_label }}">
+        Descripcion
+      </label>
       {{ form.descripcion }}
       {% if form.descripcion.errors %}
         <div class="text-danger small mt-1">{{ form.descripcion.errors|join:", " }}</div>
@@ -26,6 +33,9 @@
     </div>
 
     <div class="mb-2">
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.cliente.id_for_label }}">
+        Cliente
+      </label>
       {{ form.cliente }}
       {% if form.cliente.errors %}
         <div class="text-danger small mt-1">{{ form.cliente.errors|join:", " }}</div>
@@ -33,6 +43,9 @@
     </div>
 
     <div class="mb-2">
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.prioridad.id_for_label }}">
+        Prioridad
+      </label>
       {{ form.prioridad }}
       {% if form.prioridad.errors %}
         <div class="text-danger small mt-1">{{ form.prioridad.errors|join:", " }}</div>
@@ -40,6 +53,9 @@
     </div>
 
     <div class="mb-2">
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.fecha_vencimiento.id_for_label }}">
+        Fecha de vencimiento
+      </label>
       {{ form.fecha_vencimiento }}
       {% if form.fecha_vencimiento.errors %}
         <div class="text-danger small mt-1">{{ form.fecha_vencimiento.errors|join:", " }}</div>
@@ -47,6 +63,9 @@
     </div>
 
     <div class="mb-2">
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.asignados.id_for_label }}">
+        Asignados
+      </label>
       {{ form.asignados }}
       {% if form.asignados.errors %}
         <div class="text-danger small mt-1">{{ form.asignados.errors|join:", " }}</div>
@@ -54,16 +73,108 @@
     </div>
 
     <div class="mb-2">
-      {{ form.etiquetas }}
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.etiquetas.id_for_label }}">
+        Etiquetas
+      </label>
+      <select
+        name="{{ form.etiquetas.html_name }}"
+        id="{{ form.etiquetas.id_for_label }}"
+        class="form-select form-select-sm"
+        data-cuenta-tags-select="1"
+        data-garantia-tags-select="1"
+        placeholder="Agregar..."
+        multiple
+      >
+        {% with selected_values=form.etiquetas.value %}
+          {% for value, label in form.etiquetas.field.choices %}
+            <option
+              value="{{ value }}"
+              {% if selected_values and value|stringformat:"s" in selected_values %}selected{% endif %}
+            >
+              {{ label }}
+            </option>
+          {% endfor %}
+        {% endwith %}
+      </select>
       {% if form.etiquetas.errors %}
         <div class="text-danger small mt-1">{{ form.etiquetas.errors|join:", " }}</div>
       {% endif %}
     </div>
 
     <div class="mb-2">
-      {{ form.opciones }}
-      {% if form.opciones.errors %}
-        <div class="text-danger small mt-1">{{ form.opciones.errors|join:", " }}</div>
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.archivos.id_for_label }}">
+        Archivos
+      </label>
+      {{ form.archivos }}
+      <div class="form-text small">PDF, Excel, Word, imagen, CSV o TXT. Maximo 10 MB por archivo.</div>
+      {% if form.archivos.errors %}
+        <div class="text-danger small mt-1">{{ form.archivos.errors|join:", " }}</div>
+      {% endif %}
+    </div>
+
+    <div class="mb-2" data-cuenta-inline-links="1">
+      {{ form.enlaces }}
+      <div class="d-flex align-items-center justify-content-between mb-1">
+        <label class="form-label form-label-sm fw-semibold mb-0">Enlaces</label>
+        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" data-cuenta-link-add="1">
+          Agregar
+        </button>
+      </div>
+
+      <div data-cuenta-link-rows="1">
+        {% for link in form.link_rows %}
+          <div class="row g-2 mb-2" data-cuenta-link-row="1">
+            <div class="col-5">
+              <input
+                type="text"
+                name="enlace_titulo"
+                class="form-control form-control-sm"
+                placeholder="Titulo del enlace"
+                value="{{ link.titulo }}">
+            </div>
+            <div class="col-6">
+              <input
+                type="url"
+                name="enlace_url"
+                class="form-control form-control-sm"
+                placeholder="https://..."
+                value="{{ link.url }}">
+            </div>
+            <div class="col-1 d-grid">
+              <button type="button" class="btn btn-outline-danger btn-sm px-1" data-cuenta-link-remove="1">
+                x
+              </button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <template data-cuenta-link-template="1">
+        <div class="row g-2 mb-2" data-cuenta-link-row="1">
+          <div class="col-5">
+            <input
+              type="text"
+              name="enlace_titulo"
+              class="form-control form-control-sm"
+              placeholder="Titulo del enlace">
+          </div>
+          <div class="col-6">
+            <input
+              type="url"
+              name="enlace_url"
+              class="form-control form-control-sm"
+              placeholder="https://...">
+          </div>
+          <div class="col-1 d-grid">
+            <button type="button" class="btn btn-outline-danger btn-sm px-1" data-cuenta-link-remove="1">
+              x
+            </button>
+          </div>
+        </div>
+      </template>
+
+      {% if form.enlaces.errors %}
+        <div class="text-danger small mt-1">{{ form.enlaces.errors|join:", " }}</div>
       {% endif %}
     </div>
 
@@ -73,7 +184,7 @@
 
     <div class="d-flex gap-2 justify-content-end">
       <button type="button" class="btn btn-light btn-sm" data-cuenta-inline-cancel="1">Cancelar</button>
-      <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+      <button type="submit" class="btn btn-primary btn-sm" data-cuenta-inline-submit="1">Guardar</button>
     </div>
   </form>
 </div>

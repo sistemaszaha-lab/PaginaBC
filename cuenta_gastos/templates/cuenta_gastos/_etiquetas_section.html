@@ -22,7 +22,26 @@
     {% csrf_token %}
     <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
     <label class="form-label fw-semibold" for="{{ etiquetas_form.etiquetas.id_for_label }}">Asignar etiquetas existentes</label>
-    {{ etiquetas_form.etiquetas }}
+    <select
+      name="{{ etiquetas_form.etiquetas.html_name }}"
+      id="{{ etiquetas_form.etiquetas.id_for_label }}"
+      class="form-select rounded"
+      data-cuenta-tags-select="1"
+      data-garantia-tags-select="1"
+      placeholder="Agregar..."
+      multiple
+    >
+      {% with selected_values=etiquetas_form.etiquetas.value %}
+        {% for value, label in etiquetas_form.etiquetas.field.choices %}
+          <option
+            value="{{ value }}"
+            {% if selected_values and value|stringformat:"s" in selected_values %}selected{% endif %}
+          >
+            {{ label }}
+          </option>
+        {% endfor %}
+      {% endwith %}
+    </select>
     {% if etiquetas_form.etiquetas.errors %}
       <div class="cuenta-section-error">{{ etiquetas_form.etiquetas.errors|join:" " }}</div>
     {% endif %}

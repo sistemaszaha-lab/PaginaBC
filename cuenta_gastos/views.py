@@ -2,6 +2,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Count, F, Window
 from django.db.models.functions import RowNumber
 from django.http import JsonResponse
@@ -250,6 +251,14 @@ def _render_inline_create_form(request, form, estado):
             "estado": estado,
             "estado_label": dict(COLUMNAS).get(estado, estado),
         },
+        request=request,
+    )
+
+
+def _render_card_html(request, cuenta):
+    return render_to_string(
+        "cuenta_gastos/_card.html",
+        {"cuenta": cuenta, "estados_ui": COLUMNAS},
         request=request,
     )
 
@@ -617,22 +626,39 @@ def crear_cuenta_gastos_inline(request):
             status=400,
         )
 
-    form = CuentaGastosInlineCreateForm(request.POST)
+    form = CuentaGastosInlineCreateForm(request.POST, request.FILES)
     if not form.is_valid():
         return JsonResponse(
             {
                 "ok": False,
+                "message": "Revisa los campos indicados.",
                 "errors": form.errors.get_json_data(escape_html=True),
                 "html": _render_inline_create_form(request, form, estado),
             },
             status=400,
         )
 
-    cuenta = form.save(commit=False)
-    cuenta.estado = estado
-    cuenta.creado_por = request.user
-    cuenta.save()
-    form.save_m2m()
+    with transaction.atomic():
+        cuenta = form.save(commit=False)
+        cuenta.estado = estado
+        cuenta.creado_por = request.user
+        cuenta.save()
+        form.save_m2m()
+
+        for archivo in request.FILES.getlist("archivos"):
+            CuentaGastosArchivo.objects.create(
+                cuenta_gasto=cuenta,
+                archivo=archivo,
+                subido_por=request.user,
+            )
+
+        for enlace in form.cleaned_data.get("enlaces_payload", []):
+            CuentaGastosEnlace.objects.create(
+                cuenta_gasto=cuenta,
+                titulo=enlace["titulo"],
+                url=enlace["url"],
+                creado_por=request.user,
+            )
 
     usuario_filtro_id = _filtro_post_id(request)
     matches_filter = _matches_filter(cuenta, usuario_filtro_id)
@@ -641,18 +667,18 @@ def crear_cuenta_gastos_inline(request):
     return JsonResponse(
         {
             "ok": True,
-            "html": render_to_string(
-                "cuenta_gastos/_card.html",
-                {"cuenta": cuenta, "estados_ui": COLUMNAS},
-                request=request,
-            ),
+            "message": "La cuenta de gastos se creo correctamente.",
+            "html": _render_card_html(request, cuenta),
+            "card_html": _render_card_html(request, cuenta),
             "id": cuenta.pk,
+            "cuenta_id": cuenta.pk,
             "estado": cuenta.estado,
             "column_count": _column_count(
                 cuenta.estado, usuario_filtro_id
             ),
             "matches_filter": matches_filter,
-        }
+        },
+        status=201,
     )
 
 
