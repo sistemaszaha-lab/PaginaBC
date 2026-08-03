@@ -3,6 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Count, F, Window
 from django.db.models.functions import RowNumber
 from django.http import FileResponse, JsonResponse
@@ -81,7 +82,7 @@ def _es_ajax(request):
 def _garantia_queryset():
     return (
         Garantia.objects.select_related("cliente", "creado_por")
-        .prefetch_related("asignados")
+        .prefetch_related("asignados", "etiquetas")
         .annotate(
             comentarios_count=Count("comentarios", distinct=True),
             archivos_count=Count("archivos", distinct=True),
@@ -237,13 +238,18 @@ def _contexto_modal_garantia(garantia, form=None, archivos_form=None, enlace_for
         "comentarios_count": garantia.comentarios_count,
         "archivos": _archivos_queryset(garantia),
         "enlaces": _enlaces_queryset(garantia),
+        "etiquetas": list(garantia.etiquetas.all()),
     }
 
 
 def _render_inline_create_form(request, form, estado):
     return render_to_string(
         "garantias/_inline_create_form.html",
-        {"form": form, "estado": estado},
+        {
+            "form": form,
+            "estado": estado,
+            "estado_texto": _estado_label(estado),
+        },
         request=request,
     )
 
@@ -257,6 +263,20 @@ def _guardar_adjuntos_enlaces(request, garantia, enlace_form):
         enlace.garantia = garantia
         enlace.creado_por = request.user
         enlace.save()
+
+
+def _guardar_enlaces_payload(garantia, enlaces_payload, usuario):
+    for enlace in enlaces_payload:
+        GarantiaEnlace.objects.create(
+            garantia=garantia,
+            titulo=enlace["titulo"],
+            url=enlace["url"],
+            creado_por=usuario,
+        )
+
+
+def _estado_inicial_garantia():
+    return Garantia.Estado.SOLICITUD_NAVIERA
 
 
 def _render_card_html(request, garantia):
@@ -421,7 +441,7 @@ def tarjetas_columna(request, estado):
 @admin_required
 @require_GET
 def formulario_garantia_inline(request):
-    estado = Garantia.Estado.SOLICITUD_NAVIERA
+    estado = _estado_inicial_garantia()
     return render(
         request,
         "garantias/_inline_create_form.html",
@@ -438,16 +458,17 @@ def formulario_garantia_inline(request):
 def crear_garantia(request):
     next_url = _safe_next_url(request)
     if request.method == "POST":
-        form = GarantiaForm(request.POST)
+        form = GarantiaForm(request.POST, request.FILES)
         archivos_form = GarantiaArchivosForm(request.POST, request.FILES)
         enlace_form = GarantiaEnlaceForm(request.POST)
         if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
-            garantia = form.save(commit=False)
-            garantia.estado = Garantia.Estado.SOLICITUD_NAVIERA
-            garantia.creado_por = request.user
-            garantia.save()
-            form.save_m2m()
-            _guardar_adjuntos_enlaces(request, garantia, enlace_form)
+            with transaction.atomic():
+                garantia = form.save(commit=False)
+                garantia.estado = _estado_inicial_garantia()
+                garantia.creado_por = request.user
+                garantia.save()
+                form.save_m2m()
+                _guardar_adjuntos_enlaces(request, garantia, enlace_form)
             messages.success(request, "Garantía creada.")
             if next_url:
                 return redirect(next_url)
@@ -474,40 +495,50 @@ def crear_garantia_inline(request):
             status=400,
         )
 
-    estado = (request.POST.get("estado") or "").strip().upper()
-    estados_validos = set(_estados_disponibles())
-    if estado not in estados_validos:
-        return JsonResponse(
-            {"ok": False, "errors": {"estado": ["Estado invalido."]}},
-            status=400,
-        )
-
-    form = GarantiaInlineCreateForm(request.POST)
+    estado = _estado_inicial_garantia()
+    form = GarantiaInlineCreateForm(request.POST, request.FILES)
     if not form.is_valid():
         return JsonResponse(
             {
                 "ok": False,
+                "message": "Revisa los campos marcados.",
                 "errors": form.errors.get_json_data(escape_html=True),
                 "html": _render_inline_create_form(request, form, estado),
             },
             status=400,
         )
 
-    garantia = form.save(commit=False)
-    garantia.estado = estado
-    garantia.creado_por = request.user
-    garantia.save()
-    form.save_m2m()
+    with transaction.atomic():
+        garantia = form.save(commit=False)
+        garantia.estado = estado
+        garantia.creado_por = request.user
+        garantia.save()
+        form.save_m2m()
+        for archivo in request.FILES.getlist("archivos"):
+            GarantiaArchivo.objects.create(
+                garantia=garantia,
+                archivo=archivo,
+                subido_por=request.user,
+            )
+        _guardar_enlaces_payload(
+            garantia,
+            form.cleaned_data.get("enlaces_payload", []),
+            request.user,
+        )
 
     garantia = get_object_or_404(_garantia_queryset(), pk=garantia.pk)
     return JsonResponse(
         {
             "ok": True,
+            "message": "Garantia creada correctamente.",
             "html": _render_card_html(request, garantia),
+            "card_html": _render_card_html(request, garantia),
             "id": garantia.pk,
+            "garantia_id": garantia.pk,
             "estado": garantia.estado,
             "column_count": Garantia.objects.filter(estado=garantia.estado).count(),
-        }
+        },
+        status=201,
     )
 
 
@@ -696,19 +727,20 @@ def editar_garantia(request, pk):
         archivos_form = GarantiaArchivosForm(request.POST, request.FILES)
         enlace_form = GarantiaEnlaceForm(request.POST)
         if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
-            # Preservar campos no-m2m que llegan vacíos
-            _preservar_vacios_garantia(form, garantia)
+            with transaction.atomic():
+                # Preservar campos no-m2m que llegan vacíos
+                _preservar_vacios_garantia(form, garantia)
 
-            obj = form.save(commit=False)
-            obj.save()
+                obj = form.save(commit=False)
+                obj.save()
 
-            # M2M: solo actualizar si el campo fue enviado explícitamente en el POST
-            if "asignados" in request.POST:
-                valores = form.cleaned_data.get("asignados")
-                if valores is not None:
-                    garantia.asignados.set(valores)
+                # M2M: solo actualizar si el campo fue enviado explícitamente en el POST
+                if "asignados" in request.POST:
+                    valores = form.cleaned_data.get("asignados")
+                    if valores is not None:
+                        garantia.asignados.set(valores)
 
-            _guardar_adjuntos_enlaces(request, garantia, enlace_form)
+                _guardar_adjuntos_enlaces(request, garantia, enlace_form)
             garantia = get_object_or_404(_garantia_queryset(), pk=pk)
             messages.success(request, "Garantía actualizada.")
             if _es_ajax(request):

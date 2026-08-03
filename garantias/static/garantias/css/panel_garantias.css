@@ -393,6 +393,29 @@
   color: var(--garantias-danger-text);
 }
 
+.garantia-priority--urgente {
+  background: #8f1d1d;
+  color: #fff4f4;
+}
+
+.garantia-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.garantia-card__tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.65rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--garantia-tag-bg, var(--garantias-accent-soft));
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
 .garantia-drag {
   opacity: 0.86;
 }

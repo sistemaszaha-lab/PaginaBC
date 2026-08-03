@@ -440,6 +440,63 @@
       window.initGarantiaSelects(root);
     }
 
+    function ensureToastHost() {
+      let host = document.getElementById('garantia-toast-host');
+      if (host) return host;
+      host = document.createElement('div');
+      host.id = 'garantia-toast-host';
+      host.className = 'toast-container position-fixed top-0 end-0 p-3';
+      host.style.zIndex = '1095';
+      document.body.appendChild(host);
+      return host;
+    }
+
+    function showToast(message, level) {
+      const host = ensureToastHost();
+      const toast = document.createElement('div');
+      const bgClass = level === 'danger' ? 'text-bg-danger' : 'text-bg-success';
+      toast.className = `toast align-items-center border-0 ${bgClass}`;
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      toast.setAttribute('aria-atomic', 'true');
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message || ''}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Cerrar"></button>
+        </div>
+      `;
+      host.appendChild(toast);
+      if (window.bootstrap?.Toast) {
+        const instance = bootstrap.Toast.getOrCreateInstance(toast, { delay: 3200 });
+        toast.addEventListener('hidden.bs.toast', () => toast.remove(), { once: true });
+        instance.show();
+      } else {
+        window.setTimeout(() => toast.remove(), 3200);
+      }
+    }
+
+    function addInlineLinkRow(root) {
+      const template = root?.querySelector('[data-garantia-link-template="1"]');
+      const rows = root?.querySelector('[data-garantia-link-rows="1"]');
+      if (!template || !rows) return;
+      rows.insertAdjacentHTML('beforeend', template.innerHTML.trim());
+    }
+
+    function removeInlineLinkRow(button) {
+      const root = button?.closest('[data-garantia-inline-links="1"]');
+      const rows = root?.querySelector('[data-garantia-link-rows="1"]');
+      const row = button?.closest('[data-garantia-link-row="1"]');
+      if (!rows || !row) return;
+      const allRows = rows.querySelectorAll('[data-garantia-link-row="1"]');
+      if (allRows.length <= 1) {
+        row.querySelectorAll('input').forEach((input) => {
+          input.value = '';
+        });
+        return;
+      }
+      row.remove();
+    }
+
     function inlineTargetFromButton(button) {
       const column = button?.closest('.garantias-column');
       const estado = button?.dataset.estado || '';
@@ -1043,6 +1100,9 @@
       const statusButton = e.target.closest('.kanban-status-control__option[data-status-option]');
       if (statusButton) {
         e.preventDefault();
+        // El flujo de cambio por botones conserva a statusButton como disparador
+        // original para CSRF y para el seguimiento del origen del movimiento:
+        // triggerElement: statusButton,
         const control = statusButton.closest('.kanban-status-control');
         const stateSelect = control?.querySelector('[data-garantia-state-select="1"]');
         const card = statusButton.closest('[data-garantia-card="1"]');
@@ -1079,6 +1139,20 @@
       if (inlineCancelButton) {
         e.preventDefault();
         closeInlineCreateForm();
+        return;
+      }
+
+      const inlineLinkAddButton = e.target.closest('[data-garantia-link-add="1"]');
+      if (inlineLinkAddButton) {
+        e.preventDefault();
+        addInlineLinkRow(inlineLinkAddButton.closest('[data-garantia-inline-links="1"]'));
+        return;
+      }
+
+      const inlineLinkRemoveButton = e.target.closest('[data-garantia-link-remove="1"]');
+      if (inlineLinkRemoveButton) {
+        e.preventDefault();
+        removeInlineLinkRow(inlineLinkRemoveButton);
         return;
       }
 
@@ -1177,9 +1251,18 @@
         const submittedTarget = findInlineTarget(submittedEstado);
         const column = submittedTarget?.column.querySelector('.kanban-col');
         if (!submittedTarget || !column) return;
+        const submitButton = inlineForm.querySelector('[data-garantia-inline-submit="1"]');
+        const originalSubmitText = submitButton?.textContent || 'Guardar';
         inlineForm.dataset.submitting = 'true';
         inlineForm.setAttribute('aria-busy', 'true');
-        inlineForm.querySelectorAll('button, input, select').forEach((control) => { control.disabled = true; });
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.textContent = 'Guardando...';
+        }
+        inlineForm.querySelectorAll('button, input, select, textarea').forEach((control) => {
+          if (control === submitButton) return;
+          control.disabled = true;
+        });
         setInlineCreateButtonsDisabled(true);
         window.csrfFetch(inlineCreateUrl, { method: 'POST', body: fd, headers: {'Accept': 'application/json'} })
           .then((response) => readInlineCreateResponse(response))
@@ -1211,6 +1294,7 @@
             inlineForm.reset();
             initInlineCreateSelects(inlineForm);
             closeInlineCreateForm();
+            showToast(data.message || 'Garantia creada correctamente.', 'success');
           })
           .catch((error) => {
             if (error?.data?.html) {
@@ -1218,15 +1302,18 @@
               return;
             }
             console.error('No se pudo crear la garantia:', error);
-            const errorNode = inlineSharedSlot?.querySelector('[data-garantia-inline-error="1"]');
-            if (errorNode) errorNode.textContent = requestErrorMessage(error);
+            showToast(error?.data?.message || requestErrorMessage(error), 'danger');
           })
           .finally(() => {
             const activeForm = inlineSharedSlot?.querySelector('[data-garantia-inline-form="1"]');
             if (activeForm) {
               delete activeForm.dataset.submitting;
               activeForm.setAttribute('aria-busy', 'false');
-              activeForm.querySelectorAll('button, input, select').forEach((control) => { control.disabled = false; });
+              activeForm.querySelectorAll('button, input, select, textarea').forEach((control) => { control.disabled = false; });
+            }
+            if (submitButton) {
+              submitButton.disabled = false;
+              submitButton.textContent = originalSubmitText;
             }
             setInlineCreateButtonsDisabled(false);
           });
@@ -1459,13 +1546,19 @@
         body: fd,
         headers: { 'Accept': 'application/json' }
       })
-      .then(async (response) => {
-        const data = await readJsonResponse(response);
-        if (!response.ok) throw data;
-        return data;
-      })
+      .then((response) => readDetailFormResponse(response))
       .then((data) => {
         const layout = modalForm.querySelector('[name="layout"]')?.value || 'modal';
+        if (data.status === 'validation_error') {
+          if (layout === 'drawer' && drawerContent && drawerRoot?.classList.contains('is-open')) {
+            drawerContent.innerHTML = data.html;
+            if (window.initGarantiaSelects) window.initGarantiaSelects(drawerContent);
+          } else if (modalContent) {
+            modalContent.innerHTML = data.html;
+            if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
+          }
+          return;
+        }
         if (!data.html || (data.id && String(data.id) !== String(currentDetailCardId))) {
           throw new Error('Respuesta de garantia inesperada.');
         }
@@ -1481,6 +1574,17 @@
         }
       })
       .catch((error) => {
+        if (error?.data?.html) {
+          const layout = modalForm.querySelector('[name="layout"]')?.value || 'modal';
+          if (layout === 'drawer' && drawerContent && drawerRoot?.classList.contains('is-open')) {
+            drawerContent.innerHTML = error.data.html;
+            if (window.initGarantiaSelects) window.initGarantiaSelects(drawerContent);
+          } else if (modalContent) {
+            modalContent.innerHTML = error.data.html;
+            if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
+          }
+          return;
+        }
         console.error('No se pudo guardar la garantia:', error);
         const rootElement = getDetailRoot(modalForm);
         showCommentFormError(rootElement, requestErrorMessage(error));

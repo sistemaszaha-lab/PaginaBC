@@ -15,7 +15,7 @@ from datetime import date, timedelta
 
 from clientes.models import Cliente
 
-from .models import Garantia, GarantiaArchivo, GarantiaComentario, GarantiaEnlace
+from .models import Garantia, GarantiaArchivo, GarantiaComentario, GarantiaEnlace, GarantiaEtiqueta
 
 PANEL_JS_PATH = (
     Path(__file__).resolve().parent
@@ -434,6 +434,15 @@ class GarantiasInlineCreateTests(TestCase):
         )
         self.client.force_login(self.admin)
         self.cliente = Cliente.objects.create(nombre="Cliente inline")
+        self.asignado = User.objects.create_user(
+            username="asignado_inline_create_garantias",
+            password="pass123",
+            first_name="Asignado",
+        )
+        self.etiqueta = GarantiaEtiqueta.objects.create(
+            nombre="Urgente",
+            color="#FF0000",
+        )
 
     def test_panel_no_instancia_formulario_inline_y_conserva_columnas(self):
         with patch(
@@ -470,7 +479,9 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-garantia-inline-form-fragment="1"')
         self.assertContains(response, 'data-garantia-inline-form="1"')
-        for field_name in ("titulo", "cliente", "prioridad", "estado"):
+        self.assertContains(response, 'enctype="multipart/form-data"')
+        self.assertContains(response, 'data-garantia-link-rows="1"')
+        for field_name in ("titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "archivos", "estado"):
             self.assertContains(response, f'name="{field_name}"')
         self.assertEqual(Garantia.objects.count(), total)
 
@@ -508,14 +519,18 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertIn("if (inlineForm.dataset.submitting === 'true') return", javascript)
         self.assertIn("if (select.tomselect) return", javascript)
         self.assertIn("select.tomselect.destroy()", javascript)
+        self.assertIn("function showToast(message, level)", javascript)
+        self.assertIn("data-garantia-link-add", javascript)
+        self.assertIn("data-garantia-link-remove", javascript)
         self.assertIn("if (!activeFilter) {", javascript)
         self.assertEqual(javascript.count("root.addEventListener('submit'"), 1)
+        self.assertIn("async function readDetailFormResponse(response)", javascript)
+        self.assertIn("if (data.status === 'validation_error') {", javascript)
 
     def test_creacion_inline_devuelve_json_y_tarjeta(self):
         response = self.client.post(
             reverse("garantias:crear_garantia_inline"),
             {
-                "estado": Garantia.Estado.EN_PROCESO,
                 "titulo": "Nueva garantia inline",
                 "cliente": self.cliente.pk,
                 "prioridad": Garantia.Prioridad.ALTA,
@@ -523,34 +538,24 @@ class GarantiasInlineCreateTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertTrue(data["ok"])
-        self.assertEqual(data["estado"], Garantia.Estado.EN_PROCESO)
+        self.assertEqual(data["message"], "Garantia creada correctamente.")
+        self.assertEqual(data["estado"], Garantia.Estado.SOLICITUD_NAVIERA)
         self.assertEqual(data["column_count"], 1)
-        self.assertIn("Nueva garantia inline", data["html"])
+        self.assertEqual(data["garantia_id"], data["id"])
+        self.assertIn("Nueva garantia inline", data["card_html"])
 
         garantia = Garantia.objects.get(pk=data["id"])
         self.assertEqual(garantia.creado_por, self.admin)
-        self.assertEqual(garantia.estado, Garantia.Estado.EN_PROCESO)
+        self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
         self.assertEqual(garantia.cliente_id, self.cliente.pk)
 
     def test_creacion_inline_invalida_devuelve_errores_y_html(self):
         response = self.client.post(
             reverse("garantias:crear_garantia_inline"),
-            {"estado": "INVALIDO", "titulo": "Demo"},
-            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
-        )
-
-        self.assertEqual(response.status_code, 400)
-        data = response.json()
-        self.assertFalse(data["ok"])
-        self.assertIn("estado", data["errors"])
-
-        response = self.client.post(
-            reverse("garantias:crear_garantia_inline"),
             {
-                "estado": Garantia.Estado.EN_PROCESO,
                 "titulo": "Demo",
                 "prioridad": "INVALIDA",
             },
@@ -559,11 +564,75 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertEqual(response.status_code, 400)
         data = response.json()
         self.assertIn("prioridad", data["errors"])
+        self.assertEqual(data["message"], "Revisa los campos marcados.")
         self.assertIn('data-garantia-inline-form-fragment="1"', data["html"])
         self.assertIn(
-            f'value="{Garantia.Estado.EN_PROCESO}"',
+            f'value="{Garantia.Estado.SOLICITUD_NAVIERA}"',
             data["html"],
         )
+
+    def test_creacion_inline_guarda_todos_los_campos_relaciones_y_adjuntos(self):
+        response = self.client.post(
+            reverse("garantias:crear_garantia_inline"),
+            {
+                "estado": Garantia.Estado.DEVOLUCION_CLIENTE,
+                "titulo": "Nueva garantia completa",
+                "descripcion": "Descripcion de prueba",
+                "cliente": self.cliente.pk,
+                "prioridad": Garantia.Prioridad.URGENTE,
+                "fecha_vencimiento": "2026-08-20",
+                "asignados": [self.asignado.pk],
+                "etiquetas": [self.etiqueta.pk],
+                "enlace_titulo": ["Factura", "Seguimiento"],
+                "enlace_url": ["https://ejemplo.test/factura", "https://ejemplo.test/seguimiento"],
+                "archivos": [
+                    SimpleUploadedFile("evidencia-1.pdf", b"pdf", content_type="application/pdf"),
+                    SimpleUploadedFile("evidencia-2.xlsx", b"xlsx", content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                ],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["garantia_id"], data["id"])
+        self.assertIn(f'id="garantia-{data["id"]}"', data["card_html"])
+        self.assertEqual(data["estado"], Garantia.Estado.SOLICITUD_NAVIERA)
+
+        garantia = Garantia.objects.get(pk=data["id"])
+        self.assertEqual(garantia.descripcion, "Descripcion de prueba")
+        self.assertEqual(garantia.prioridad, Garantia.Prioridad.URGENTE)
+        self.assertEqual(str(garantia.fecha_vencimiento), "2026-08-20")
+        self.assertEqual(list(garantia.asignados.values_list("pk", flat=True)), [self.asignado.pk])
+        self.assertEqual(list(garantia.etiquetas.values_list("pk", flat=True)), [self.etiqueta.pk])
+        self.assertEqual(GarantiaArchivo.objects.filter(garantia=garantia).count(), 2)
+        self.assertEqual(GarantiaEnlace.objects.filter(garantia=garantia).count(), 2)
+
+    def test_creacion_inline_titulo_vacio_y_url_invalida_no_generan_registros_parciales(self):
+        before = Garantia.objects.count()
+        response = self.client.post(
+            reverse("garantias:crear_garantia_inline"),
+            {"titulo": "   "},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("titulo", response.json()["errors"])
+        self.assertEqual(Garantia.objects.count(), before)
+
+        response = self.client.post(
+            reverse("garantias:crear_garantia_inline"),
+            {
+                "titulo": "Garantia con URL invalida",
+                "enlace_titulo": ["Factura"],
+                "enlace_url": ["nota-sin-url"],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("enlaces", response.json()["errors"])
+        self.assertEqual(Garantia.objects.count(), before)
+        self.assertEqual(GarantiaEnlace.objects.count(), 0)
+        self.assertEqual(GarantiaArchivo.objects.count(), 0)
 
     def test_creacion_inline_sin_ajax_falla(self):
         response = self.client.post(
@@ -1077,6 +1146,64 @@ class GarantiaEditarCSRFTests(TestCase):
         self.assertEqual(response_con_csrf.status_code, 200)
         self.garantia.refresh_from_db()
         self.assertEqual(self.garantia.titulo, "Nuevo Titulo Con CSRF")
+
+
+class GarantiaAtomicidadTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin_atomic_garantias",
+            password="pass123",
+            is_superuser=True,
+            is_staff=True,
+        )
+        self.client.force_login(self.admin)
+        self.cliente = Cliente.objects.create(nombre="Cliente atomicidad")
+        self.garantia = Garantia.objects.create(
+            titulo="Garantia base",
+            cliente=self.cliente,
+            creado_por=self.admin,
+        )
+
+    def test_crear_garantia_revierte_si_falla_guardado_de_adjuntos_o_enlaces(self):
+        before = Garantia.objects.count()
+
+        with patch(
+            "garantias.views._guardar_adjuntos_enlaces",
+            side_effect=RuntimeError("fallo adjuntos"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    reverse("garantias:crear_garantia"),
+                    {
+                        "titulo": "Garantia con fallo",
+                        "cliente": self.cliente.pk,
+                        "prioridad": Garantia.Prioridad.MEDIA,
+                    },
+                )
+
+        self.assertEqual(Garantia.objects.count(), before)
+
+    def test_editar_garantia_revierte_si_falla_guardado_de_adjuntos_o_enlaces(self):
+        with patch(
+            "garantias.views._guardar_adjuntos_enlaces",
+            side_effect=RuntimeError("fallo adjuntos"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    reverse("garantias:editar_garantia", args=[self.garantia.pk]),
+                    {
+                        "titulo": "Titulo editado",
+                        "descripcion": "",
+                        "cliente": self.cliente.pk,
+                        "prioridad": Garantia.Prioridad.ALTA,
+                        "fecha_vencimiento": "",
+                    },
+                    HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+                )
+
+        self.garantia.refresh_from_db()
+        self.assertEqual(self.garantia.titulo, "Garantia base")
 
 
 class GarantiaEliminarCSRFTests(TestCase):

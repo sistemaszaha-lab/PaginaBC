@@ -23,6 +23,7 @@ class Garantia(models.Model):
         BAJA = "BAJA", "Baja"
         MEDIA = "MEDIA", "Media"
         ALTA = "ALTA", "Alta"
+        URGENTE = "URGENTE", "Urgente"
 
     titulo = models.CharField(max_length=255, blank=True, default="")
     descripcion = models.TextField(blank=True, default="")
@@ -50,12 +51,29 @@ class Garantia(models.Model):
     )
     fecha_vencimiento = models.DateField(null=True, blank=True)
     fecha_creacion = models.DateTimeField(default=timezone.now)
+    etiquetas = models.ManyToManyField(
+        "GarantiaEtiqueta",
+        blank=True,
+        related_name="garantias",
+    )
 
     class Meta:
         ordering = ["-fecha_creacion", "-id"]
 
     def __str__(self):
         return self.titulo
+
+
+class GarantiaEtiqueta(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
+    color = models.CharField(max_length=7, default="#1D6F6F")
+    fecha_creacion = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["nombre", "id"]
+
+    def __str__(self):
+        return self.nombre
 
 
 class GarantiaComentario(models.Model):

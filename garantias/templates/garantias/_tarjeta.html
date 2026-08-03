@@ -51,6 +51,14 @@
       </div>
     </div>
 
+    {% if g.etiquetas.count %}
+      <div class="garantia-card__section garantia-card__tags">
+        {% for etiqueta in g.etiquetas.all %}
+          <span class="garantia-card__tag" style="--garantia-tag-bg: {{ etiqueta.color }};">{{ etiqueta.nombre }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+
     <div class="garantia-card__section garantia-card__footer">
       <div class="small text-muted d-flex gap-2" aria-label="Recursos adjuntos">
         <span data-garantia-card-files-count="1">Archivos: {{ g.archivos_count|default:0 }}</span>
