@@ -12,18 +12,8 @@
 
 .cuenta-page-header {
   display: flex;
-  justify-content: space-between;
-  align-items: end;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.cuenta-page-header__eyebrow {
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #8a6f46;
-  font-size: 0.74rem;
-  font-weight: 700;
+  align-items: center;
+  min-width: 0;
 }
 
 .cuenta-page-header__summary {
@@ -32,17 +22,471 @@
   line-height: 1.5;
 }
 
+.cuenta-panel-shell {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 .cuenta-toolbar {
   display: flex;
   align-items: end;
+  justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.5rem;
   flex-wrap: wrap;
 }
 
 .cuenta-toolbar__filter {
   margin-left: auto;
   min-width: 240px;
+  width: min(280px, 100%);
+}
+
+.cuenta-repo {
+  width: 100%;
+  margin-bottom: 0;
+  padding: 18px;
+  border: 1px solid #dfe7e4;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgba(24, 62, 52, 0.08);
+}
+
+.repositorio-panel {
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 16px 18px;
+  border: 1px solid #dfe7e4;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgba(24, 62, 52, 0.08);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.repositorio-identidad {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.repositorio-icono-carpeta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 10px;
+  background: rgba(15, 118, 110, 0.11);
+  color: #0f766e;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.repositorio-linea-titulo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.repositorio-contador {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.11);
+  color: #0f766e;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.repositorio-vacio-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.repositorio-icono-titulo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.repositorio-icono-pdf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.repositorio-icono-boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.repositorio-vacio {
+  min-height: 110px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.repositorio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.repositorio-encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.repositorio-titulo {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #24352f;
+}
+
+.repositorio-subtitulo {
+  margin: 4px 0 0;
+  font-size: 0.88rem;
+  color: #6c7a75;
+}
+
+.repositorio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.repositorio-accion i,
+.repositorio-accion span {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.cuenta-repo__header,
+.cuenta-repo__footer,
+.cuenta-repo__links,
+.cuenta-repo__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.cuenta-repo__header {
+  align-items: flex-start;
+}
+
+.cuenta-repo__headline,
+.cuenta-repo__headline-main,
+.cuenta-repo__title-row,
+.cuenta-repo__card-top,
+.cuenta-repo__empty {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.cuenta-repo__headline-main {
+  align-items: center;
+  min-width: 0;
+}
+
+.cuenta-repo__title-row {
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.15rem;
+}
+
+.cuenta-repo__title {
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--cuenta-text-main);
+}
+
+.cuenta-repo__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.11);
+  color: var(--cuenta-accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.cuenta-repo__summary,
+.cuenta-repo__count,
+.cuenta-repo__date,
+.cuenta-repo__meta {
+  color: var(--cuenta-text-muted);
+  font-size: 0.85rem;
+}
+
+.cuenta-repo__icon,
+.cuenta-repo__upload-icon,
+.cuenta-repo__empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cuenta-repo__icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 14px;
+  background: rgba(15, 118, 110, 0.11);
+  color: var(--cuenta-accent);
+  flex: 0 0 auto;
+}
+
+.cuenta-repo__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.repositorio-boton-subir,
+.btn-repositorio-pdf,
+.cuenta-repo__upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 40px;
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: 1px solid #198754;
+  background: #198754;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.repositorio-boton-subir:hover,
+.repositorio-boton-subir:focus,
+.btn-repositorio-pdf:hover,
+.btn-repositorio-pdf:focus,
+.cuenta-repo__upload-btn:hover,
+.cuenta-repo__upload-btn:focus {
+  background: #157347;
+  border-color: #146c43;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.repositorio-boton-subir:focus-visible {
+  outline: 3px solid rgba(25, 135, 84, 0.25);
+  outline-offset: 2px;
+}
+
+.repositorio-boton-subir:disabled {
+  opacity: 0.7;
+  cursor: wait;
+  transform: none;
+}
+
+.cuenta-repo__feedback {
+  min-height: 0;
+  margin-top: 0.7rem;
+  font-size: 0.86rem;
+}
+
+.cuenta-repo__feedback .alert {
+  margin-bottom: 0;
+  padding: 0.55rem 0.75rem;
+}
+
+.cuenta-repo__body {
+  margin-top: 0.8rem;
+}
+
+.repositorio-contenido {
+  width: 100%;
+}
+
+.repositorio-documento {
+  height: 100%;
+}
+
+.repositorio-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.repositorio-resumen {
+  color: var(--cuenta-text-muted);
+  font-size: 0.84rem;
+}
+
+.repositorio-toggle {
+  font-weight: 700;
+  color: #0f766e;
+  text-decoration: none;
+}
+
+.repositorio-toggle:hover,
+.repositorio-toggle:focus {
+  color: #0b5d57;
+  text-decoration: underline;
+}
+
+.repositorio-mensaje {
+  margin-top: 12px;
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.88rem;
+}
+
+.repositorio-mensaje.es-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.cuenta-repo__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.85rem;
+}
+
+.cuenta-repo__card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e1e8e5;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(69, 52, 35, 0.06);
+}
+
+.cuenta-repo__pdf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  justify-content: center;
+  min-width: 3.3rem;
+  padding: 0.28rem 0.62rem;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.cuenta-repo__card-top {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cuenta-repo__name {
+  margin-top: 0.7rem;
+  font-weight: 700;
+  color: var(--cuenta-text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cuenta-repo__meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  margin-top: 0.55rem;
+}
+
+.cuenta-repo__uploader {
+  margin-top: 0.35rem;
+  color: var(--cuenta-text-muted);
+  font-size: 0.84rem;
+}
+
+.cuenta-repo__links {
+  justify-content: flex-start;
+  margin-top: 0.8rem;
+}
+
+.cuenta-repo__action-btn {
+  min-width: 4.3rem;
+}
+
+.cuenta-repo__empty {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  border: 1px dashed #b9cbc4;
+  border-radius: 12px;
+  color: var(--cuenta-text-muted);
+  background: #f7faf9;
+  text-align: center;
+  min-height: 100px;
+}
+
+.cuenta-repo__empty-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+}
+
+.cuenta-repo__empty-title {
+  color: var(--cuenta-text-main);
+  font-weight: 700;
+}
+
+.cuenta-repo__empty-copy {
+  font-size: 0.86rem;
+}
+
+.cuenta-repo__toggle {
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .cuenta-board {
@@ -634,17 +1078,95 @@ body.cuenta-drawer-open {
     border-color: rgba(255, 255, 255, 0.08);
     color: #eee5d8;
   }
+
+  .cuenta-repo {
+    border-color: rgba(255, 255, 255, 0.08);
+    background:
+      radial-gradient(circle at top right, rgba(15, 118, 110, 0.18), transparent 28%),
+      linear-gradient(180deg, rgba(28, 25, 22, 0.96) 0%, rgba(21, 19, 17, 0.98) 100%);
+  }
+
+  .cuenta-repo__title,
+  .cuenta-repo__name {
+    color: #f5efe6;
+  }
+
+  .cuenta-repo__summary,
+  .cuenta-repo__count,
+  .cuenta-repo__date,
+  .cuenta-repo__meta,
+  .cuenta-repo__uploader,
+  .cuenta-repo__empty-copy {
+    color: #d8c9b5;
+  }
+
+  .cuenta-repo__badge {
+    background: rgba(94, 234, 212, 0.12);
+    color: #7de9dd;
+  }
+
+  .cuenta-repo__icon {
+    background: rgba(94, 234, 212, 0.12);
+    color: #7de9dd;
+  }
+
+  .cuenta-repo__card {
+    background: rgba(36, 33, 29, 0.94);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .cuenta-repo__empty {
+    background: rgba(36, 33, 29, 0.7);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #d8c9b5;
+  }
+
+  .cuenta-repo__empty-title {
+    color: #f5efe6;
+  }
 }
 
 @media (max-width: 768px) {
   .cuenta-page-header {
-    flex-direction: column;
-    align-items: start;
+    width: 100%;
   }
 
   .cuenta-toolbar__filter {
     margin-left: 0;
     width: 100%;
+  }
+
+  .cuenta-toolbar {
+    align-items: stretch;
+  }
+
+  .cuenta-repo__header,
+  .cuenta-repo__footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .repositorio-encabezado {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cuenta-repo__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .repositorio-boton-subir {
+    width: 100%;
+  }
+
+  .repositorio-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cuenta-repo__grid {
+    grid-template-columns: 1fr;
   }
 
   .cuenta-column {

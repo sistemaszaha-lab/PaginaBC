@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from django.core.files.storage import FileSystemStorage
+from uuid import uuid4
 
 from clientes.models import Cliente
 
@@ -10,6 +11,14 @@ operaciones_upload_storage = FileSystemStorage(
     location="uploads",
     base_url="/uploads/",
 )
+
+
+def documento_repositorio_upload_to(_instance, _filename):
+    now = timezone.now()
+    return (
+        f"cuenta_gastos/repositorio/{now:%Y/%m}/"
+        f"{uuid4().hex}.pdf"
+    )
 
 
 class CuentaGastos(models.Model):
@@ -250,3 +259,31 @@ class CuentaGastosEnlace(models.Model):
 
     def __str__(self):
         return self.titulo
+
+
+class DocumentoRepositorio(models.Model):
+
+    archivo = models.FileField(
+        storage=operaciones_upload_storage,
+        upload_to=documento_repositorio_upload_to,
+    )
+
+    nombre_original = models.CharField(
+        max_length=255
+    )
+
+    subido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="documentos_repositorio_cuenta_gastos",
+    )
+
+    fecha_subida = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        ordering = ["-fecha_subida", "-id"]
+
+    def __str__(self):
+        return self.nombre_original

@@ -5,10 +5,13 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, F, Window
 from django.db.models.functions import RowNumber
-from django.http import JsonResponse
+from pathlib import Path
+
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET, require_POST
 from django.utils.http import url_has_allowed_host_and_scheme
 
@@ -20,6 +23,7 @@ from .models import (
     CuentaGastosEnlace,
     CuentaGastosEtiqueta,
     CuentaGastosOpcion,
+    DocumentoRepositorio,
 )
 from .forms import (
     CuentaGastosForm,
@@ -73,6 +77,8 @@ INITIAL_CARDS_PER_COLUMN = 3
 CARDS_PAGE_SIZE = 10
 CUENTA_ORDERING = ("-fecha_creacion", "-id")
 ESTADOS_VALIDOS = frozenset(estado for estado, _nombre in COLUMNAS)
+REPOSITORIO_INITIAL_LIMIT = 5
+PDF_INVALID_MESSAGE = "EL FORMATO NO ES VÁLIDO"
 
 
 def _cuenta_queryset():
@@ -418,6 +424,64 @@ def _detalle_contexto(cuenta, *, form=None, comentario_form=None, archivos_form=
     }
 
 
+def _repositorio_queryset():
+    return DocumentoRepositorio.objects.select_related("subido_por").order_by(
+        "-fecha_subida",
+        "-id",
+    )
+
+
+def _repositorio_contexto(*, mostrar_todos=False):
+    queryset = _repositorio_queryset()
+    total = queryset.count()
+    documentos = list(
+        queryset if mostrar_todos else queryset[:REPOSITORIO_INITIAL_LIMIT]
+    )
+    return {
+        "documentos": documentos,
+        "total_documentos": total,
+        "documentos_total": total,
+        "documentos_visibles": len(documentos),
+        "mostrar_todos": mostrar_todos,
+        "hay_mas_documentos": total > len(documentos),
+        "initial_limit": REPOSITORIO_INITIAL_LIMIT,
+    }
+
+
+def _render_repositorio(request, *, mostrar_todos=False):
+    return render_to_string(
+        "cuenta_gastos/_repositorio.html",
+        _repositorio_contexto(mostrar_todos=mostrar_todos),
+        request=request,
+    )
+
+
+def _validar_pdf_upload(uploaded_file):
+    nombre_original = Path(uploaded_file.name or "").name.strip()
+    extension = Path(nombre_original).suffix.lower()
+    if not nombre_original or extension != ".pdf":
+        return False, nombre_original
+
+    mime_type = (getattr(uploaded_file, "content_type", "") or "").strip().lower()
+    if mime_type and mime_type != "application/pdf":
+        return False, nombre_original
+
+    encabezado = uploaded_file.read(5)
+    uploaded_file.seek(0)
+    if encabezado != b"%PDF-":
+        return False, nombre_original
+
+    uploaded_file.name = nombre_original
+    return True, nombre_original
+
+
+def _json_pdf_invalido():
+    return JsonResponse(
+        {"ok": False, "message": PDF_INVALID_MESSAGE},
+        status=400,
+    )
+
+
 @ensure_csrf_cookie
 @login_required
 def panel_cuenta_gastos(request):
@@ -435,6 +499,7 @@ def panel_cuenta_gastos(request):
             "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
             "usuario_filtro_id": usuario.id if usuario else "",
             "current":"panel_cuenta_gastos",
+            "repositorio_contexto": _repositorio_contexto(),
             "panel_config": {
                 "inlineCreateUrl": reverse(
                     "cuenta_gastos:crear_cuenta_gastos_inline"
@@ -442,10 +507,98 @@ def panel_cuenta_gastos(request):
                 "inlineFormUrl": reverse(
                     "cuenta_gastos:formulario_cuenta_gastos_inline"
                 ),
+                "repositorioListUrl": reverse(
+                    "cuenta_gastos:repositorio_listado"
+                ),
+                "repositorioUploadUrl": reverse(
+                    "cuenta_gastos:repositorio_subir"
+                ),
             },
         }
 
     )
+
+
+@login_required
+@require_GET
+def repositorio_listado(request):
+    mostrar_todos = request.GET.get("all") == "1"
+    return JsonResponse(
+        {
+            "ok": True,
+            "html": _render_repositorio(
+                request,
+                mostrar_todos=mostrar_todos,
+            ),
+            "mostrar_todos": mostrar_todos,
+        }
+    )
+
+
+@login_required
+@require_POST
+def repositorio_subir(request):
+    archivos = request.FILES.getlist("archivos")
+    if not archivos:
+        return _json_pdf_invalido()
+
+    mostrar_todos = request.POST.get("mostrar_todos") == "1"
+    archivos_validados = []
+    for archivo in archivos:
+        es_valido, nombre_original = _validar_pdf_upload(archivo)
+        if not es_valido:
+            return _json_pdf_invalido()
+        archivos_validados.append((archivo, nombre_original))
+
+    with transaction.atomic():
+        for archivo, nombre_original in archivos_validados:
+            DocumentoRepositorio.objects.create(
+                archivo=archivo,
+                nombre_original=nombre_original,
+                subido_por=request.user,
+            )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "message": "PDF cargado correctamente.",
+            "html": _render_repositorio(
+                request,
+                mostrar_todos=mostrar_todos,
+            ),
+            "mostrar_todos": mostrar_todos,
+        }
+    )
+
+
+@login_required
+@require_GET
+def repositorio_visualizar(request, pk):
+    documento = get_object_or_404(_repositorio_queryset(), pk=pk)
+    response = FileResponse(
+        documento.archivo.open("rb"),
+        content_type="application/pdf",
+    )
+    response.headers["Content-Disposition"] = content_disposition_header(
+        as_attachment=False,
+        filename=documento.nombre_original,
+    )
+    return response
+
+
+@login_required
+@require_GET
+def repositorio_descargar(request, pk):
+    documento = get_object_or_404(_repositorio_queryset(), pk=pk)
+    response = FileResponse(
+        documento.archivo.open("rb"),
+        content_type="application/pdf",
+    )
+    response.headers["Content-Disposition"] = content_disposition_header(
+        as_attachment=True,
+        filename=documento.nombre_original,
+    )
+    return response
 
 
 @login_required

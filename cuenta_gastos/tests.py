@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
+from django.conf import settings
 from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext, override_settings
 from django.middleware.csrf import get_token
@@ -15,7 +16,7 @@ from django.utils import timezone
 
 from clientes.models import Cliente
 from . import views
-from .models import CuentaGastos, CuentaGastosArchivo, CuentaGastosComentario, CuentaGastosEnlace, CuentaGastosEtiqueta, CuentaGastosOpcion
+from .models import CuentaGastos, CuentaGastosArchivo, CuentaGastosComentario, CuentaGastosEnlace, CuentaGastosEtiqueta, CuentaGastosOpcion, DocumentoRepositorio
 
 PANEL_JS_PATH = (
     Path(__file__).resolve().parent
@@ -1279,3 +1280,191 @@ class CuentaGastosTests(TestCase):
     def test_actualizar_opciones_get_no_permitido(self):
         resp = self.client.get(reverse("cuenta_gastos:actualizar_opciones_cuenta", args=[self.cuenta.id]))
         self.assertEqual(resp.status_code, 405)
+
+
+@override_settings(
+    PERFORMANCE_DEBUG=False,
+    STORAGES={
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
+class RepositorioCuentaGastosTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username="repo_user",
+            password="pass",
+            first_name="Repo",
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def _pdf_file(self, name="archivo.pdf", content=b"%PDF-1.4 repo"):
+        return SimpleUploadedFile(
+            name,
+            content,
+            content_type="application/pdf",
+        )
+
+    def _txt_as_pdf_file(self, name="falso.pdf", content=b"hola mundo"):
+        return SimpleUploadedFile(
+            name,
+            content,
+            content_type="application/pdf",
+        )
+
+    def test_panel_muestra_repositorio(self):
+        response = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Repositorio")
+        self.assertContains(response, "Subir PDF")
+        self.assertContains(response, 'data-repositorio="1"', html=False)
+        self.assertContains(response, "/static/cuenta_gastos/css/panel_cuenta_gastos.css")
+        self.assertContains(response, "/static/cuenta_gastos/js/panel_cuenta_gastos.js")
+        self.assertContains(response, "repositorio-panel")
+        self.assertContains(response, "repositorio-boton-subir")
+        self.assertContains(response, 'id="repositorio-pdf-form"', html=False)
+        self.assertContains(response, 'id="repositorio-pdf-input"', html=False)
+        self.assertContains(response, 'id="repositorio-pdf-boton"', html=False)
+
+    def test_settings_locales_exponen_media_url_y_media_root(self):
+        self.assertEqual(settings.MEDIA_URL, "/media/")
+        self.assertTrue(str(settings.MEDIA_ROOT).endswith("media"))
+
+    def test_usuario_autorizado_puede_subir_pdf(self):
+        response = self.client.post(
+            reverse("cuenta_gastos:repositorio_subir"),
+            {"archivos": self._pdf_file("manual.pdf")},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(DocumentoRepositorio.objects.filter(nombre_original="manual.pdf").exists())
+
+    def test_se_pueden_subir_varios_pdf_en_una_sola_solicitud(self):
+        response = self.client.post(
+            reverse("cuenta_gastos:repositorio_subir"),
+            {
+                "archivos": [
+                    self._pdf_file("uno.pdf", b"%PDF-1.4 uno"),
+                    self._pdf_file("dos.PDF", b"%PDF-1.4 dos"),
+                ]
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(DocumentoRepositorio.objects.count(), 2)
+
+    def test_archivo_txt_imagen_o_pdf_renombrado_devuelve_400(self):
+        casos = [
+            SimpleUploadedFile("nota.txt", b"hola", content_type="text/plain"),
+            SimpleUploadedFile("foto.pdf", b"\x89PNG", content_type="image/png"),
+            self._txt_as_pdf_file(),
+        ]
+
+        for archivo in casos:
+            with self.subTest(nombre=archivo.name):
+                response = self.client.post(
+                    reverse("cuenta_gastos:repositorio_subir"),
+                    {"archivos": archivo},
+                    HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json(), {"ok": False, "message": "EL FORMATO NO ES VÁLIDO"})
+
+    def test_si_un_archivo_es_invalido_no_se_guarda_ninguno(self):
+        response = self.client.post(
+            reverse("cuenta_gastos:repositorio_subir"),
+            {
+                "archivos": [
+                    self._pdf_file("valido.pdf", b"%PDF-1.4 valido"),
+                    self._txt_as_pdf_file("invalido.pdf", b"no pdf real"),
+                ]
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(DocumentoRepositorio.objects.count(), 0)
+
+    def test_listado_documentos_ordenado_del_mas_reciente_al_mas_antiguo(self):
+        antiguo = DocumentoRepositorio.objects.create(
+            archivo=self._pdf_file("antiguo.pdf", b"%PDF-1.4 antiguo"),
+            nombre_original="antiguo.pdf",
+            subido_por=self.user,
+        )
+        reciente = DocumentoRepositorio.objects.create(
+            archivo=self._pdf_file("reciente.pdf", b"%PDF-1.4 reciente"),
+            nombre_original="reciente.pdf",
+            subido_por=self.user,
+        )
+
+        documentos = list(views._repositorio_queryset())
+        self.assertEqual([documentos[0].pk, documentos[1].pk], [reciente.pk, antiguo.pk])
+
+    def test_listado_inicial_muestra_cinco_y_permite_ver_todos(self):
+        for index in range(6):
+            DocumentoRepositorio.objects.create(
+                archivo=self._pdf_file(f"doc-{index}.pdf", f"%PDF-1.4 {index}".encode()),
+                nombre_original=f"doc-{index}.pdf",
+                subido_por=self.user,
+            )
+
+        response = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
+        self.assertContains(response, "Ver todos los archivos")
+
+        listado = self.client.get(
+            reverse("cuenta_gastos:repositorio_listado"),
+            {"all": "1"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(listado.status_code, 200)
+        self.assertTrue(listado.json()["mostrar_todos"])
+
+    def test_usuario_no_autenticado_no_puede_listar_subir_visualizar_ni_descargar(self):
+        documento = DocumentoRepositorio.objects.create(
+            archivo=self._pdf_file("privado.pdf"),
+            nombre_original="privado.pdf",
+            subido_por=self.user,
+        )
+        self.client.logout()
+
+        endpoints = [
+            self.client.get(reverse("cuenta_gastos:repositorio_listado")),
+            self.client.post(reverse("cuenta_gastos:repositorio_subir"), {"archivos": self._pdf_file("anonimo.pdf")}),
+            self.client.get(reverse("cuenta_gastos:repositorio_visualizar", args=[documento.pk])),
+            self.client.get(reverse("cuenta_gastos:repositorio_descargar", args=[documento.pk])),
+        ]
+
+        for response in endpoints:
+            self.assertEqual(response.status_code, 302)
+
+    def test_visualizacion_usa_inline(self):
+        documento = DocumentoRepositorio.objects.create(
+            archivo=self._pdf_file("inline.pdf"),
+            nombre_original="inline.pdf",
+            subido_por=self.user,
+        )
+
+        response = self.client.get(reverse("cuenta_gastos:repositorio_visualizar", args=[documento.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("inline", response["Content-Disposition"])
+        self.assertEqual(response["Content-Type"], "application/pdf")
+
+    def test_descarga_usa_attachment(self):
+        documento = DocumentoRepositorio.objects.create(
+            archivo=self._pdf_file("descarga.pdf"),
+            nombre_original="descarga.pdf",
+            subido_por=self.user,
+        )
+
+        response = self.client.get(reverse("cuenta_gastos:repositorio_descargar", args=[documento.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertEqual(response["Content-Type"], "application/pdf")

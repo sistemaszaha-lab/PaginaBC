@@ -63,6 +63,10 @@
       {% include "cuenta_gastos/_etiquetas_section.html" with cuenta=cuenta etiquetas=etiquetas etiquetas_count=etiquetas_count etiquetas_form=etiquetas_form etiqueta_create_form=etiqueta_create_form layout=layout only %}
 
       <div class="mt-4">
+        {% include "cuenta_gastos/_opciones_section.html" with cuenta=cuenta opciones=opciones opciones_count=opciones_count opciones_form=opciones_form opcion_create_form=opcion_create_form layout=layout only %}
+      </div>
+
+      <div class="mt-4">
         {% include "cuenta_gastos/_comentarios_section.html" with cuenta=cuenta comentario_form=comentario_form comentarios=comentarios comentarios_count=comentarios_count layout=layout only %}
       </div>
     </div>

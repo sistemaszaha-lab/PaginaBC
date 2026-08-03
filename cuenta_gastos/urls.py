@@ -10,6 +10,26 @@ urlpatterns = [
         views.panel_cuenta_gastos,
         name="panel_cuenta_gastos"
     ),
+    path(
+        "repositorio/",
+        views.repositorio_listado,
+        name="repositorio_listado",
+    ),
+    path(
+        "repositorio/subir/",
+        views.repositorio_subir,
+        name="repositorio_subir",
+    ),
+    path(
+        "repositorio/<int:pk>/ver/",
+        views.repositorio_visualizar,
+        name="repositorio_visualizar",
+    ),
+    path(
+        "repositorio/<int:pk>/descargar/",
+        views.repositorio_descargar,
+        name="repositorio_descargar",
+    ),
 
     path(
         "crear/",

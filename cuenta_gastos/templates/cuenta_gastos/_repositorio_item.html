@@ -1,0 +1,30 @@
+<article class="cuenta-repo__card repositorio-documento">
+    <div class="cuenta-repo__card-top">
+        <span class="cuenta-repo__pdf-badge" aria-hidden="true">
+            <span class="repositorio-icono-pdf" aria-hidden="true">PDF</span>
+        </span>
+        <span class="cuenta-repo__date">{{ documento.fecha_subida|date:"d/m/Y H:i" }}</span>
+    </div>
+    <div class="cuenta-repo__name" title="{{ documento.nombre_original }}">{{ documento.nombre_original }}</div>
+    <div class="cuenta-repo__meta">
+        <span>{{ documento.archivo.size|filesizeformat }}</span>
+        <span>{{ documento.subido_por.get_full_name|default:documento.subido_por.username }}</span>
+    </div>
+    <div class="cuenta-repo__uploader">
+        Subido por {{ documento.subido_por.get_full_name|default:documento.subido_por.username }}
+    </div>
+    <div class="cuenta-repo__links">
+        <a
+            href="{% url 'cuenta_gastos:repositorio_visualizar' documento.id %}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-sm btn-outline-secondary cuenta-repo__action-btn repositorio-accion">
+            <span>Ver</span>
+        </a>
+        <a
+            href="{% url 'cuenta_gastos:repositorio_descargar' documento.id %}"
+            class="btn btn-sm btn-outline-secondary cuenta-repo__action-btn repositorio-accion">
+            <span aria-hidden="true">&#8595;</span>
+        </a>
+    </div>
+</article>

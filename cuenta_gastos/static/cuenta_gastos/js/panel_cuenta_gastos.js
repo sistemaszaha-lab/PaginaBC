@@ -1,3 +1,156 @@
+  console.info('panel_cuenta_gastos.js cargado');
+
+  document.addEventListener("click", function (event) {
+    const boton = event.target.closest('#repositorio-pdf-boton-inactivo');
+
+    if (!boton) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const input = document.getElementById('repositorio-pdf-input');
+
+    if (!input) {
+      console.error('No se encontró #repositorio-pdf-input');
+      return;
+    }
+
+    input.click();
+  });
+
+  document.addEventListener("change", function (event) {
+    const input = event.target;
+
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+
+    if (input.id !== 'repositorio-pdf-input-inactivo') {
+      return;
+    }
+
+    const archivos = Array.from(input.files || []);
+
+    if (!archivos.length) {
+      return;
+    }
+
+    subirPdfsRepositorio(archivos, input);
+  });
+
+  async function subirPdfsRepositorio(archivos, input) {
+    const formulario = document.getElementById('repositorio-pdf-form');
+    const boton = document.getElementById('repositorio-pdf-boton');
+    const mensaje = document.getElementById('repositorio-mensaje');
+
+    if (!formulario || !boton) {
+      console.error('No se encontró el formulario o botón del repositorio');
+      return;
+    }
+
+    const archivosValidos = archivos.every(function (archivo) {
+      return archivo.name.toLowerCase().endsWith('.pdf');
+    });
+
+    if (!archivosValidos) {
+      mostrarMensajeRepositorio('EL FORMATO NO ES VÁLIDO', true);
+      input.value = '';
+      return;
+    }
+
+    const formData = new FormData();
+
+    archivos.forEach(function (archivo) {
+      formData.append('archivos', archivo);
+    });
+
+    if (document.getElementById('repositorio-panel')?.dataset.expanded === '1') {
+      formData.append('mostrar_todos', '1');
+    }
+
+    const csrfToken = formulario.querySelector(
+      "input[name='csrfmiddlewaretoken']"
+    )?.value;
+
+    if (mensaje) {
+      mensaje.hidden = true;
+      mensaje.textContent = '';
+      mensaje.classList.remove('es-error');
+    }
+
+    boton.disabled = true;
+    boton.innerHTML = '<span>Subiendo...</span>';
+
+    try {
+      const response = await fetch(formulario.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-CSRFToken': csrfToken || '',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'same-origin',
+      });
+
+      const contentType = response.headers.get('content-type') || '';
+
+      if (!contentType.includes('application/json')) {
+        const texto = await response.text();
+        throw new Error(
+          `Respuesta inesperada del servidor (${response.status}): ${texto.slice(0, 120)}`
+        );
+      }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || 'No se pudieron subir los archivos.'
+        );
+      }
+
+      if (data.html) {
+        const panelActual = document.getElementById('repositorio-panel');
+
+        if (panelActual) {
+          panelActual.outerHTML = data.html;
+        }
+      } else {
+        window.location.reload();
+      }
+
+      input.value = '';
+    } catch (error) {
+      console.error(error);
+      mostrarMensajeRepositorio(
+        error.message || 'No se pudieron subir los archivos.',
+        true
+      );
+    } finally {
+      const botonActual = document.getElementById('repositorio-pdf-boton');
+
+      if (botonActual) {
+        botonActual.disabled = false;
+        botonActual.innerHTML =
+          "<span aria-hidden='true'>&#8593;</span><span>Subir PDF</span>";
+      }
+    }
+  }
+
+  function mostrarMensajeRepositorio(texto, esError) {
+    const mensaje = document.getElementById('repositorio-mensaje');
+
+    if (!mensaje) {
+      window.alert(texto);
+      return;
+    }
+
+    mensaje.hidden = false;
+    mensaje.textContent = texto;
+    mensaje.classList.toggle('es-error', Boolean(esError));
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     const root = document.querySelector('[data-cuenta-board="1"]');
     const configElement = document.getElementById('panel-cuenta-gastos-config');
@@ -36,6 +189,8 @@
       url: null,
       layout: drawerSupported ? 'drawer' : 'modal',
     };
+    const repositorioListUrl = config.repositorioListUrl;
+    const repositorioUploadUrl = config.repositorioUploadUrl;
 
     document.getElementById('CuentaGastosUserFilter')?.addEventListener('change', function () {
       filterVersion += 1;
@@ -663,6 +818,171 @@
       window.setTimeout(() => toast.remove(), 3500);
     }
 
+    function getRepositorioRoot() {
+      return document.querySelector('[data-repositorio="1"]');
+    }
+
+    function getRepositorioForm() {
+      return document.querySelector('#repositorio-pdf-form');
+    }
+
+    function getRepositorioInput() {
+      return document.querySelector('#repositorio-pdf-input');
+    }
+
+    function getRepositorioButton() {
+      return document.querySelector('#repositorio-pdf-boton');
+    }
+
+    function obtenerCsrfToken() {
+      return document.querySelector("#repositorio-pdf-form input[name='csrfmiddlewaretoken']")?.value || '';
+    }
+
+    function getRepositorioExpanded() {
+      return getRepositorioRoot()?.dataset.expanded === '1';
+    }
+
+    function setRepositorioExpanded(isExpanded) {
+      const rootNode = getRepositorioRoot();
+      if (!rootNode) return;
+      rootNode.dataset.expanded = isExpanded ? '1' : '0';
+    }
+
+    function setRepositorioFeedback(message, level = 'info') {
+      const feedback = document.getElementById('repositorio-mensaje');
+      if (!feedback) return;
+      if (!message) {
+        feedback.hidden = true;
+        feedback.textContent = '';
+        feedback.classList.remove('es-error');
+        return;
+      }
+      feedback.hidden = false;
+      feedback.textContent = message;
+      feedback.classList.toggle('es-error', level === 'danger');
+    }
+
+    function setRepositorioPending(isPending, buttonText) {
+      const rootNode = getRepositorioRoot();
+      if (!rootNode) return;
+      const uploadButton = getRepositorioButton();
+      const toggleButton = rootNode.querySelector('[data-repositorio-toggle="1"]');
+      const fileInput = getRepositorioInput();
+      if (uploadButton) {
+        if (!uploadButton.dataset.defaultHtml) {
+          uploadButton.dataset.defaultHtml = uploadButton.innerHTML;
+        }
+        uploadButton.disabled = isPending;
+        uploadButton.innerHTML = isPending
+          ? (buttonText || 'Subiendo...')
+          : uploadButton.dataset.defaultHtml;
+      }
+      if (toggleButton) toggleButton.disabled = isPending;
+      if (fileInput) fileInput.disabled = isPending;
+      rootNode.dataset.pending = isPending ? '1' : '0';
+    }
+
+    function replaceRepositorioHtml(html) {
+      const current = getRepositorioRoot();
+      if (!current || !html) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const next = wrapper.firstElementChild;
+      if (!next) return;
+      current.replaceWith(next);
+    }
+
+    function refreshRepositorio(mostrarTodos) {
+      if (!repositorioListUrl) return Promise.reject(new Error('Repositorio no disponible.'));
+      const url = new URL(repositorioListUrl, window.location.origin);
+      if (mostrarTodos) {
+        url.searchParams.set('all', '1');
+      }
+      return fetch(`${url.pathname}${url.search}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+        },
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw data;
+          return data;
+        })
+        .then((data) => {
+          replaceRepositorioHtml(data.html);
+          setRepositorioExpanded(Boolean(data.mostrar_todos));
+          return data;
+        });
+    }
+
+    function archivosRepositorioValidos(files) {
+      return Array.from(files || []).every((file) => {
+        const name = String(file?.name || '').toLowerCase();
+        const mimeType = String(file?.type || '').toLowerCase();
+        return name.endsWith('.pdf') && (!mimeType || mimeType === 'application/pdf');
+      });
+    }
+
+    async function submitRepositorioFiles(fileList, inputElement) {
+      const files = Array.from(fileList || []);
+      if (!files.length) return;
+      const rootNode = getRepositorioRoot();
+      const formulario = getRepositorioForm();
+      const boton = getRepositorioButton();
+      const input = inputElement || getRepositorioInput();
+      if (!rootNode || rootNode.dataset.pending === '1') return;
+      if (!formulario || !boton) {
+        console.error('No se encontró el formulario del repositorio');
+        return;
+      }
+
+      if (!archivosRepositorioValidos(files)) {
+        setRepositorioFeedback('EL FORMATO NO ES VÁLIDO', 'danger');
+        if (input) input.value = '';
+        return;
+      }
+
+      const formData = new FormData();
+      files.forEach((file) => formData.append('archivos', file));
+      if (getRepositorioExpanded()) {
+        formData.append('mostrar_todos', '1');
+      }
+
+      setRepositorioFeedback('');
+      setRepositorioPending(true, 'Subiendo...');
+
+      try {
+        const response = await fetch(formulario.action || repositorioUploadUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          body: formData,
+          headers: {
+            'X-CSRFToken': obtenerCsrfToken(),
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          throw new Error(data.message || 'No se pudieron subir los archivos.');
+        }
+
+        replaceRepositorioHtml(data.html);
+        setRepositorioExpanded(Boolean(data.mostrar_todos));
+        setRepositorioFeedback(data.message || 'PDF cargado correctamente.', 'success');
+        if (input) input.value = '';
+      } catch (error) {
+        setRepositorioFeedback(error?.message || 'No se pudo subir el archivo.', 'danger');
+      } finally {
+        setRepositorioPending(false);
+        const fileInput = getRepositorioInput();
+        if (fileInput) fileInput.value = '';
+      }
+    }
+
     function syncColumnState(column, totalValue) {
       if (!column) return;
       const shell = getColumnShell(column);
@@ -1116,6 +1436,36 @@
     }
 
     document.addEventListener('click', function (e) {
+      const repositorioUploadButton = e.target.closest('#repositorio-pdf-boton');
+      if (repositorioUploadButton) {
+        e.preventDefault();
+        if (getRepositorioRoot()?.dataset.pending === '1') return;
+        const input = getRepositorioInput();
+        if (!input) {
+          console.error('No se encontró el input del repositorio');
+          return;
+        }
+        input.click();
+        return;
+      }
+
+      const repositorioToggleButton = e.target.closest('[data-repositorio-toggle="1"]');
+      if (repositorioToggleButton) {
+        e.preventDefault();
+        const expandir = repositorioToggleButton.dataset.expanded !== '1';
+        setRepositorioPending(true, 'Subiendo...');
+        setRepositorioFeedback('');
+        refreshRepositorio(expandir)
+          .catch((error) => {
+            console.error('No se pudo actualizar el repositorio:', error);
+            setRepositorioFeedback('No se pudo actualizar el repositorio.', 'danger');
+          })
+          .finally(() => {
+            setRepositorioPending(false);
+          });
+        return;
+      }
+
       const loadMoreButton = e.target.closest('[data-cuenta-load-more="1"]');
       if (loadMoreButton) {
         e.preventDefault();
@@ -1249,6 +1599,12 @@
     });
 
     document.addEventListener('change', function (e) {
+      const repositorioInput = e.target;
+      if (repositorioInput && repositorioInput.id === 'repositorio-pdf-input') {
+        submitRepositorioFiles(repositorioInput.files, repositorioInput);
+        return;
+      }
+
       const stateSelect = e.target.closest('[data-cuenta-state-select="1"]');
       if (!stateSelect) return;
 

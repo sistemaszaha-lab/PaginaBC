@@ -1,0 +1,100 @@
+<section
+    id="repositorio-panel"
+    class="repositorio-panel"
+    data-repositorio="1"
+    data-upload-url="{% url 'cuenta_gastos:repositorio_subir' %}"
+    data-list-url="{% url 'cuenta_gastos:repositorio_listado' %}"
+    data-expanded="{% if mostrar_todos %}1{% else %}0{% endif %}"
+>
+    <div class="repositorio-encabezado">
+        <div class="repositorio-identidad">
+            <span class="repositorio-icono-carpeta" aria-hidden="true">&#128193;</span>
+
+            <div>
+                <div class="repositorio-linea-titulo">
+                    <h2 class="repositorio-titulo">Repositorio</h2>
+
+                    {% if total_documentos %}
+                        <span class="repositorio-contador">
+                            {{ total_documentos }}
+                            archivo{{ total_documentos|pluralize }}
+                        </span>
+                    {% endif %}
+                </div>
+
+                <p class="repositorio-subtitulo">
+                    Documentos PDF disponibles
+                </p>
+            </div>
+        </div>
+
+        <form
+            id="repositorio-pdf-form"
+            action="{% url 'cuenta_gastos:repositorio_subir' %}"
+            method="post"
+            enctype="multipart/form-data"
+        >
+            {% csrf_token %}
+
+            <input
+                type="file"
+                id="repositorio-pdf-input"
+                name="archivos"
+                accept=".pdf,application/pdf"
+                multiple
+                hidden
+            >
+
+            <button
+                type="button"
+                id="repositorio-pdf-boton"
+                class="repositorio-boton-subir"
+            >
+                <span aria-hidden="true">&#8593;</span>
+                <span>Subir PDF</span>
+            </button>
+        </form>
+    </div>
+
+    <div id="repositorio-contenido" class="repositorio-contenido">
+        {% if documentos %}
+            <div class="repositorio-grid" data-repositorio-list="1">
+                {% for documento in documentos %}
+                    {% include "cuenta_gastos/_repositorio_item.html" with documento=documento only %}
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="repositorio-vacio" data-repositorio-list="1">
+                <span class="repositorio-vacio-icono" aria-hidden="true">PDF</span>
+
+                <p class="repositorio-vacio-titulo">
+                    No hay documentos PDF en el repositorio.
+                </p>
+
+                <p class="repositorio-vacio-texto">
+                    Sube el primer archivo para comenzar.
+                </p>
+            </div>
+        {% endif %}
+    </div>
+
+    {% if total_documentos > initial_limit %}
+        <div class="repositorio-footer">
+            <button
+                type="button"
+                class="btn btn-link btn-sm px-0 repositorio-toggle"
+                data-repositorio-toggle="1"
+                data-expanded="{% if mostrar_todos %}1{% else %}0{% endif %}">
+                {% if mostrar_todos %}Ver menos{% else %}Ver todos los archivos{% endif %}
+            </button>
+            <span class="repositorio-resumen">{{ documentos_visibles }} de {{ total_documentos }} archivos</span>
+        </div>
+    {% endif %}
+
+    <div
+        id="repositorio-mensaje"
+        class="repositorio-mensaje"
+        role="alert"
+        hidden
+    ></div>
+</section>
