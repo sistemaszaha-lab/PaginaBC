@@ -28,6 +28,16 @@
       </div>
     {% endif %}
 
+    {% if c.etiquetas.all %}
+      <div class="panel-cotizacion-card__section">
+        <div class="panel-cotizacion-card__tags">
+          {% for etiqueta in c.etiquetas.all %}
+            <span class="panel-cotizacion-tag" style="--tag-bg: {{ etiqueta.color }};">{{ etiqueta.nombre }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
     <div class="panel-cotizacion-card__section panel-cotizacion-card__meta">
       <div class="panel-cotizacion-card__meta-item" data-panel-cotizacion-inline-slot="asignados">
         {% include "panel_cotizaciones/_inline_field_asignados.html" with c=c only %}

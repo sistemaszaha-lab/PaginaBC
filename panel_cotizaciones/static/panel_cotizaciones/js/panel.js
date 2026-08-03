@@ -427,6 +427,43 @@
       initInlineCreateSelects(inlineSharedSlot);
     }
 
+    function ensureInlineLinkRows(root) {
+      const rows = root?.querySelector('[data-panel-cotizacion-link-rows="1"]');
+      const template = root?.querySelector('[data-panel-cotizacion-link-template="1"]');
+      if (!rows || !template || rows.querySelector('[data-panel-cotizacion-link-row="1"]')) return;
+      rows.insertAdjacentHTML('beforeend', template.innerHTML.trim());
+    }
+
+    function resetInlineCreateForm(form) {
+      if (!form) return;
+      destroyInlineCreateSelects(form);
+      form.reset();
+      const rows = form.querySelector('[data-panel-cotizacion-link-rows="1"]');
+      const template = form.querySelector('[data-panel-cotizacion-link-template="1"]');
+      if (rows && template) {
+        rows.innerHTML = template.innerHTML.trim();
+      }
+      form.querySelectorAll('.text-danger.small.mt-1').forEach((node) => {
+        if (node.closest('[data-panel-cotizacion-link-row="1"]')) return;
+      });
+      initInlineCreateSelects(form);
+    }
+
+    function showInlineNotification(message, tone = 'success') {
+      const alert = document.createElement('div');
+      alert.className = `alert alert-${tone} alert-dismissible fade show panel-cotizacion-inline-notice`;
+      alert.setAttribute('role', 'alert');
+      alert.innerHTML = (
+        `<span>${message}</span>` +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>'
+      );
+      document.body.appendChild(alert);
+      window.setTimeout(() => {
+        alert.classList.remove('show');
+        window.setTimeout(() => alert.remove(), 150);
+      }, 2600);
+    }
+
     async function readInlineCreateResponse(response) {
       if (!(response.headers.get('content-type') || '').includes('application/json')) {
         throw new Error('Respuesta JSON inesperada.');
@@ -955,6 +992,27 @@
         return;
       }
 
+      const addLinkButton = e.target.closest('[data-panel-cotizacion-link-add="1"]');
+      if (addLinkButton) {
+        e.preventDefault();
+        const root = addLinkButton.closest('[data-panel-cotizacion-inline-links="1"]');
+        const rows = root?.querySelector('[data-panel-cotizacion-link-rows="1"]');
+        const template = root?.querySelector('[data-panel-cotizacion-link-template="1"]');
+        if (!rows || !template) return;
+        rows.insertAdjacentHTML('beforeend', template.innerHTML.trim());
+        return;
+      }
+
+      const removeLinkButton = e.target.closest('[data-panel-cotizacion-link-remove="1"]');
+      if (removeLinkButton) {
+        e.preventDefault();
+        const row = removeLinkButton.closest('[data-panel-cotizacion-link-row="1"]');
+        const root = removeLinkButton.closest('[data-panel-cotizacion-inline-links="1"]');
+        row?.remove();
+        ensureInlineLinkRows(root);
+        return;
+      }
+
       const inlineFieldValue = e.target.closest('[data-panel-cotizacion-inline-field]');
       if (inlineFieldValue) {
         e.preventDefault();
@@ -1206,7 +1264,7 @@
         if (!submittedTarget || !column) return;
         inlineForm.dataset.submitting = 'true';
         inlineForm.setAttribute('aria-busy', 'true');
-        inlineForm.querySelectorAll('button, input, select').forEach((control) => { control.disabled = true; });
+        inlineForm.querySelectorAll('button, input, select, textarea').forEach((control) => { control.disabled = true; });
         setInlineCreateButtonsDisabled(true);
         postForm(inlineCreateUrl, fd, inlineForm)
           .then((response) => readInlineCreateResponse(response))
@@ -1221,7 +1279,7 @@
               refreshBoard();
             } else {
               const wrapper = document.createElement('div');
-              wrapper.innerHTML = data.html;
+              wrapper.innerHTML = data.card_html || data.html || '';
               const card = wrapper.firstElementChild;
               if (!card) return;
 
@@ -1235,10 +1293,12 @@
               syncColumnState(column, data.column_count);
             }
 
-            destroyInlineCreateSelects(inlineForm);
-            inlineForm.reset();
-            initInlineCreateSelects(inlineForm);
+            resetInlineCreateForm(inlineForm);
             closeInlineCreateForm();
+            showInlineNotification(
+              data.message || 'La cotizacion se creo correctamente.',
+              'success'
+            );
           })
           .catch((error) => {
             if (error?.data?.html) {
@@ -1246,13 +1306,17 @@
               return;
             }
             console.error('No se pudo crear la cotizacion:', error);
+            showInlineNotification(
+              error?.data?.errors?.__all__?.[0]?.message || 'No se pudo crear la cotizacion.',
+              'danger'
+            );
           })
           .finally(() => {
             const activeForm = inlineSharedSlot?.querySelector('[data-panel-cotizacion-inline-form="1"]');
             if (activeForm) {
               delete activeForm.dataset.submitting;
               activeForm.setAttribute('aria-busy', 'false');
-              activeForm.querySelectorAll('button, input, select').forEach((control) => { control.disabled = false; });
+              activeForm.querySelectorAll('button, input, select, textarea').forEach((control) => { control.disabled = false; });
             }
             setInlineCreateButtonsDisabled(false);
           });

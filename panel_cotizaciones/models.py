@@ -42,6 +42,11 @@ class PanelCotizacion(models.Model):
         blank=True,
         related_name="panel_cotizaciones_asignadas",
     )
+    etiquetas = models.ManyToManyField(
+        "PanelCotizacionEtiqueta",
+        blank=True,
+        related_name="cotizaciones",
+    )
 
     class Meta:
         ordering = ["-fecha_creacion"]
@@ -52,6 +57,17 @@ class PanelCotizacion(models.Model):
 
     def __str__(self) -> str:
         return f"{self.titulo} ({self.cliente})"
+
+
+class PanelCotizacionEtiqueta(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
+    color = models.CharField(max_length=7, default="#3E9FA2")
+
+    class Meta:
+        ordering = ["nombre", "id"]
+
+    def __str__(self) -> str:
+        return self.nombre
 
 
 class PanelCotizacionArchivo(models.Model):

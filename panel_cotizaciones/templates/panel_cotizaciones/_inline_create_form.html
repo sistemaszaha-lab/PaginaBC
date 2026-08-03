@@ -1,49 +1,141 @@
 <div data-panel-cotizacion-inline-form-fragment="1">
-  <div class="small text-muted mb-2">
-    Nueva cotizacion en <strong data-panel-cotizacion-inline-destination="1">{{ estado_texto }}</strong>
+  <div class="small fw-semibold mb-2">
+    Crear en: <span data-panel-cotizacion-inline-destination="1">{{ estado_texto }}</span>
   </div>
   <form
     method="post"
     action="{% url 'panel_cotizaciones:crear_inline' %}"
     class="panel-cotizacion-inline-form"
     data-panel-cotizacion-inline-form="1"
-    data-estado="{{ estado }}">
+    data-estado="{{ estado }}"
+    enctype="multipart/form-data">
   {% csrf_token %}
   <input type="hidden" name="estado" value="{{ estado }}">
 
   <div class="mb-2">
-    <label class="form-label small mb-1" for="{{ form.titulo.id_for_label }}">Titulo o referencia</label>
+    <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.titulo.id_for_label }}">
+      Titulo <span class="text-danger">*</span>
+    </label>
     {{ form.titulo }}
     {% if form.titulo.errors %}
-      <div class="text-danger small mt-1">{{ form.titulo.errors }}</div>
+      <div class="text-danger small mt-1">{{ form.titulo.errors|join:", " }}</div>
     {% endif %}
   </div>
 
   <div class="mb-2">
-    <label class="form-label small mb-1" for="{{ form.cliente.id_for_label }}">Cliente</label>
+    <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.descripcion.id_for_label }}">Descripcion</label>
+    {{ form.descripcion }}
+    {% if form.descripcion.errors %}
+      <div class="text-danger small mt-1">{{ form.descripcion.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
+    <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.cliente.id_for_label }}">Cliente</label>
     {{ form.cliente }}
     {% if form.cliente.errors %}
-      <div class="text-danger small mt-1">{{ form.cliente.errors }}</div>
+      <div class="text-danger small mt-1">{{ form.cliente.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="row g-2 mb-2">
+    <div class="col-12 col-md-6">
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.prioridad.id_for_label }}">Prioridad</label>
+      {{ form.prioridad }}
+      {% if form.prioridad.errors %}
+        <div class="text-danger small mt-1">{{ form.prioridad.errors|join:", " }}</div>
+      {% endif %}
+    </div>
+    <div class="col-12 col-md-6">
+      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.fecha_vencimiento.id_for_label }}">Fecha de vencimiento</label>
+      {{ form.fecha_vencimiento }}
+      {% if form.fecha_vencimiento.errors %}
+        <div class="text-danger small mt-1">{{ form.fecha_vencimiento.errors|join:", " }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="mb-2">
+    <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.asignados.id_for_label }}">Asignados</label>
+    {{ form.asignados }}
+    {% if form.asignados.errors %}
+      <div class="text-danger small mt-1">{{ form.asignados.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
+    <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.etiquetas.id_for_label }}">Etiquetas</label>
+    {{ form.etiquetas }}
+    {% if form.etiquetas.errors %}
+      <div class="text-danger small mt-1">{{ form.etiquetas.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
+    <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.archivos.id_for_label }}">Archivos</label>
+    {{ form.archivos }}
+    <div class="form-text small">PDF, Excel, Word, imagen, CSV o TXT. Maximo 10 MB por archivo.</div>
+    {% if form.archivos.errors %}
+      <div class="text-danger small mt-1">{{ form.archivos.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-3" data-panel-cotizacion-inline-links="1">
+    {{ form.enlaces }}
+    <div class="d-flex align-items-center justify-content-between mb-1">
+      <label class="form-label form-label-sm fw-semibold mb-0">Enlaces</label>
+      <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" data-panel-cotizacion-link-add="1">Agregar</button>
+    </div>
+
+    <div data-panel-cotizacion-link-rows="1">
+      {% for link in form.link_rows %}
+        <div class="row g-2 mb-2" data-panel-cotizacion-link-row="1">
+          <div class="col-5">
+            <input type="text" name="enlace_titulo" class="form-control form-control-sm" placeholder="Titulo del enlace" value="{{ link.titulo }}">
+          </div>
+          <div class="col-6">
+            <input type="url" name="enlace_url" class="form-control form-control-sm" placeholder="https://..." value="{{ link.url }}">
+          </div>
+          <div class="col-1 d-grid">
+            <button type="button" class="btn btn-outline-danger btn-sm px-1" data-panel-cotizacion-link-remove="1">x</button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <template data-panel-cotizacion-link-template="1">
+      <div class="row g-2 mb-2" data-panel-cotizacion-link-row="1">
+        <div class="col-5">
+          <input type="text" name="enlace_titulo" class="form-control form-control-sm" placeholder="Titulo del enlace">
+        </div>
+        <div class="col-6">
+          <input type="url" name="enlace_url" class="form-control form-control-sm" placeholder="https://...">
+        </div>
+        <div class="col-1 d-grid">
+          <button type="button" class="btn btn-outline-danger btn-sm px-1" data-panel-cotizacion-link-remove="1">x</button>
+        </div>
+      </div>
+    </template>
+
+    {% if form.enlaces.errors %}
+      <div class="text-danger small mt-1">{{ form.enlaces.errors|join:", " }}</div>
     {% endif %}
   </div>
 
   <div class="mb-3">
-    <label class="form-label small mb-1" for="{{ form.prioridad.id_for_label }}">Prioridad</label>
-    {{ form.prioridad }}
-    {% if form.prioridad.errors %}
-      <div class="text-danger small mt-1">{{ form.prioridad.errors }}</div>
-    {% endif %}
+    <label class="form-label form-label-sm fw-semibold mb-1">Estado inicial</label>
+    <input type="text" class="form-control form-control-sm" value="{{ estado_texto }}" disabled>
   </div>
 
   {% if form.non_field_errors %}
     <div class="alert alert-danger py-2 px-3 small mb-3">
-      {{ form.non_field_errors }}
+      {{ form.non_field_errors|join:", " }}
     </div>
   {% endif %}
 
   <div class="d-flex gap-2 justify-content-end">
     <button type="button" class="btn btn-sm btn-light" data-panel-cotizacion-inline-cancel="1">Cancelar</button>
-    <button type="submit" class="btn btn-sm btn-primary">Guardar</button>
+    <button type="submit" class="btn btn-sm btn-primary" data-panel-cotizacion-inline-submit="1">Guardar</button>
   </div>
   </form>
 </div>

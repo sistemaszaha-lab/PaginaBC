@@ -4,6 +4,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Count, F, Window
 from django.db.models.functions import RowNumber
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -114,7 +115,7 @@ def _board_queryset(usuarios):
     qs = (
         PanelCotizacion.objects.filter(estado__in=ESTADOS_VISIBLES)
         .select_related("creado_por")
-        .prefetch_related("asignados")
+        .prefetch_related("asignados", "etiquetas")
         .annotate(comentarios_count=Count("comentarios"))
     )
     if usuarios:
@@ -182,24 +183,24 @@ def _parse_loaded_ids(request: HttpRequest, offset: int):
 
 
 def _guardar_adjuntos_enlaces(
+    *,
     request: HttpRequest,
     cotizacion: PanelCotizacion,
-    enlace_form: PanelCotizacionEnlaceForm,
+    archivos,
+    enlaces,
 ) -> None:
-    for archivo in request.FILES.getlist("archivos"):
+    for archivo in archivos:
         PanelCotizacionArchivo.objects.create(
             cotizacion=cotizacion,
             archivo=archivo,
             subido_por=request.user,
         )
 
-    titulo = (enlace_form.cleaned_data.get("titulo") or "").strip()
-    url = (enlace_form.cleaned_data.get("url") or "").strip()
-    if titulo and url:
+    for enlace in enlaces:
         PanelCotizacionEnlace.objects.create(
             cotizacion=cotizacion,
-            titulo=titulo,
-            url=url,
+            titulo=enlace["titulo"],
+            url=enlace["url"],
             creado_por=request.user,
         )
 
@@ -215,6 +216,30 @@ def _crear_panel_desde_form(*, form, creado_por, estado: str):
     obj.save()
     form.save_m2m()
     return obj
+
+
+def _render_card_html(request: HttpRequest, obj: PanelCotizacion) -> str:
+    return render_to_string(
+        "panel_cotizaciones/_card.html",
+        {"c": obj},
+        request=request,
+    )
+
+
+def _render_inline_create_form(
+    request: HttpRequest,
+    form: PanelCotizacionInlineCreateForm,
+    estado: str,
+) -> str:
+    return render_to_string(
+        "panel_cotizaciones/_inline_create_form.html",
+        {
+            "form": form,
+            "estado": estado,
+            "estado_texto": PanelCotizacion.Estado(estado).label,
+        },
+        request=request,
+    )
 
 
 def _render_inline_field(
@@ -251,7 +276,11 @@ def _render_inline_editor(
 def _get_cotizacion_detalle(pk: int) -> PanelCotizacion:
     return get_object_or_404(
         PanelCotizacion.objects.prefetch_related(
-            "asignados", "comentarios__creado_por", "archivos", "enlaces"
+            "asignados",
+            "etiquetas",
+            "comentarios__creado_por",
+            "archivos",
+            "enlaces",
         ),
         pk=pk,
     )
@@ -402,14 +431,12 @@ def tarjetas_columna(request: HttpRequest, estado: str) -> JsonResponse:
 @require_GET
 def formulario_inline(request: HttpRequest) -> HttpResponse:
     estado = PanelCotizacion.Estado.REQUERIMIENTO
-    return render(
-        request,
-        "panel_cotizaciones/_inline_create_form.html",
-        {
-            "form": PanelCotizacionInlineCreateForm(),
-            "estado": estado,
-            "estado_texto": PanelCotizacion.Estado(estado).label,
-        },
+    return HttpResponse(
+        _render_inline_create_form(
+            request,
+            PanelCotizacionInlineCreateForm(),
+            estado,
+        )
     )
 
 
@@ -485,39 +512,62 @@ def crear_inline(request: HttpRequest) -> JsonResponse:
             {"ok": False, "errors": {"estado": ["Estado invalido."]}}, status=400
         )
 
-    form = PanelCotizacionInlineCreateForm(request.POST)
+    form = PanelCotizacionInlineCreateForm(request.POST, request.FILES)
     if not form.is_valid():
-        form_html = render_to_string(
-            "panel_cotizaciones/_inline_create_form.html",
-            {"form": form, "estado": estado},
-            request=request,
-        )
         return JsonResponse(
             {
                 "ok": False,
+                "message": "Revisa los campos indicados.",
                 "errors": form.errors.get_json_data(escape_html=True),
-                "html": form_html,
+                "html": _render_inline_create_form(request, form, estado),
             },
             status=400,
         )
 
-    obj = _crear_panel_desde_form(form=form, creado_por=request.user, estado=estado)
+    try:
+        with transaction.atomic():
+            obj = _crear_panel_desde_form(
+                form=form,
+                creado_por=request.user,
+                estado=estado,
+            )
+            _guardar_adjuntos_enlaces(
+                request=request,
+                cotizacion=obj,
+                archivos=form.cleaned_data.get("archivos", []),
+                enlaces=form.cleaned_data.get("enlaces_payload", []),
+            )
+    except Exception:
+        return JsonResponse(
+            {
+                "ok": False,
+                "errors": {
+                    "__all__": [
+                        "Ocurrio un error inesperado al guardar la cotizacion."
+                    ]
+                },
+            },
+            status=500,
+        )
+
     obj = (
         PanelCotizacion.objects.filter(pk=obj.pk)
         .select_related("creado_por")
-        .prefetch_related("asignados")
+        .prefetch_related("asignados", "etiquetas")
         .annotate(comentarios_count=Count("comentarios"))
         .get()
     )
-    card_html = render_to_string("panel_cotizaciones/_card.html", {"c": obj}, request=request)
     return JsonResponse(
         {
             "ok": True,
-            "html": card_html,
+            "message": "La cotizacion se creo correctamente.",
+            "html": _render_card_html(request, obj),
+            "card_html": _render_card_html(request, obj),
             "id": obj.pk,
             "estado": obj.estado,
             "column_count": _column_count(obj.estado),
-        }
+        },
+        status=201,
     )
 
 
@@ -567,7 +617,7 @@ def inline_update(request: HttpRequest, pk: int) -> JsonResponse:
     obj = (
         PanelCotizacion.objects.filter(pk=obj.pk)
         .select_related("creado_por")
-        .prefetch_related("asignados")
+        .prefetch_related("asignados", "etiquetas")
         .annotate(comentarios_count=Count("comentarios"))
         .get()
     )
@@ -643,15 +693,31 @@ def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
     if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
         _preservar_vacios_cotizacion(form, obj)
 
-        saved_obj = form.save(commit=False)
-        saved_obj.save()
+        with transaction.atomic():
+            saved_obj = form.save(commit=False)
+            saved_obj.save()
 
-        if "asignados" in request.POST:
-            valores = form.cleaned_data.get("asignados")
-            if valores is not None:
-                saved_obj.asignados.set(valores)
+            if "asignados" in request.POST:
+                valores = form.cleaned_data.get("asignados")
+                if valores is not None:
+                    saved_obj.asignados.set(valores)
+            if "etiquetas" in request.POST:
+                etiquetas = form.cleaned_data.get("etiquetas")
+                if etiquetas is not None:
+                    saved_obj.etiquetas.set(etiquetas)
 
-        _guardar_adjuntos_enlaces(request, saved_obj, enlace_form)
+            titulo = (enlace_form.cleaned_data.get("titulo") or "").strip()
+            url = (enlace_form.cleaned_data.get("url") or "").strip()
+            _guardar_adjuntos_enlaces(
+                request=request,
+                cotizacion=saved_obj,
+                archivos=archivos_form.cleaned_data.get("archivos", []),
+                enlaces=(
+                    [{"titulo": titulo, "url": url}]
+                    if titulo and url
+                    else []
+                ),
+            )
 
         saved_obj = _get_cotizacion_detalle(pk)
         html = render_to_string(
@@ -666,11 +732,13 @@ def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
             },
             request=request,
         )
-        card_html = render_to_string(
-            "panel_cotizaciones/_card.html", {"c": saved_obj}, request=request
-        )
         return JsonResponse(
-            {"status": "ok", "html": html, "card_html": card_html, "id": saved_obj.pk}
+            {
+                "status": "ok",
+                "html": html,
+                "card_html": _render_card_html(request, saved_obj),
+                "id": saved_obj.pk,
+            }
         )
     html = render_to_string(
         template_name,

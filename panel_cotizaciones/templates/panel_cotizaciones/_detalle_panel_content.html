@@ -23,7 +23,8 @@
       </div>
       <div class="col-12 col-lg-4">
         <label class="form-label">Cliente</label>
-        <div class="form-control-plaintext">{{ c.cliente|default:"Sin cliente" }}</div>
+        {{ form.cliente }}
+        {% if form.cliente.errors %}<div class="text-danger small">{{ form.cliente.errors }}</div>{% endif %}
       </div>
 
       <div class="col-12">
@@ -41,6 +42,11 @@
         <label class="form-label">Vencimiento</label>
         {{ form.fecha_vencimiento }}
         {% if form.fecha_vencimiento.errors %}<div class="text-danger small">{{ form.fecha_vencimiento.errors }}</div>{% endif %}
+      </div>
+      <div class="col-12">
+        <label class="form-label">Etiquetas</label>
+        {{ form.etiquetas }}
+        {% if form.etiquetas.errors %}<div class="text-danger small">{{ form.etiquetas.errors }}</div>{% endif %}
       </div>
     </div>
 

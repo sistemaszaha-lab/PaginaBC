@@ -1,14 +1,31 @@
 from pathlib import Path
 
 from django import forms
-from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.validators import URLValidator
 
 from clientes.models import Cliente, normalizar_texto_cliente
 
-from .models import PanelCotizacion, PanelCotizacionComentario
+from .models import (
+    PanelCotizacion,
+    PanelCotizacionComentario,
+    PanelCotizacionEtiqueta,
+)
 
 User = get_user_model()
+MAX_PANEL_ARCHIVO_SIZE = 10 * 1024 * 1024
+PANEL_ARCHIVO_EXTENSIONS = {
+    ".csv",
+    ".doc",
+    ".docx",
+    ".jpeg",
+    ".jpg",
+    ".pdf",
+    ".png",
+    ".txt",
+    ".xls",
+    ".xlsx",
+}
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -31,24 +48,22 @@ class MultipleFileField(forms.FileField):
         else:
             cleaned_files = [super().clean(data, initial)]
 
-        allowed_extensions = {
-            ext.lower().lstrip(".")
-            for ext in getattr(
-                settings, "PANEL_COTIZACIONES_ALLOWED_EXTENSIONS", []
-            )
-        }
-        max_size = getattr(settings, "PANEL_COTIZACIONES_MAX_FILE_SIZE", None)
-
         for uploaded_file in cleaned_files:
-            extension = Path(uploaded_file.name).suffix.lower().lstrip(".")
-            if allowed_extensions and extension not in allowed_extensions:
+            filename = Path(uploaded_file.name or "").name.strip()
+            extension = Path(filename).suffix.lower()
+            if not filename:
                 raise forms.ValidationError(
-                    "La extension del archivo no esta permitida."
+                    "Cada archivo debe conservar un nombre valido."
                 )
-            if max_size and uploaded_file.size > max_size:
+            if extension not in PANEL_ARCHIVO_EXTENSIONS:
                 raise forms.ValidationError(
-                    "El archivo excede el tamano maximo permitido."
+                    "Solo se permiten archivos PDF, Excel, Word, imagen, CSV o TXT."
                 )
+            if uploaded_file.size > MAX_PANEL_ARCHIVO_SIZE:
+                raise forms.ValidationError(
+                    "Cada archivo debe pesar como maximo 10 MB."
+                )
+            uploaded_file.name = filename
 
         return cleaned_files
 
@@ -68,7 +83,12 @@ class ClienteChoiceField(forms.ModelChoiceField):
         return obj.nombre or str(obj.pk)
 
 
-class PanelCotizacionCreateForm(forms.ModelForm):
+class EtiquetaChoiceField(forms.ModelMultipleChoiceField):
+    def label_from_instance(self, obj):
+        return obj.nombre or str(obj.pk)
+
+
+class PanelCotizacionBaseForm(forms.ModelForm):
     cliente = ClienteChoiceField(
         queryset=Cliente.objects.filter(estado=Cliente.ESTADO_ACTIVO).order_by(
             "nombre"
@@ -77,6 +97,26 @@ class PanelCotizacionCreateForm(forms.ModelForm):
         empty_label="Seleccione un cliente",
         widget=forms.Select(attrs={"class": "form-select rounded"}),
         label="Cliente",
+    )
+    asignados = FirstNameUserMultipleChoiceField(
+        queryset=User.objects.all().order_by("first_name", "id"),
+        required=False,
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "form-select rounded garantia-asignados-select",
+                "data-garantia-tags-select": "1",
+            }
+        ),
+    )
+    etiquetas = EtiquetaChoiceField(
+        queryset=PanelCotizacionEtiqueta.objects.all().order_by("nombre", "id"),
+        required=False,
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "form-select rounded garantia-asignados-select",
+                "data-garantia-tags-select": "1",
+            }
+        ),
     )
 
     class Meta:
@@ -88,6 +128,7 @@ class PanelCotizacionCreateForm(forms.ModelForm):
             "prioridad",
             "fecha_vencimiento",
             "asignados",
+            "etiquetas",
         )
         widgets = {
             "titulo": forms.TextInput(
@@ -109,59 +150,146 @@ class PanelCotizacionCreateForm(forms.ModelForm):
             ),
         }
 
-    asignados = FirstNameUserMultipleChoiceField(
-        queryset=User.objects.all().order_by("first_name", "id"),
-        required=False,
-        widget=forms.SelectMultiple(
-            attrs={
-                "class": "form-select rounded garantia-asignados-select",
-                "data-garantia-tags-select": "1",
-            }
-        ),
-    )
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field_name in [
-            "titulo",
+        self.fields["titulo"].required = True
+        for field_name in (
             "cliente",
             "descripcion",
             "prioridad",
             "fecha_vencimiento",
             "asignados",
-        ]:
-            if field_name in self.fields:
-                self.fields[field_name].required = False
+            "etiquetas",
+        ):
+            self.fields[field_name].required = False
+        self.fields["etiquetas"].label = "Etiquetas"
 
     def clean_cliente(self):
         cliente = self.cleaned_data.get("cliente")
         return normalizar_texto_cliente(cliente.nombre if cliente else "")
 
+    def clean_titulo(self):
+        titulo = (self.cleaned_data.get("titulo") or "").strip()
+        if not titulo:
+            raise forms.ValidationError("Este campo es obligatorio.")
+        return titulo
 
-class PanelCotizacionInlineCreateForm(PanelCotizacionCreateForm):
-    class Meta(PanelCotizacionCreateForm.Meta):
-        fields = ("titulo", "cliente", "prioridad")
+
+class PanelCotizacionCreateForm(PanelCotizacionBaseForm):
+    pass
+
+
+class PanelCotizacionInlineCreateForm(PanelCotizacionBaseForm):
+    archivos = MultipleFileField(required=False)
+    enlaces = forms.CharField(required=False, widget=forms.HiddenInput())
+
+    class Meta(PanelCotizacionBaseForm.Meta):
+        fields = (
+            "titulo",
+            "descripcion",
+            "cliente",
+            "prioridad",
+            "fecha_vencimiento",
+            "asignados",
+            "etiquetas",
+        )
         widgets = {
             "titulo": forms.TextInput(
                 attrs={
-                    "class": "form-control rounded",
-                    "placeholder": "Titulo o referencia",
+                    "class": "form-control form-control-sm rounded",
+                    "placeholder": "Titulo de la cotizacion",
                 }
             ),
-            "prioridad": forms.Select(attrs={"class": "form-select rounded"}),
+            "descripcion": forms.Textarea(
+                attrs={
+                    "class": "form-control form-control-sm rounded",
+                    "rows": 2,
+                    "placeholder": "Describe el alcance o contexto...",
+                }
+            ),
+            "prioridad": forms.Select(
+                attrs={"class": "form-select form-select-sm rounded"}
+            ),
+            "fecha_vencimiento": forms.DateInput(
+                attrs={
+                    "type": "date",
+                    "class": "form-control form-control-sm rounded",
+                }
+            ),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if "cliente" in self.fields:
-            self.fields["cliente"].queryset = (
-                Cliente.objects.filter(estado=Cliente.ESTADO_ACTIVO)
-                .only("id", "nombre")
-                .order_by("nombre")
-            )
-            self.fields["cliente"].widget.attrs.update(
-                {"class": "form-select rounded"}
-            )
+        self.fields["cliente"].queryset = (
+            Cliente.objects.filter(estado=Cliente.ESTADO_ACTIVO)
+            .only("id", "nombre")
+            .order_by("nombre")
+        )
+        self.fields["cliente"].widget.attrs.update(
+            {"class": "form-select form-select-sm rounded"}
+        )
+        self.fields["asignados"].widget.attrs.update(
+            {"class": "form-select form-select-sm rounded garantia-asignados-select"}
+        )
+        self.fields["etiquetas"].widget.attrs.update(
+            {
+                "class": "form-select form-select-sm rounded garantia-asignados-select",
+            }
+        )
+        self.fields["archivos"].widget.attrs.update(
+            {
+                "class": "form-control form-control-sm",
+                "accept": ",".join(sorted(PANEL_ARCHIVO_EXTENSIONS)),
+            }
+        )
+        self.link_rows = self._build_link_rows()
+
+    def _build_link_rows(self):
+        if not self.is_bound:
+            return [{"titulo": "", "url": ""}]
+        titulos = self.data.getlist("enlace_titulo")
+        urls = self.data.getlist("enlace_url")
+        total = max(len(titulos), len(urls), 1)
+        return [
+            {
+                "titulo": titulos[index] if index < len(titulos) else "",
+                "url": urls[index] if index < len(urls) else "",
+            }
+            for index in range(total)
+        ]
+
+    def clean_archivos(self):
+        return self.cleaned_data.get("archivos") or []
+
+    def clean(self):
+        cleaned_data = super().clean()
+        titulos = self.data.getlist("enlace_titulo")
+        urls = self.data.getlist("enlace_url")
+        total = max(len(titulos), len(urls))
+        validator = URLValidator()
+        enlaces = []
+        errores = []
+
+        for index in range(total):
+            titulo = (titulos[index] if index < len(titulos) else "").strip()
+            url = (urls[index] if index < len(urls) else "").strip()
+            if not titulo and not url:
+                continue
+            if not url:
+                errores.append(f"Enlace {index + 1}: captura una URL.")
+                continue
+            try:
+                validator(url)
+            except forms.ValidationError:
+                errores.append(f"Enlace {index + 1}: captura una URL valida.")
+                continue
+            enlaces.append({"titulo": titulo, "url": url})
+
+        if errores:
+            self.add_error("enlaces", errores)
+
+        cleaned_data["enlaces_payload"] = enlaces
+        return cleaned_data
 
 
 class PanelCotizacionInlineTituloForm(forms.ModelForm):
@@ -265,9 +393,26 @@ class PanelCotizacionEnlaceForm(forms.Form):
 
 
 class PanelCotizacionUpdateForm(forms.ModelForm):
+    cliente = ClienteChoiceField(
+        queryset=Cliente.objects.filter(estado=Cliente.ESTADO_ACTIVO).order_by(
+            "nombre"
+        ),
+        required=False,
+        empty_label="Seleccione un cliente",
+        widget=forms.Select(attrs={"class": "form-select rounded"}),
+        label="Cliente",
+    )
     class Meta:
         model = PanelCotizacion
-        fields = ("titulo", "descripcion", "prioridad", "fecha_vencimiento", "asignados")
+        fields = (
+            "titulo",
+            "descripcion",
+            "cliente",
+            "prioridad",
+            "fecha_vencimiento",
+            "asignados",
+            "etiquetas",
+        )
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control rounded"}),
             "descripcion": forms.Textarea(
@@ -289,11 +434,25 @@ class PanelCotizacionUpdateForm(forms.ModelForm):
             }
         ),
     )
+    etiquetas = EtiquetaChoiceField(
+        queryset=PanelCotizacionEtiqueta.objects.all().order_by("nombre", "id"),
+        required=False,
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "form-select rounded garantia-asignados-select",
+                "data-garantia-tags-select": "1",
+            }
+        ),
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field_name in list(self.fields.keys()):
             self.fields[field_name].required = False
+
+    def clean_cliente(self):
+        cliente = self.cleaned_data.get("cliente")
+        return normalizar_texto_cliente(cliente.nombre if cliente else "")
 
 
 class PanelCotizacionComentarioForm(forms.ModelForm):

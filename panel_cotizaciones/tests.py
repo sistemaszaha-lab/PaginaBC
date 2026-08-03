@@ -16,7 +16,12 @@ from django.utils import timezone
 from clientes.models import Cliente
 
 from .forms import PanelCotizacionCreateForm
-from .models import PanelCotizacion
+from .models import (
+    PanelCotizacion,
+    PanelCotizacionArchivo,
+    PanelCotizacionEnlace,
+    PanelCotizacionEtiqueta,
+)
 
 User = get_user_model()
 PANEL_JS_PATH = (
@@ -548,7 +553,7 @@ class PanelCotizacionCargaProgresivaTests(TestCase):
         self.assertIn("if (duplicateCard) duplicateCard.remove()", javascript)
         self.assertEqual(javascript.count("Sortable.create("), 1)
         self.assertEqual(
-            javascript.count("root.addEventListener('click'"), 1
+            javascript.count("document.addEventListener('click'"), 1
         )
         self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
         self.assertIn(
@@ -570,7 +575,16 @@ class PanelCotizacionInlineCreateTests(TestCase):
             password="panel123",
             first_name="Inline",
         )
+        self.asignado = User.objects.create_user(
+            username="panel_inline_asignado",
+            password="panel123",
+            first_name="Asignado",
+        )
         self.cliente = Cliente.objects.create(nombre=" cliente demo ")
+        self.etiqueta = PanelCotizacionEtiqueta.objects.create(
+            nombre="Urgente",
+            color="#FF0000",
+        )
         self.client = Client()
         self.client.force_login(self.user)
 
@@ -634,7 +648,19 @@ class PanelCotizacionInlineCreateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-panel-cotizacion-inline-form-fragment="1"')
         self.assertContains(response, 'data-panel-cotizacion-inline-form="1"')
-        for field_name in ("titulo", "cliente", "prioridad", "estado"):
+        for field_name in (
+            "titulo",
+            "descripcion",
+            "cliente",
+            "prioridad",
+            "fecha_vencimiento",
+            "asignados",
+            "etiquetas",
+            "archivos",
+            "estado",
+            "enlace_titulo",
+            "enlace_url",
+        ):
             self.assertContains(response, f'name="{field_name}"')
         self.assertEqual(PanelCotizacion.objects.count(), total)
         self.assertEqual(self.client.post(url).status_code, 405)
@@ -667,13 +693,15 @@ class PanelCotizacionInlineCreateTests(TestCase):
         self.assertIn("if (select.tomselect) return", javascript)
         self.assertIn("select.tomselect.destroy()", javascript)
         self.assertIn("if (hasActiveFilter) {\n              refreshBoard();", javascript)
-        self.assertEqual(javascript.count("root.addEventListener('submit'"), 1)
+        self.assertEqual(javascript.count("document.addEventListener('submit'"), 1)
         self.assertIn("const inlineEditorRequests = new Map()", javascript)
         self.assertIn("inlineEditorRequests.get(cardId)", javascript)
         self.assertIn("existing.fieldName === fieldName", javascript)
         self.assertIn("existing.controller.abort()", javascript)
         self.assertIn("data-panel-cotizacion-inline-editor-loading", javascript)
         self.assertIn("No se pudo cargar el editor. Intenta nuevamente.", javascript)
+        self.assertIn("data-panel-cotizacion-link-add", javascript)
+        self.assertIn("showInlineNotification(", javascript)
         self.assertNotIn("{% filter escapejs %}", javascript)
 
     def test_endpoint_editor_inline_get_real_solo_lectura_y_metodos_seguros(self):
@@ -741,23 +769,70 @@ class PanelCotizacionInlineCreateTests(TestCase):
             {
                 "estado": PanelCotizacion.Estado.EN_PROGRESO,
                 "titulo": "Nueva inline",
+                "descripcion": "Descripcion inline",
                 "cliente": self.cliente.pk,
                 "prioridad": PanelCotizacion.Prioridad.ALTA,
+                "fecha_vencimiento": date(2026, 8, 15).isoformat(),
+                "asignados": [self.asignado.pk],
+                "etiquetas": [self.etiqueta.pk],
+                "enlace_titulo": ["Propuesta"],
+                "enlace_url": ["https://example.com/propuesta"],
+                "archivos": [
+                    SimpleUploadedFile(
+                        "cotizacion.txt",
+                        b"contenido",
+                        content_type="text/plain",
+                    )
+                ],
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertTrue(data["ok"])
         self.assertEqual(data["estado"], PanelCotizacion.Estado.EN_PROGRESO)
         self.assertEqual(data["column_count"], 1)
         self.assertIn("Nueva inline", data["html"])
+        self.assertIn("card_html", data)
 
         creada = PanelCotizacion.objects.get(pk=data["id"])
         self.assertEqual(creada.creado_por, self.user)
         self.assertEqual(creada.estado, PanelCotizacion.Estado.EN_PROGRESO)
         self.assertEqual(creada.cliente, "CLIENTE DEMO")
+        self.assertEqual(creada.fecha_vencimiento, date(2026, 8, 15))
+        self.assertEqual(
+            list(creada.asignados.values_list("pk", flat=True)),
+            [self.asignado.pk],
+        )
+        self.assertEqual(
+            list(creada.etiquetas.values_list("pk", flat=True)),
+            [self.etiqueta.pk],
+        )
+        self.assertEqual(PanelCotizacionArchivo.objects.filter(cotizacion=creada).count(), 1)
+        self.assertEqual(PanelCotizacionEnlace.objects.filter(cotizacion=creada).count(), 1)
+
+    def test_creacion_inline_rechaza_titulo_vacio_y_archivo_pesado(self):
+        archivo = SimpleUploadedFile(
+            "muy-grande.txt",
+            b"x" * (10 * 1024 * 1024 + 1),
+            content_type="text/plain",
+        )
+        response = self.client.post(
+            reverse("panel_cotizaciones:crear_inline"),
+            {
+                "estado": PanelCotizacion.Estado.REQUERIMIENTO,
+                "titulo": "   ",
+                "archivos": [archivo],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("titulo", data["errors"])
+        self.assertIn("archivos", data["errors"])
+        self.assertEqual(PanelCotizacion.objects.count(), 0)
 
     def test_creacion_inline_invalida_devuelve_errores_y_html(self):
         response = self.client.post(
