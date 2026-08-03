@@ -4,10 +4,28 @@ from urllib.parse import urlsplit
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.core.validators import URLValidator
 
 from clientes.models import Cliente
 
 from .models import Operacion, OperacionEnlace, OperacionEtiqueta, OperacionOpcion
+
+
+MAX_OPERACION_ARCHIVO_SIZE = 10 * 1024 * 1024
+OPERACION_ARCHIVO_EXTENSIONS = {
+    ".csv",
+    ".doc",
+    ".docx",
+    ".jpeg",
+    ".jpg",
+    ".pdf",
+    ".png",
+    ".txt",
+    ".webp",
+    ".xls",
+    ".xlsx",
+    ".zip",
+}
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -55,16 +73,34 @@ class OperacionForm(forms.ModelForm):
 
 
 class OperacionInlineCreateForm(forms.ModelForm):
-    """Campos minimos para crear una operacion desde una columna del tablero."""
+    """Formulario inline completo para crear una operacion en el tablero."""
+
+    archivos = MultipleFileField(required=False)
+    enlaces = forms.CharField(required=False, widget=forms.HiddenInput())
 
     class Meta:
         model = Operacion
-        fields = ["titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas"]
+        fields = [
+            "titulo",
+            "descripcion",
+            "cliente",
+            "prioridad",
+            "fecha_vencimiento",
+            "asignados",
+            "etiquetas",
+        ]
         widgets = {
             "titulo": forms.TextInput(
                 attrs={
                     "class": "form-control form-control-sm",
                     "placeholder": "Nombre de la operacion",
+                }
+            ),
+            "descripcion": forms.Textarea(
+                attrs={
+                    "class": "form-control form-control-sm",
+                    "placeholder": "Descripcion",
+                    "rows": 2,
                 }
             ),
             "cliente": forms.Select(attrs={"class": "form-select form-select-sm"}),
@@ -89,17 +125,115 @@ class OperacionInlineCreateForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["titulo"].required = True
-        self.fields["cliente"].required = False
-        self.fields["prioridad"].required = False
-        self.fields["fecha_vencimiento"].required = False
-        self.fields["asignados"].required = False
-        self.fields["etiquetas"].required = False
-        self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
+        for field_name in [
+            "descripcion",
+            "cliente",
+            "prioridad",
+            "fecha_vencimiento",
+            "asignados",
+            "etiquetas",
+            "archivos",
+            "enlaces",
+        ]:
+            self.fields[field_name].required = False
+
+        self.fields["cliente"].queryset = Cliente.objects.only(
+            "id", "nombre", "empresa"
+        ).order_by("nombre", "empresa", "id")
         User = get_user_model()
-        self.fields["asignados"].queryset = User.objects.all().order_by("first_name", "last_name", "username", "id")
+        self.fields["asignados"].queryset = User.objects.only(
+            "id", "first_name", "last_name", "username"
+        ).order_by("first_name", "last_name", "username", "id")
         self.fields["asignados"].label_from_instance = lambda obj: obj.first_name or obj.username
-        self.fields["etiquetas"].queryset = OperacionEtiqueta.objects.order_by("nombre", "id")
+        self.fields["etiquetas"].queryset = OperacionEtiqueta.objects.only(
+            "id", "nombre"
+        ).order_by("nombre", "id")
         self.fields["etiquetas"].label_from_instance = lambda obj: obj.nombre
+        self.fields["archivos"].widget.attrs.update(
+            {
+                "class": "form-control form-control-sm",
+                "accept": ",".join(sorted(OPERACION_ARCHIVO_EXTENSIONS)),
+            }
+        )
+        self.link_rows = self._build_link_rows()
+
+    def _build_link_rows(self):
+        if not self.is_bound:
+            return [{"titulo": "", "url": ""}]
+
+        titles = self.data.getlist("enlace_titulo")
+        urls = self.data.getlist("enlace_url")
+        total = max(len(titles), len(urls), 1)
+        return [
+            {
+                "titulo": titles[index] if index < len(titles) else "",
+                "url": urls[index] if index < len(urls) else "",
+            }
+            for index in range(total)
+        ]
+
+    def clean_titulo(self):
+        titulo = (self.cleaned_data.get("titulo") or "").strip()
+        if not titulo:
+            raise forms.ValidationError("Este campo es obligatorio.")
+        return titulo
+
+    def clean_archivos(self):
+        archivos = self.files.getlist("archivos")
+        archivos_limpios = []
+        for archivo in archivos:
+            nombre = Path(archivo.name or "").name.strip()
+            extension = Path(nombre).suffix.lower()
+            if not nombre:
+                raise forms.ValidationError("Cada archivo debe conservar un nombre valido.")
+            if extension not in OPERACION_ARCHIVO_EXTENSIONS:
+                raise forms.ValidationError(
+                    "Solo se permiten archivos PDF, Excel, Word, imagen, CSV, TXT, WEBP o ZIP."
+                )
+            if archivo.size > MAX_OPERACION_ARCHIVO_SIZE:
+                raise forms.ValidationError(
+                    "Cada archivo debe pesar como maximo 10 MB."
+                )
+            archivo.name = nombre
+            archivos_limpios.append(archivo)
+        return archivos_limpios
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        titles = self.data.getlist("enlace_titulo")
+        urls = self.data.getlist("enlace_url")
+        total = max(len(titles), len(urls))
+        validator = URLValidator()
+        enlaces = []
+        errores = []
+
+        for index in range(total):
+            titulo = (titles[index] if index < len(titles) else "").strip()
+            url = (urls[index] if index < len(urls) else "").strip()
+
+            if not titulo and not url:
+                continue
+            if not titulo:
+                errores.append(f"Enlace {index + 1}: captura un titulo.")
+                continue
+            if not url:
+                errores.append(f"Enlace {index + 1}: captura una URL.")
+                continue
+
+            try:
+                validator(url)
+            except forms.ValidationError:
+                errores.append(f"Enlace {index + 1}: captura una URL valida.")
+                continue
+
+            enlaces.append({"titulo": titulo, "url": url})
+
+        if errores:
+            self.add_error("enlaces", errores)
+
+        cleaned_data["enlaces_payload"] = enlaces
+        return cleaned_data
 
 
 class OperacionQuickEditForm(forms.ModelForm):

@@ -34,6 +34,7 @@
     let inlineFormLoaded = false;
     let inlineFormLoadPromise = null;
     let inlineRequestedTarget = null;
+    let toastContainer = null;
     const detailState = {id: null, url: null, layout: drawerSupported ? 'drawer' : 'modal', pending: false};
     let operacionDeleteUrl = null;
     const columnLoadRequests = new Map();
@@ -278,6 +279,13 @@
       });
     }
 
+    function syncInlineDestinationLabel(label) {
+      const outerLabel = inlineContainer?.querySelector('[data-operacion-inline-target-label="1"]');
+      if (outerLabel) outerLabel.textContent = label || '';
+      const innerLabel = inlineFormSlot?.querySelector('[data-operacion-inline-destination="1"]');
+      if (innerLabel) innerLabel.textContent = `Crear en: ${label || ''}`;
+    }
+
     function resetSharedInlineForm(estado = '') {
       if (!inlineFormLoaded || !inlineContainer || !inlineFormSlot) return null;
       destroyInlineFormComponents(inlineFormSlot);
@@ -286,6 +294,9 @@
       const form = inlineFormSlot.querySelector('[data-operacion-inline-form="1"]');
       const stateInput = form?.querySelector('[name="estado"]');
       if (stateInput) stateInput.value = estado;
+      syncInlineDestinationLabel(
+        inlineRequestedTarget?.estadoLabel || inlineRequestedTarget?.estado || estado
+      );
       return form;
     }
 
@@ -313,6 +324,7 @@
       const target = inlineRequestedTarget;
       if (!inlineFormLoaded || !target?.estado) return;
       const form = resetSharedInlineForm(target.estado);
+      syncInlineDestinationLabel(target.estadoLabel || target.estado);
       showInlineLoadFeedback();
       initInlineFormComponents(inlineFormSlot);
       const firstInput = form?.querySelector('input:not([type="hidden"]), select, textarea');
@@ -374,6 +386,62 @@
       container.prepend(error);
     }
 
+    function getToastContainer() {
+      if (toastContainer?.isConnected) return toastContainer;
+      toastContainer = document.createElement('div');
+      toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3 operaciones-toast-container';
+      toastContainer.setAttribute('aria-live', 'polite');
+      toastContainer.setAttribute('aria-atomic', 'true');
+      document.body.appendChild(toastContainer);
+      return toastContainer;
+    }
+
+    function showInlineNotification(message, level = 'success') {
+      if (!message) return;
+      const container = getToastContainer();
+      const toast = document.createElement('div');
+      const levelClass = level === 'success' ? 'text-bg-success' : 'text-bg-danger';
+      toast.className = `toast align-items-center border-0 ${levelClass}`;
+      toast.setAttribute('role', 'alert');
+      toast.setAttribute('aria-live', 'assertive');
+      toast.setAttribute('aria-atomic', 'true');
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Cerrar"></button>
+        </div>
+      `;
+      container.appendChild(toast);
+      if (window.bootstrap?.Toast) {
+        const instance = bootstrap.Toast.getOrCreateInstance(toast, { delay: 3500 });
+        toast.addEventListener('hidden.bs.toast', () => toast.remove(), { once: true });
+        instance.show();
+        return;
+      }
+      window.setTimeout(() => toast.remove(), 3500);
+    }
+
+    function addInlineLinkRow(scope) {
+      const linksSection = scope?.querySelector('[data-operacion-inline-links="1"]');
+      const rows = linksSection?.querySelector('[data-operacion-link-rows="1"]');
+      const template = linksSection?.querySelector('[data-operacion-link-template="1"]');
+      if (!rows || !template) return;
+      rows.insertAdjacentHTML('beforeend', template.innerHTML.trim());
+    }
+
+    function removeInlineLinkRow(button) {
+      const row = button?.closest('[data-operacion-link-row="1"]');
+      const rows = row?.parentElement;
+      if (!row || !rows) return;
+      if (rows.querySelectorAll('[data-operacion-link-row="1"]').length <= 1) {
+        row.querySelectorAll('input').forEach((input) => {
+          input.value = '';
+        });
+        return;
+      }
+      row.remove();
+    }
+
     function insertCardFromHtml(column, cardHtml) {
       if (!column || !cardHtml) return null;
       const wrapper = document.createElement('div');
@@ -425,12 +493,14 @@
               throw new Error('No se pudo insertar la operacion creada.');
             }
             closeSharedInlineForm();
+            showInlineNotification(data.message || 'Operacion creada correctamente.', 'success');
             return;
           }
 
           if (data.html_form || data.html) {
             destroyInlineFormComponents(inlineFormSlot);
             inlineFormSlot.innerHTML = data.html_form || data.html;
+            syncInlineDestinationLabel(inlineRequestedTarget?.estadoLabel || inlineRequestedTarget?.estado || estado);
             initInlineFormComponents(inlineFormSlot);
             const invalidInput = inlineFormSlot.querySelector('.is-invalid, input, select');
             if (invalidInput) invalidInput.focus();
@@ -438,11 +508,13 @@
             const errors = data.errors || {};
             const firstError = Object.values(errors).flat().map((item) => item.message || item).find(Boolean);
             renderInlineError(container, data.message || firstError || 'No se pudo crear la operacion.');
+            showInlineNotification(data.message || firstError || 'No se pudo crear la operacion.', 'danger');
           }
         })
         .catch((error) => {
           console.error('No se pudo crear la operacion:', error);
           renderInlineError(container, 'No se pudo crear la operacion. Intenta nuevamente.');
+          showInlineNotification('No se pudo crear la operacion. Intenta nuevamente.', 'danger');
         })
         .finally(() => {
           const activeForm = container.querySelector('[data-operacion-inline-form="1"]');
@@ -1343,8 +1415,10 @@
         if (!inlineContainer || !actions || !estado) return;
         if (inlineContainer.querySelector('[data-operacion-inline-form="1"]')?.dataset.pending === '1') return;
         inlineRequestedTarget = {estado};
+        inlineRequestedTarget.estadoLabel = estadoLabel;
         const targetLabel = inlineContainer.querySelector('[data-operacion-inline-target-label="1"]');
         if (targetLabel) targetLabel.textContent = estadoLabel;
+        syncInlineDestinationLabel(estadoLabel);
         inlineContainer.dataset.estado = estado;
         actions.insertAdjacentElement('afterend', inlineContainer);
         inlineContainer.classList.remove('d-none');
@@ -1359,6 +1433,20 @@
         if (container && !container.querySelector('[data-operacion-inline-form="1"]')?.dataset.pending) {
           closeSharedInlineForm();
         }
+        return;
+      }
+
+      const addLinkButton = e.target.closest('[data-operacion-link-add="1"]');
+      if (addLinkButton) {
+        e.preventDefault();
+        addInlineLinkRow(addLinkButton.closest('[data-operacion-inline-form-fragment="1"]') || inlineFormSlot);
+        return;
+      }
+
+      const removeLinkButton = e.target.closest('[data-operacion-link-remove="1"]');
+      if (removeLinkButton) {
+        e.preventDefault();
+        removeInlineLinkRow(removeLinkButton);
         return;
       }
 

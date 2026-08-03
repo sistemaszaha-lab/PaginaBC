@@ -24,6 +24,10 @@
 .operaciones-column__add-btn:hover { background: #dff3ef; color: #0d5653; }
 .operaciones-inline-form { border: 1px solid #c8e2de; border-radius: 14px; padding: 0.85rem; background: #fafffe; box-shadow: 0 10px 22px rgba(21, 85, 82, 0.08); }
 .operaciones-inline-form[data-pending="1"] { opacity: 0.7; pointer-events: none; }
+.operaciones-inline-form .form-label { color: var(--operaciones-text-main); }
+.operaciones-inline-form .form-text { color: var(--operaciones-text-muted); }
+.operaciones-inline-form [data-operacion-link-row="1"] .btn { min-width: 2rem; }
+.operaciones-toast-container { z-index: 1200; }
 .operaciones-column__empty { padding: 1rem; border: 1px dashed #a8d2cd; border-radius: 14px; background: rgba(255, 255, 255, 0.65); color: var(--operaciones-text-muted); font-size: 0.9rem; text-align: center; }
 
 .operaciones-card { position: relative; overflow: hidden; border: 1px solid var(--operaciones-card-border); border-radius: 17px; background: var(--operaciones-card-bg); box-shadow: var(--operaciones-shadow); transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease; }

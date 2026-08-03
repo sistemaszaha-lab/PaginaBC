@@ -453,11 +453,15 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="operaciones-inline-form"', count=1)
         self.assertContains(response, 'name="titulo"')
+        self.assertContains(response, 'name="descripcion"')
         self.assertContains(response, 'name="cliente"')
         self.assertContains(response, 'name="prioridad"')
         self.assertContains(response, 'name="fecha_vencimiento"')
         self.assertContains(response, 'name="asignados"')
         self.assertContains(response, 'name="etiquetas"')
+        self.assertContains(response, 'name="archivos"')
+        self.assertContains(response, 'name="enlace_titulo"')
+        self.assertContains(response, 'name="enlace_url"')
         self.assertFalse(Operacion.objects.exists())
 
     def test_endpoint_get_formulario_requiere_autenticacion(self):
@@ -494,6 +498,7 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(data["operacion_id"], data["id"])
         self.assertEqual(data["estado"], Operacion.Estado.EN_ADUANA)
+        self.assertEqual(data["message"], "Operacion creada correctamente.")
         self.assertIn(f'id="panel-operacion-{data["operacion_id"]}"', data["html"])
         self.assertIn('data-panel-operacion-card="1"', data["html"])
         self.assertIn('data-operacion-state-select="1"', data["html"])
@@ -566,6 +571,34 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertEqual(operacion.cliente, cliente)
         self.assertEqual(operacion.prioridad, Operacion.Prioridad.ALTA)
 
+    def test_crea_operacion_con_descripcion_archivos_y_enlaces(self):
+        archivo = SimpleUploadedFile(
+            "evidencia.pdf",
+            b"%PDF-1.4 test file",
+            content_type="application/pdf",
+        )
+
+        response = self.client.post(
+            self.inline_url,
+            {
+                "titulo": "Operacion con soporte",
+                "descripcion": "Descripcion extensa",
+                "estado": Operacion.Estado.PENDIENTE,
+                "enlace_titulo": ["Factura"],
+                "enlace_url": ["https://example.com/factura"],
+                "archivos": [archivo],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        operacion = Operacion.objects.get(pk=response.json()["id"])
+        self.assertEqual(operacion.descripcion, "Descripcion extensa")
+        self.assertEqual(operacion.archivos.count(), 1)
+        self.assertEqual(operacion.enlaces.count(), 1)
+        self.assertEqual(operacion.enlaces.first().titulo, "Factura")
+        self.assertEqual(operacion.enlaces.first().url, "https://example.com/factura")
+
     def test_errores_de_formulario_devuelven_el_parcial_inline(self):
         response = self.client.post(
             self.inline_url,
@@ -584,6 +617,24 @@ class OperacionesInlineCreateTests(TestCase):
             f'name="estado" value="{Operacion.Estado.PENDIENTE}"',
             data["html_form"],
         )
+        self.assertFalse(Operacion.objects.exists())
+
+    def test_enlaces_invalidos_devuelven_error_y_mantienen_formulario_abierto(self):
+        response = self.client.post(
+            self.inline_url,
+            {
+                "titulo": "Operacion con enlace invalido",
+                "estado": Operacion.Estado.PENDIENTE,
+                "enlace_titulo": ["Documento"],
+                "enlace_url": ["nota-invalida"],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("enlaces", data["errors"])
+        self.assertIn('data-operacion-inline-form="1"', data["html_form"])
         self.assertFalse(Operacion.objects.exists())
 
     def test_estado_vacio_etiqueta_visual_y_desconocido_se_rechazan(self):

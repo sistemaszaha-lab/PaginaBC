@@ -420,6 +420,23 @@ def _guardar_adjuntos_enlaces(request, operacion, enlace_form):
         enlace.save()
 
 
+def _guardar_archivos_y_enlaces_inline(request, operacion, form):
+    for archivo in request.FILES.getlist("archivos"):
+        OperacionArchivo.objects.create(
+            operacion=operacion,
+            archivo=archivo,
+            subido_por=request.user,
+        )
+
+    for enlace_data in form.cleaned_data.get("enlaces_payload", []):
+        OperacionEnlace.objects.create(
+            operacion=operacion,
+            titulo=enlace_data["titulo"],
+            url=enlace_data["url"],
+            creado_por=request.user,
+        )
+
+
 def _render_card_html(request, operacion):
     # Las respuestas AJAX reutilizan la misma tarjeta enriquecida del tablero.
     operacion = _operacion_queryset().filter(pk=operacion.pk).first() or operacion
@@ -437,7 +454,11 @@ def _render_card_html(request, operacion):
 def _render_inline_create_form(request, form, estado):
     return render_to_string(
         "operaciones/_inline_create_form.html",
-        {"form": form, "estado": estado},
+        {
+            "form": form,
+            "estado": estado,
+            "estado_label": dict(COLUMNAS).get(estado, estado),
+        },
         request=request,
     )
 
@@ -636,10 +657,15 @@ def enviar_referencia_a_operaciones(request, pk):
 @login_required
 @require_GET
 def formulario_operacion_inline(request):
+    estado = COLUMNAS[0][0]
     return render(
         request,
         "operaciones/_inline_create_form.html",
-        {"form": OperacionInlineCreateForm(), "estado": ""},
+        {
+            "form": OperacionInlineCreateForm(),
+            "estado": estado,
+            "estado_label": dict(COLUMNAS).get(estado, estado),
+        },
     )
 
 
@@ -663,6 +689,7 @@ def crear_operacion_inline(request):
             message="No se pudo crear la operacion.",
             errors=form.errors.get_json_data(escape_html=True),
             html_form=_render_inline_create_form(request, form, estado),
+            html=_render_inline_create_form(request, form, estado),
             status=400,
         )
 
@@ -672,6 +699,7 @@ def crear_operacion_inline(request):
         operacion.creado_por = request.user
         operacion.save()
         form.save_m2m()
+        _guardar_archivos_y_enlaces_inline(request, operacion, form)
         cuenta_gastos, cuenta_gastos_creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
             operacion, creado_por=request.user
         )
@@ -683,6 +711,7 @@ def crear_operacion_inline(request):
             "operacion_id": operacion.id,
             "id": operacion.id,
             "estado": operacion.estado,
+            "message": "Operacion creada correctamente.",
             "cuenta_gastos_creada": cuenta_gastos_creada,
             "cuenta_gastos_id": cuenta_gastos.pk if cuenta_gastos else None,
         },
