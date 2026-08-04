@@ -1,5 +1,5 @@
-<div class="row g-3">
+<div class="panel-cotizaciones-columns" data-panel-cotizacion-columns="1">
   {% for columna in columnas_kanban %}
-    {% include "panel_cotizaciones/_columna.html" with columna=columna es_primera_columna=forloop.first only %}
+    {% include "panel_cotizaciones/_columna.html" with columna=columna columnas_estado=columnas_estado es_primera_columna=forloop.first only %}
   {% endfor %}
 </div>

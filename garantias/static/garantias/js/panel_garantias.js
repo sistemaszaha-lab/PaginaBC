@@ -14,14 +14,24 @@
     root.dataset.panelJsInitialized = '1';
 
     const updateUrl = config.estadoUpdateUrl;
+    const boardUrl = config.boardUrl || '';
     const inlineCreateUrl = config.inlineCreateUrl;
     const inlineFormUrl = config.inlineFormUrl;
+    const columnCreateUrl = config.columnCreateUrl || '';
+    const columnReorderUrl = config.columnReorderUrl || '';
     const modalElement = document.getElementById('garantiaDetalleModal');
     const modalContent = document.getElementById('garantiaDetalleModalContent');
     const modalInstance = modalElement && window.bootstrap ? new bootstrap.Modal(modalElement) : null;
+    const columnCreateModalElement = document.getElementById('garantiaColumnCreateModal');
+    const columnEditModalElement = document.getElementById('garantiaColumnEditModal');
+    const columnDeleteModalElement = document.getElementById('garantiaColumnDeleteModal');
+    const columnCreateModal = columnCreateModalElement && window.bootstrap ? new bootstrap.Modal(columnCreateModalElement) : null;
+    const columnEditModal = columnEditModalElement && window.bootstrap ? new bootstrap.Modal(columnEditModalElement) : null;
+    const columnDeleteModal = columnDeleteModalElement && window.bootstrap ? new bootstrap.Modal(columnDeleteModalElement) : null;
     const drawerRoot = document.getElementById('garantia-drawer-root');
     const drawerElement = drawerRoot?.querySelector('.garantia-drawer');
     const drawerContent = document.getElementById('garantiaDrawerContent');
+    const copyStorageKey = 'garantias.copiedCard';
     const pendingCardIds = new Set();
     const sectionRequestVersions = new WeakMap();
     const detailState = { version: 0, id: '', layout: drawerElement ? 'drawer' : 'modal' };
@@ -127,6 +137,26 @@
       return column?.closest('[data-garantia-column="1"]') || null;
     }
 
+    function getColumnsContainer() {
+      return root.querySelector('[data-garantia-columns="1"]');
+    }
+
+    function getColumnShellById(columnId) {
+      return root.querySelector(`[data-garantia-column="1"][data-columna-id="${columnId}"]`);
+    }
+
+    function getColumnIdFromElement(element) {
+      return element?.closest('[data-garantia-column="1"]')?.dataset.columnaId || element?.dataset.columnaId || '';
+    }
+
+    function getColumnCodeFromElement(element) {
+      return element?.closest('[data-garantia-column="1"]')?.dataset.columnaCodigo || element?.dataset.columnaCodigo || '';
+    }
+
+    function getColumnNameFromElement(element) {
+      return element?.closest('[data-garantia-column="1"]')?.dataset.columnaNombre || element?.dataset.columnaNombre || '';
+    }
+
     function getColumnTotal(column) {
       const shell = getColumnShell(column);
       const value = Number.parseInt(shell?.dataset.total || '', 10);
@@ -172,11 +202,10 @@
     }
 
     function getEstadoLabel(value) {
-      if (value === 'SOLICITUD_NAVIERA') return 'Solicitud a naviera';
-      if (value === 'EN_PROCESO') return 'En proceso';
-      if (value === 'PAGO_NAVIERA_ZAHA') return 'Pago naviera a Zaha';
-      if (value === 'DEVOLUCION_CLIENTE') return 'Devolucion a cliente';
-      return value || '';
+      if (!value) return '';
+      const column = root.querySelector(`[data-garantia-column="1"][data-columna-codigo="${value}"]`);
+      const domValue = column?.dataset.columnaNombre || column?.querySelector('[data-garantia-column-title="1"]')?.textContent?.trim();
+      return domValue || value;
     }
 
     function syncCardStateUI(card, estado, estadoLabel) {
@@ -473,6 +502,188 @@
       } else {
         window.setTimeout(() => toast.remove(), 3200);
       }
+    }
+
+    function readCopiedCard() {
+      try {
+        const rawValue = window.sessionStorage?.getItem(copyStorageKey) || '';
+        if (!rawValue) return null;
+        const data = JSON.parse(rawValue);
+        const parsedId = Number.parseInt(data?.tarjeta_id, 10);
+        if (data?.modulo !== 'garantias' || Number.isNaN(parsedId) || parsedId <= 0) {
+          return null;
+        }
+        return { modulo: 'garantias', tarjeta_id: parsedId };
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function syncCopyActions() {
+      const copiedCard = readCopiedCard();
+      const enabled = Boolean(copiedCard);
+      root.querySelectorAll('[data-garantia-column-paste="1"]').forEach((button) => {
+        button.disabled = !enabled;
+      });
+      root.querySelectorAll('[data-garantia-copy-clear="1"]').forEach((button) => {
+        button.disabled = !enabled;
+      });
+    }
+
+    function writeCopiedCard(cardId) {
+      window.sessionStorage?.setItem(
+        copyStorageKey,
+        JSON.stringify({ modulo: 'garantias', tarjeta_id: Number(cardId) })
+      );
+      syncCopyActions();
+    }
+
+    function clearCopiedCard() {
+      window.sessionStorage?.removeItem(copyStorageKey);
+      syncCopyActions();
+    }
+
+    function getCurrentColumnOrder() {
+      return Array.from(root.querySelectorAll('[data-garantia-column-item="1"] [data-garantia-column="1"]'))
+        .map((node) => node.dataset.columnaId)
+        .filter(Boolean);
+    }
+
+    function syncDeleteDestinationOptions(currentColumnId) {
+      const select = columnDeleteModalElement?.querySelector('[name="columna_destino_id"]');
+      if (!select) return;
+      const currentValue = select.value;
+      const options = ['<option value="">Selecciona una columna</option>'];
+      root.querySelectorAll('[data-garantia-column="1"]').forEach((column) => {
+        if (column.dataset.columnaId === String(currentColumnId || '')) return;
+        options.push(
+          `<option value="${column.dataset.columnaId}">${column.dataset.columnaNombre || column.dataset.estado || ''}</option>`
+        );
+      });
+      select.innerHTML = options.join('');
+      if (currentValue && select.querySelector(`option[value="${currentValue}"]`)) {
+        select.value = currentValue;
+      }
+    }
+
+    function setColumnFormError(scope, message) {
+      const errorNode = scope?.querySelector('[data-garantia-column-create-error="1"], [data-garantia-column-edit-error="1"], [data-garantia-column-delete-error="1"]');
+      if (!errorNode) return;
+      if (message) {
+        errorNode.textContent = message;
+        errorNode.classList.remove('d-none');
+      } else {
+        errorNode.textContent = '';
+        errorNode.classList.add('d-none');
+      }
+    }
+
+    function extractJsonErrors(error) {
+      if (!error?.data?.errors) return '';
+      const chunks = [];
+      Object.values(error.data.errors).forEach((items) => {
+        (items || []).forEach((item) => {
+          if (item?.message) chunks.push(item.message);
+        });
+      });
+      return chunks.join(' ');
+    }
+
+    function updateColumnPresentation(columnShell, payload) {
+      if (!columnShell || !payload) return;
+      if (payload.columna_id) columnShell.dataset.columnaId = String(payload.columna_id);
+      if (payload.columna_codigo) {
+        columnShell.dataset.columnaCodigo = payload.columna_codigo;
+        columnShell.dataset.estado = payload.columna_codigo;
+      }
+      if (payload.nombre) {
+        columnShell.dataset.columnaNombre = payload.nombre;
+        const title = columnShell.querySelector('[data-garantia-column-title="1"]');
+        if (title) title.textContent = payload.nombre;
+        const addButton = columnShell.querySelector('[data-garantia-inline-open="1"]');
+        if (addButton) addButton.dataset.estadoLabel = payload.nombre;
+      }
+      const body = columnShell.querySelector('.kanban-col');
+      if (body && payload.columna_codigo) {
+        body.dataset.columnaCodigo = payload.columna_codigo;
+        body.dataset.estado = payload.columna_codigo;
+      }
+      if (body && payload.nombre) {
+        body.dataset.columnaNombre = payload.nombre;
+      }
+      syncCopyActions();
+    }
+
+    function buildInlineOpenButtonMarkup(shell) {
+      const columnId = shell?.dataset.columnaId || '';
+      const state = shell?.dataset.estado || '';
+      const label = shell?.dataset.columnaNombre || shell?.querySelector('[data-garantia-column-title="1"]')?.textContent?.trim() || '';
+      return `
+        <button
+          type="button"
+          class="btn btn-sm garantias-column__add-btn"
+          data-garantia-inline-open="1"
+          data-columna-id="${columnId}"
+          data-estado="${state}"
+          data-estado-label="${label}">
+          + Nueva garantia
+        </button>
+      `.trim();
+    }
+
+    function ensureColumnActions(shell) {
+      if (!shell) return null;
+      let actions = shell.querySelector('.garantias-column__actions');
+      if (!actions) {
+        actions = document.createElement('div');
+        actions.className = 'garantias-column__actions px-3 pt-3';
+        const header = shell.querySelector('.garantias-column__header');
+        header?.insertAdjacentElement('afterend', actions);
+      }
+      return actions;
+    }
+
+    function syncInlineCreateAccess() {
+      const shells = Array.from(root.querySelectorAll('[data-garantia-column="1"]'));
+      const firstShell = shells[0] || null;
+      const currentActions = root.querySelector('.garantias-column__actions');
+
+      if (!firstShell) {
+        currentActions?.remove();
+        closeInlineCreateForm();
+        return;
+      }
+
+      const targetActions = ensureColumnActions(firstShell);
+      if (!targetActions) return;
+
+      if (currentActions && currentActions !== targetActions) {
+        if (inlineSharedSlot && !inlineSharedSlot.classList.contains('d-none')) {
+          closeInlineCreateForm();
+        }
+        currentActions.remove();
+      }
+
+      targetActions.innerHTML = buildInlineOpenButtonMarkup(firstShell);
+    }
+
+    function insertCopiedCardIntoColumn(data) {
+      const columnShell = getColumnShellById(String(data.columna_id));
+      const column = columnShell?.querySelector('.kanban-col');
+      if (!column || typeof data.html !== 'string') {
+        throw new Error('Respuesta de tarjeta invalida.');
+      }
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = data.html;
+      const card = wrapper.querySelector('[data-garantia-card="1"]');
+      if (!card) {
+        throw new Error('No se pudo renderizar la tarjeta copiada.');
+      }
+      invalidateColumnLoads();
+      column.querySelector('.garantia-empty')?.remove();
+      column.prepend(card);
+      updateColumnCount(column, data.column_count);
+      window.initGarantiaSelects?.(card);
     }
 
     function addInlineLinkRow(root) {
@@ -916,8 +1127,40 @@
       return request;
     }
 
+    function submitColumnOrder() {
+      const ids = getCurrentColumnOrder();
+      if (!columnReorderUrl || !ids.length) return Promise.resolve();
+      const fd = new FormData();
+      ids.forEach((id) => fd.append('columnas[]', id));
+      return window.csrfFetch(columnReorderUrl, {
+        method: 'POST',
+        body: fd,
+        headers: {'Accept': 'application/json'}
+      }).then(readJsonResponse).then((data) => {
+        if (!data.ok) throw new Error(data.error || 'No se pudo reordenar.');
+        return data;
+      });
+    }
+
     function initSortable() {
       if (typeof Sortable === 'undefined') return;
+      const columnsContainer = getColumnsContainer();
+      if (columnsContainer && columnsContainer.dataset.sortableReady !== '1') {
+        columnsContainer.dataset.sortableReady = '1';
+        Sortable.create(columnsContainer, {
+          animation: 150,
+          draggable: '[data-garantia-column-item="1"]',
+          ghostClass: 'garantia-ghost',
+          dragClass: 'garantia-drag',
+          onEnd: function () {
+            syncInlineCreateAccess();
+            submitColumnOrder().catch((error) => {
+              console.error('No se pudo reordenar las columnas:', error);
+              showToast(requestErrorMessage(error), 'danger');
+            });
+          }
+        });
+      }
       document.querySelectorAll('.kanban-col').forEach((column) => {
         if (column.dataset.sortableReady === '1') return;
         column.dataset.sortableReady = '1';
@@ -1132,6 +1375,92 @@
       if (inlineOpenButton) {
         e.preventDefault();
         openInlineCreateForm(inlineOpenButton);
+        return;
+      }
+
+      const copyCardButton = e.target.closest('[data-garantia-copy-card="1"]');
+      if (copyCardButton) {
+        e.preventDefault();
+        const cardId = copyCardButton.dataset.tarjetaId || copyCardButton.closest('[data-garantia-card="1"]')?.dataset.garantiaId || '';
+        if (!cardId) return;
+        writeCopiedCard(cardId);
+        showToast('Tarjeta copiada. Selecciona una columna para pegarla.', 'success');
+        return;
+      }
+
+      const pasteCardButton = e.target.closest('[data-garantia-column-paste="1"]');
+      if (pasteCardButton) {
+        e.preventDefault();
+        const copiedCard = readCopiedCard();
+        const columnShell = pasteCardButton.closest('[data-garantia-column="1"]');
+        const pasteUrl = columnShell?.dataset.pasteUrl || '';
+        if (!copiedCard || !pasteUrl) {
+          syncCopyActions();
+          return;
+        }
+        pasteCardButton.disabled = true;
+        const fd = new FormData();
+        fd.append('tarjeta_id', String(copiedCard.tarjeta_id));
+        fd.append('modulo', copiedCard.modulo);
+        window.csrfFetch(pasteUrl, {
+          method: 'POST',
+          body: fd,
+          headers: {'Accept': 'application/json'}
+        })
+          .then((response) => readJsonResponse(response).then((data) => ({ ok: response.ok, status: response.status, data })))
+          .then(({ ok, status, data }) => {
+            if (!ok || !data.ok) {
+              const error = new Error(`Error ${status}`);
+              error.status = status;
+              error.data = data;
+              throw error;
+            }
+            insertCopiedCardIntoColumn(data);
+            showToast('Tarjeta pegada correctamente.', 'success');
+          })
+          .catch((error) => {
+            showToast(error?.data?.error || requestErrorMessage(error), 'danger');
+          })
+          .finally(() => {
+            syncCopyActions();
+          });
+        return;
+      }
+
+      const clearCopyButton = e.target.closest('[data-garantia-copy-clear="1"]');
+      if (clearCopyButton) {
+        e.preventDefault();
+        clearCopiedCard();
+        showToast('Copia cancelada.', 'success');
+        return;
+      }
+
+      const columnEditOpenButton = e.target.closest('[data-garantia-column-edit-open="1"]');
+      if (columnEditOpenButton) {
+        e.preventDefault();
+        const columnShell = columnEditOpenButton.closest('[data-garantia-column="1"]');
+        const form = columnEditModalElement?.querySelector('[data-garantia-column-edit-form="1"]');
+        if (!columnShell || !form) return;
+        form.elements.columna_id.value = columnShell.dataset.columnaId || '';
+        form.elements.nombre.value = columnShell.dataset.columnaNombre || '';
+        setColumnFormError(form, '');
+        columnEditModal?.show();
+        return;
+      }
+
+      const columnDeleteOpenButton = e.target.closest('[data-garantia-column-delete-open="1"]');
+      if (columnDeleteOpenButton) {
+        e.preventDefault();
+        const columnShell = columnDeleteOpenButton.closest('[data-garantia-column="1"]');
+        const form = columnDeleteModalElement?.querySelector('[data-garantia-column-delete-form="1"]');
+        const copy = columnDeleteModalElement?.querySelector('[data-garantia-column-delete-copy="1"]');
+        if (!columnShell || !form || !copy) return;
+        form.elements.columna_id.value = columnShell.dataset.columnaId || '';
+        form.elements.columna_destino_id.value = '';
+        copy.textContent = `Vas a eliminar la columna "${columnShell.dataset.columnaNombre || ''}".`;
+        syncDeleteDestinationOptions(columnShell.dataset.columnaId || '');
+        setColumnFormError(form, '');
+        columnDeleteModal?.show();
         return;
       }
 
@@ -1483,6 +1812,126 @@
         });
     });
 
+    document.querySelector('[data-garantia-column-create-open="1"]')?.addEventListener('click', () => {
+      const form = columnCreateModalElement?.querySelector('[data-garantia-column-create-form="1"]');
+      if (!form) return;
+      form.reset();
+      setColumnFormError(form, '');
+      columnCreateModal?.show();
+    });
+
+    document.addEventListener('submit', (e) => {
+      const createForm = e.target.closest('[data-garantia-column-create-form="1"]');
+      if (createForm) {
+        e.preventDefault();
+        setColumnFormError(createForm, '');
+        const fd = new FormData(createForm);
+        window.csrfFetch(columnCreateUrl, {
+          method: 'POST',
+          body: fd,
+          headers: {'Accept': 'application/json'}
+        })
+          .then((response) => readJsonResponse(response).then((data) => ({ok: response.ok, data})))
+          .then(({ok, data}) => {
+            if (!ok || !data.ok) {
+              const error = new Error('No se pudo crear la columna.');
+              error.data = data;
+              throw error;
+            }
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = data.html;
+            const columnItem = wrapper.firstElementChild;
+            if (!columnItem) throw new Error('HTML de columna invalido.');
+            getColumnsContainer()?.appendChild(columnItem);
+            initSortable();
+            syncCopyActions();
+            syncDeleteDestinationOptions('');
+            columnCreateModal?.hide();
+            showToast('Columna creada correctamente.', 'success');
+          })
+          .catch((error) => {
+            setColumnFormError(createForm, extractJsonErrors(error) || requestErrorMessage(error));
+          });
+        return;
+      }
+
+      const editForm = e.target.closest('[data-garantia-column-edit-form="1"]');
+      if (editForm) {
+        e.preventDefault();
+        setColumnFormError(editForm, '');
+        const columnId = editForm.elements.columna_id.value;
+        const url = getColumnShellById(columnId)?.dataset.editUrl;
+        if (!url) return;
+        const fd = new FormData(editForm);
+        window.csrfFetch(url, {
+          method: 'POST',
+          body: fd,
+          headers: {'Accept': 'application/json'}
+        })
+          .then((response) => readJsonResponse(response).then((data) => ({ok: response.ok, data})))
+          .then(({ok, data}) => {
+            if (!ok || !data.ok) {
+              const error = new Error('No se pudo editar la columna.');
+              error.data = data;
+              throw error;
+            }
+            const columnShell = getColumnShellById(columnId);
+            updateColumnPresentation(columnShell, data);
+            syncDeleteDestinationOptions(columnId);
+            columnEditModal?.hide();
+            showToast('Columna actualizada.', 'success');
+          })
+          .catch((error) => {
+            setColumnFormError(editForm, extractJsonErrors(error) || requestErrorMessage(error));
+          });
+        return;
+      }
+
+      const deleteColumnForm = e.target.closest('[data-garantia-column-delete-form="1"]');
+      if (deleteColumnForm) {
+        e.preventDefault();
+        setColumnFormError(deleteColumnForm, '');
+        const columnId = deleteColumnForm.elements.columna_id.value;
+        const columnShell = getColumnShellById(columnId);
+        const url = columnShell?.dataset.deleteUrl;
+        if (!url) return;
+        const fd = new FormData(deleteColumnForm);
+        window.csrfFetch(url, {
+          method: 'POST',
+          body: fd,
+          headers: {'Accept': 'application/json'}
+        })
+          .then((response) => readJsonResponse(response).then((data) => ({ok: response.ok, data})))
+          .then(({ok, data}) => {
+            if (!ok || !data.ok) {
+              const error = new Error('No se pudo eliminar la columna.');
+              error.data = data;
+              throw error;
+            }
+            const destinationBody = data.columna_destino_id
+              ? getColumnShellById(String(data.columna_destino_id))?.querySelector('.kanban-col')
+              : null;
+            if (columnShell && destinationBody) {
+              columnShell.querySelectorAll('[data-garantia-card="1"]').forEach((card) => {
+                syncCardStateUI(card, data.columna_destino_codigo, getEstadoLabel(data.columna_destino_codigo));
+                card.dataset.garantiaColumnId = String(data.columna_destino_id);
+                destinationBody.prepend(card);
+              });
+              syncColumnState(destinationBody, data.column_count);
+            }
+            columnShell?.closest('[data-garantia-column-item="1"]')?.remove();
+            syncDeleteDestinationOptions('');
+            invalidateColumnLoads();
+            columnDeleteModal?.hide();
+            showToast('Columna eliminada.', 'success');
+          })
+          .catch((error) => {
+            setColumnFormError(deleteColumnForm, extractJsonErrors(error) || error?.data?.error || requestErrorMessage(error));
+          });
+        return;
+      }
+    });
+
     root.addEventListener('keydown', (e) => {
       const editor = e.target.closest('[data-garantia-inline-editor="1"]');
       if (editor) {
@@ -1623,5 +2072,7 @@
       currentDetailCardId = '';
     });
 
+    syncCopyActions();
+    syncInlineCreateAccess();
     initSortable();
   })();

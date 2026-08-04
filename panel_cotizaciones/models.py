@@ -10,6 +10,30 @@ panelcotizaciones_upload_storage = FileSystemStorage(
 )
 
 
+class PanelCotizacionColumna(models.Model):
+    nombre = models.CharField(max_length=120)
+    codigo = models.CharField(max_length=60, unique=True)
+    orden = models.PositiveIntegerField(default=0)
+    activa = models.BooleanField(default=True)
+    creada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="panel_cotizaciones_columnas_creadas",
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["orden", "id"]
+        verbose_name = "Columna de panel de cotizaciones"
+        verbose_name_plural = "Columnas de panel de cotizaciones"
+
+    def __str__(self) -> str:
+        return self.nombre
+
+
 class PanelCotizacion(models.Model):
     class Estado(models.TextChoices):
         REQUERIMIENTO = "REQUERIMIENTO", "Requerimiento"
@@ -29,6 +53,13 @@ class PanelCotizacion(models.Model):
     )
     estado = models.CharField(
         max_length=20, choices=Estado.choices, default=Estado.REQUERIMIENTO
+    )
+    columna = models.ForeignKey(
+        "PanelCotizacionColumna",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="cotizaciones",
     )
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_vencimiento = models.DateField(null=True, blank=True)
@@ -53,10 +84,36 @@ class PanelCotizacion(models.Model):
 
     def save(self, *args, **kwargs):
         self.cliente = normalizar_texto_cliente(self.cliente)
+        if self.columna_id:
+            if self.estado != self.columna.codigo:
+                self.estado = self.columna.codigo
+        elif self.estado:
+            columna = (
+                PanelCotizacionColumna.objects.filter(codigo=self.estado)
+                .only("id")
+                .first()
+            )
+            if columna is not None:
+                self.columna_id = columna.pk
         return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.titulo} ({self.cliente})"
+
+    @property
+    def columna_codigo(self) -> str:
+        if self.columna_id:
+            return self.columna.codigo
+        return self.estado
+
+    @property
+    def columna_nombre(self) -> str:
+        if self.columna_id:
+            return self.columna.nombre
+        try:
+            return self.get_estado_display()
+        except Exception:
+            return self.estado
 
 
 class PanelCotizacionEtiqueta(models.Model):

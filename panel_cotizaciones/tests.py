@@ -19,6 +19,8 @@ from .forms import PanelCotizacionCreateForm
 from .models import (
     PanelCotizacion,
     PanelCotizacionArchivo,
+    PanelCotizacionColumna,
+    PanelCotizacionComentario,
     PanelCotizacionEnlace,
     PanelCotizacionEtiqueta,
 )
@@ -551,7 +553,7 @@ class PanelCotizacionCargaProgresivaTests(TestCase):
         self.assertIn("Tarjeta duplicada o incompatible.", javascript)
         self.assertIn("data-panel-cotizacion-load-more", javascript)
         self.assertIn("if (duplicateCard) duplicateCard.remove()", javascript)
-        self.assertEqual(javascript.count("Sortable.create("), 1)
+        self.assertEqual(javascript.count("Sortable.create("), 2)
         self.assertEqual(
             javascript.count("document.addEventListener('click'"), 1
         )
@@ -1208,3 +1210,444 @@ class PanelCotizacionHttpSafetyTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
         self.assertEqual(response.status_code, 404)
+
+
+class PanelCotizacionColumnasDinamicasTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="panel_column_admin",
+            password="panel123",
+            email="panel-column@example.com",
+        )
+        self.ejecutivo = User.objects.create_user(
+            username="panel_column_exec",
+            password="panel123",
+            first_name="Ejecutivo",
+        )
+        self.client = Client()
+        self.requerimiento = PanelCotizacionColumna.objects.get(
+            codigo=PanelCotizacion.Estado.REQUERIMIENTO
+        )
+        self.en_progreso = PanelCotizacionColumna.objects.get(
+            codigo=PanelCotizacion.Estado.EN_PROGRESO
+        )
+        self.enviada = PanelCotizacionColumna.objects.get(
+            codigo=PanelCotizacion.Estado.ENVIADA
+        )
+
+    def _ajax_post(self, user, url, data):
+        self.client.force_login(user)
+        return self.client.post(
+            url,
+            data,
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+    def test_columnas_iniciales_y_cotizacion_existente_conservan_relacion(self):
+        self.assertEqual(
+            list(
+                PanelCotizacionColumna.objects.filter(activa=True)
+                .order_by("orden")
+                .values_list("codigo", "nombre")
+            ),
+            [
+                (PanelCotizacion.Estado.REQUERIMIENTO, "Requerimiento"),
+                (PanelCotizacion.Estado.EN_PROGRESO, "En progreso"),
+                (PanelCotizacion.Estado.ENVIADA, "Enviada"),
+            ],
+        )
+        cotizacion = PanelCotizacion.objects.create(
+            titulo="Historial",
+            estado=PanelCotizacion.Estado.EN_PROGRESO,
+            creado_por=self.admin,
+        )
+        cotizacion.refresh_from_db()
+        self.assertEqual(cotizacion.columna.codigo, PanelCotizacion.Estado.EN_PROGRESO)
+
+    def test_admin_y_ejecutivo_pueden_crear_columna(self):
+        response_admin = self._ajax_post(
+            self.admin,
+            reverse("panel_cotizaciones:columna_crear"),
+            {"nombre": "Revision final"},
+        )
+        self.assertEqual(response_admin.status_code, 201)
+        creada = PanelCotizacionColumna.objects.get(codigo="REVISION_FINAL")
+        self.assertEqual(creada.orden, 4)
+        self.assertIn('data-columna-codigo="REVISION_FINAL"', response_admin.json()["html"])
+
+        response_exec = self._ajax_post(
+            self.ejecutivo,
+            reverse("panel_cotizaciones:columna_crear"),
+            {"nombre": "Aprobacion"},
+        )
+        self.assertEqual(response_exec.status_code, 201)
+        self.assertTrue(
+            PanelCotizacionColumna.objects.filter(
+                codigo="APROBACION",
+                creada_por=self.ejecutivo,
+            ).exists()
+        )
+
+    def test_editar_columna_conserva_codigo(self):
+        response = self._ajax_post(
+            self.admin,
+            reverse("panel_cotizaciones:columna_editar", args=[self.en_progreso.pk]),
+            {"nombre": "Trabajando"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.en_progreso.refresh_from_db()
+        self.assertEqual(self.en_progreso.nombre, "Trabajando")
+        self.assertEqual(self.en_progreso.codigo, PanelCotizacion.Estado.EN_PROGRESO)
+
+    def test_reordenar_columnas_actualiza_orden_y_valida_duplicados(self):
+        original = list(
+            PanelCotizacionColumna.objects.filter(activa=True)
+            .order_by("orden")
+            .values_list("pk", "orden")
+        )
+        response = self._ajax_post(
+            self.admin,
+            reverse("panel_cotizaciones:columna_reordenar"),
+            {"columnas[]": [self.enviada.pk, self.requerimiento.pk, self.en_progreso.pk]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            list(
+                PanelCotizacionColumna.objects.filter(activa=True)
+                .order_by("orden")
+                .values_list("pk", flat=True)
+            ),
+            [self.enviada.pk, self.requerimiento.pk, self.en_progreso.pk],
+        )
+
+        invalid = self._ajax_post(
+            self.admin,
+            reverse("panel_cotizaciones:columna_reordenar"),
+            {"columnas[]": [self.enviada.pk, self.enviada.pk, self.en_progreso.pk]},
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(
+            list(
+                PanelCotizacionColumna.objects.filter(activa=True)
+                .order_by("orden")
+                .values_list("pk", "orden")
+            ),
+            [
+                (self.enviada.pk, 1),
+                (self.requerimiento.pk, 2),
+                (self.en_progreso.pk, 3),
+            ],
+        )
+        self.assertNotEqual(original, [])
+
+    def test_eliminar_columna_vacia_y_bloquear_ultima(self):
+        vacia = PanelCotizacionColumna.objects.create(
+            nombre="Temporal",
+            codigo="TEMPORAL",
+            orden=4,
+            activa=True,
+            creada_por=self.admin,
+        )
+        response = self._ajax_post(
+            self.admin,
+            reverse("panel_cotizaciones:columna_eliminar", args=[vacia.pk]),
+            {},
+        )
+        self.assertEqual(response.status_code, 200)
+        vacia.refresh_from_db()
+        self.assertFalse(vacia.activa)
+
+        PanelCotizacionColumna.objects.exclude(pk=self.requerimiento.pk).update(activa=False)
+        blocked = self._ajax_post(
+            self.admin,
+            reverse("panel_cotizaciones:columna_eliminar", args=[self.requerimiento.pk]),
+            {},
+        )
+        self.assertEqual(blocked.status_code, 400)
+        self.requerimiento.refresh_from_db()
+        self.assertTrue(self.requerimiento.activa)
+
+    def test_columna_con_tarjetas_exige_destino_y_traslada(self):
+        cotizacion = PanelCotizacion.objects.create(
+            titulo="Mover al eliminar",
+            estado=PanelCotizacion.Estado.REQUERIMIENTO,
+            creado_por=self.admin,
+        )
+        cotizacion.refresh_from_db()
+        required = self._ajax_post(
+            self.admin,
+            reverse("panel_cotizaciones:columna_eliminar", args=[self.requerimiento.pk]),
+            {},
+        )
+        self.assertEqual(required.status_code, 400)
+
+        moved = self._ajax_post(
+            self.admin,
+            reverse("panel_cotizaciones:columna_eliminar", args=[self.requerimiento.pk]),
+            {"columna_destino_id": self.en_progreso.pk},
+        )
+        self.assertEqual(moved.status_code, 200)
+        cotizacion.refresh_from_db()
+        self.requerimiento.refresh_from_db()
+        self.assertEqual(cotizacion.columna_id, self.en_progreso.pk)
+        self.assertEqual(cotizacion.estado, self.en_progreso.codigo)
+        self.assertFalse(self.requerimiento.activa)
+
+    def test_mover_tarjeta_a_columna_nueva_e_invalida(self):
+        nueva = PanelCotizacionColumna.objects.create(
+            nombre="Revision",
+            codigo="REVISION",
+            orden=4,
+            activa=True,
+            creada_por=self.admin,
+        )
+        cotizacion = PanelCotizacion.objects.create(
+            titulo="Drag",
+            estado=PanelCotizacion.Estado.REQUERIMIENTO,
+            creado_por=self.admin,
+        )
+        cotizacion.refresh_from_db()
+        moved = self._ajax_post(
+            self.ejecutivo,
+            reverse("panel_cotizaciones:estado_update"),
+            {"cotizacion_id": cotizacion.pk, "nuevo_estado": nueva.codigo},
+        )
+        self.assertEqual(moved.status_code, 200)
+        cotizacion.refresh_from_db()
+        self.assertEqual(cotizacion.columna_id, nueva.pk)
+        self.assertEqual(cotizacion.estado, nueva.codigo)
+
+        invalid = self._ajax_post(
+            self.ejecutivo,
+            reverse("panel_cotizaciones:estado_update"),
+            {"cotizacion_id": cotizacion.pk, "nuevo_estado": "NO_EXISTE"},
+        )
+        self.assertEqual(invalid.status_code, 400)
+        cotizacion.refresh_from_db()
+        self.assertEqual(cotizacion.columna_id, nueva.pk)
+
+
+class PanelCotizacionCopiarPegarTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="panel_copy_admin",
+            password="panel123",
+            email="panel-copy@example.com",
+        )
+        self.ejecutivo = User.objects.create_user(
+            username="panel_copy_exec",
+            password="panel123",
+            first_name="Ejecutivo",
+        )
+        self.inactivo = User.objects.create_user(
+            username="panel_copy_blocked",
+            password="panel123",
+            is_active=False,
+        )
+        self.cliente = Cliente.objects.create(nombre=" Cliente copiado ")
+        self.etiqueta_a = PanelCotizacionEtiqueta.objects.create(
+            nombre="Alta prioridad copy",
+            color="#AA0000",
+        )
+        self.etiqueta_b = PanelCotizacionEtiqueta.objects.create(
+            nombre="Seguimiento copy",
+            color="#00AA00",
+        )
+        self.columna_origen = PanelCotizacionColumna.objects.get(
+            codigo=PanelCotizacion.Estado.REQUERIMIENTO
+        )
+        self.columna_destino = PanelCotizacionColumna.objects.get(
+            codigo=PanelCotizacion.Estado.EN_PROGRESO
+        )
+        self.columna_tercera = PanelCotizacionColumna.objects.get(
+            codigo=PanelCotizacion.Estado.ENVIADA
+        )
+        self.panel = PanelCotizacion.objects.create(
+            titulo="Cotizacion original",
+            descripcion="Descripcion de prueba",
+            cliente=self.cliente.nombre,
+            prioridad=PanelCotizacion.Prioridad.ALTA,
+            estado=self.columna_origen.codigo,
+            columna=self.columna_origen,
+            fecha_vencimiento=date(2026, 8, 20),
+            creado_por=self.admin,
+        )
+        self.panel.asignados.set([self.admin, self.ejecutivo])
+        self.panel.etiquetas.set([self.etiqueta_a, self.etiqueta_b])
+        self.comentario = PanelCotizacionComentario.objects.create(
+            cotizacion=self.panel,
+            texto="No copiar comentario",
+            creado_por=self.admin,
+        )
+        self.archivo = PanelCotizacionArchivo.objects.create(
+            cotizacion=self.panel,
+            archivo=SimpleUploadedFile(
+                "copy-source.txt",
+                b"contenido",
+                content_type="text/plain",
+            ),
+            subido_por=self.admin,
+        )
+        self.enlace = PanelCotizacionEnlace.objects.create(
+            cotizacion=self.panel,
+            titulo="No copiar enlace",
+            url="https://example.com/original",
+            creado_por=self.admin,
+        )
+        self.client = Client()
+
+    def _paste(self, user, *, columna_id=None, tarjeta_id=None):
+        self.client.force_login(user)
+        return self.client.post(
+            reverse(
+                "panel_cotizaciones:columna_pegar",
+                args=[columna_id or self.columna_destino.pk],
+            ),
+            {"tarjeta_id": tarjeta_id or self.panel.pk},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+    def test_admin_puede_copiar_y_pegar(self):
+        response = self._paste(self.admin)
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["columna_id"], self.columna_destino.pk)
+        self.assertIn('data-panel-cotizacion-card="1"', data["html"])
+
+    def test_ejecutivo_puede_copiar_y_pegar(self):
+        response = self._paste(self.ejecutivo)
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["ok"])
+
+    def test_copia_no_modifica_original_y_genera_nuevo_id(self):
+        original_snapshot = {
+            "titulo": self.panel.titulo,
+            "descripcion": self.panel.descripcion,
+            "cliente": self.panel.cliente,
+            "prioridad": self.panel.prioridad,
+            "estado": self.panel.estado,
+            "columna_id": self.panel.columna_id,
+        }
+        response = self._paste(self.admin)
+        nueva = PanelCotizacion.objects.get(pk=response.json()["tarjeta_id"])
+        self.panel.refresh_from_db()
+        self.assertNotEqual(nueva.pk, self.panel.pk)
+        self.assertEqual(
+            {
+                "titulo": self.panel.titulo,
+                "descripcion": self.panel.descripcion,
+                "cliente": self.panel.cliente,
+                "prioridad": self.panel.prioridad,
+                "estado": self.panel.estado,
+                "columna_id": self.panel.columna_id,
+            },
+            original_snapshot,
+        )
+
+    def test_copia_sincroniza_columna_estado_y_campos_editables(self):
+        response = self._paste(self.admin)
+        nueva = PanelCotizacion.objects.get(pk=response.json()["tarjeta_id"])
+        self.assertEqual(nueva.columna_id, self.columna_destino.pk)
+        self.assertEqual(nueva.estado, self.columna_destino.codigo)
+        self.assertEqual(nueva.titulo, self.panel.titulo)
+        self.assertEqual(nueva.descripcion, self.panel.descripcion)
+        self.assertEqual(nueva.cliente, self.panel.cliente)
+        self.assertEqual(nueva.prioridad, self.panel.prioridad)
+        self.assertEqual(nueva.fecha_vencimiento, self.panel.fecha_vencimiento)
+        self.assertEqual(nueva.creado_por, self.admin)
+
+    def test_copia_relaciones_validas_y_excluye_historial_adjuntos_enlaces(self):
+        response = self._paste(self.admin)
+        nueva = PanelCotizacion.objects.get(pk=response.json()["tarjeta_id"])
+        self.assertEqual(
+            list(nueva.asignados.order_by("pk").values_list("pk", flat=True)),
+            list(self.panel.asignados.order_by("pk").values_list("pk", flat=True)),
+        )
+        self.assertEqual(
+            list(nueva.etiquetas.order_by("pk").values_list("pk", flat=True)),
+            list(self.panel.etiquetas.order_by("pk").values_list("pk", flat=True)),
+        )
+        self.assertFalse(nueva.comentarios.exists())
+        self.assertFalse(nueva.archivos.exists())
+        self.assertFalse(nueva.enlaces.exists())
+
+    def test_modelo_no_tiene_one_to_one_ni_identificadores_unicos_copiables(self):
+        one_to_one_fields = [
+            field.name for field in PanelCotizacion._meta.get_fields()
+            if getattr(field, "one_to_one", False) and not getattr(field, "auto_created", False)
+        ]
+        unique_fields = [
+            field.name for field in PanelCotizacion._meta.fields
+            if getattr(field, "unique", False) and not field.primary_key
+        ]
+        self.assertEqual(one_to_one_fields, [])
+        self.assertEqual(unique_fields, [])
+        response = self._paste(self.admin)
+        self.assertEqual(response.status_code, 201)
+
+    def test_no_puede_pegar_en_columna_inexistente_o_inactiva(self):
+        inexistente = self._paste(self.admin, columna_id=999999)
+        self.assertEqual(inexistente.status_code, 404)
+
+        self.columna_destino.activa = False
+        self.columna_destino.save(update_fields=["activa"])
+        inactiva = self._paste(self.admin)
+        self.assertEqual(inactiva.status_code, 404)
+
+    def test_no_puede_copiar_tarjeta_inexistente_y_peticion_invalida_no_crea(self):
+        total_antes = PanelCotizacion.objects.count()
+        inexistente = self._paste(self.admin, tarjeta_id=999999)
+        self.assertEqual(inexistente.status_code, 404)
+
+        invalida = self.client.post(
+            reverse("panel_cotizaciones:columna_pegar", args=[self.columna_destino.pk]),
+            {"tarjeta_id": "abc"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(invalida.status_code, 400)
+
+        self.client.force_login(self.admin)
+        invalida_ajax = self.client.post(
+            reverse("panel_cotizaciones:columna_pegar", args=[self.columna_destino.pk]),
+            {"tarjeta_id": "abc"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(invalida_ajax.status_code, 400)
+        self.assertEqual(PanelCotizacion.objects.count(), total_antes)
+
+    def test_usuario_sin_permiso_recibe_403(self):
+        self.client.force_login(self.admin)
+        with patch("panel_cotizaciones.views._puede_operar_panel", return_value=False):
+            response = self.client.post(
+                reverse("panel_cotizaciones:columna_pegar", args=[self.columna_destino.pk]),
+                {"tarjeta_id": self.panel.pk},
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(
+            PanelCotizacion.objects.filter(
+                titulo=self.panel.titulo,
+                columna=self.columna_destino,
+            ).exists()
+        )
+
+    def test_respuesta_exitosa_incluye_html_y_tarjeta_resultante_se_puede_mover(self):
+        response = self._paste(self.admin)
+        data = response.json()
+        self.assertIn("<article", data["html"])
+        nueva = PanelCotizacion.objects.get(pk=data["tarjeta_id"])
+
+        self.client.force_login(self.admin)
+        move_response = self.client.post(
+            reverse("panel_cotizaciones:estado_update"),
+            {
+                "cotizacion_id": nueva.pk,
+                "nuevo_estado": self.columna_tercera.codigo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(move_response.status_code, 200)
+        nueva.refresh_from_db()
+        self.assertEqual(nueva.columna_id, self.columna_tercera.pk)
+        self.assertEqual(nueva.estado, self.columna_tercera.codigo)

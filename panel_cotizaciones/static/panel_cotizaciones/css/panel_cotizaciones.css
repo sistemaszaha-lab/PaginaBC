@@ -4,6 +4,20 @@
   --panel-card-muted: var(--bs-secondary-color);
   --panel-card-surface: rgba(var(--bs-tertiary-bg-rgb), 0.6);
   --panel-card-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.panel-cotizaciones-columns {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+  min-width: min-content;
+}
+
+.panel-cotizaciones-column-item {
+  flex: 0 0 min(360px, calc(100vw - 2rem));
+  min-width: 300px;
 }
 
 .panel-cotizacion-filter-box {
@@ -50,6 +64,10 @@
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.15;
+}
+
+.panel-cotizacion-column__menu-btn {
+  white-space: nowrap;
 }
 
 .panel-cotizacion-column__count {
@@ -413,12 +431,25 @@
 
 
 @media (max-width: 991.98px) {
+  .panel-cotizaciones-column-item {
+    flex-basis: min(320px, calc(100vw - 2rem));
+  }
+
   .panel-cotizacion-column__body {
     min-height: auto;
   }
 }
 
 @media (max-width: 575.98px) {
+  .panel-cotizaciones-columns {
+    flex-direction: column;
+  }
+
+  .panel-cotizaciones-column-item {
+    min-width: 0;
+    flex-basis: auto;
+  }
+
   .panel-cotizacion-drawer {
     width: 96vw;
   }

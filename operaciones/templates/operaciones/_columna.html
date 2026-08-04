@@ -1,28 +1,93 @@
 <section
   class="operaciones-column card border-0 shadow-sm flex-shrink-0"
   data-operaciones-column="1"
+  data-columna-id="{{ columna.columna_id|default:columna.id }}"
+  data-columna-codigo="{{ columna.codigo|default:columna.estado }}"
+  data-columna-nombre="{{ columna.nombre|default:columna.titulo }}"
+  {% if columna.columna_id %}
+  data-edit-url="{% url 'operaciones:columna_editar' columna.columna_id %}"
+  data-delete-url="{% url 'operaciones:columna_eliminar' columna.columna_id %}"
+  {% endif %}
   data-estado="{{ columna.estado }}"
   data-total="{{ columna.count }}"
   data-loaded="{{ columna.loaded }}">
   <header class="operaciones-column__header">
     <div class="d-flex align-items-start justify-content-between gap-3">
-      <h3 class="operaciones-column__title mb-0">{{ columna.titulo }}</h3>
-      <span class="operaciones-column__count" data-operaciones-column-count="1">{{ columna.count }}</span>
+      <h3 class="operaciones-column__title mb-0" data-operacion-column-title="1">{{ columna.titulo|default:columna.estado_texto }}</h3>
+      <div class="d-flex align-items-start gap-2">
+        <span class="operaciones-column__count" data-operaciones-column-count="1">{{ columna.count }}</span>
+        <div class="dropdown">
+          <button
+            class="btn btn-sm btn-light"
+            type="button"
+            data-bs-toggle="dropdown"
+            aria-expanded="false">
+            Opciones
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+              <button
+                type="button"
+                class="dropdown-item"
+                data-operacion-column-paste="1"
+                data-paste-url="{% url 'operaciones:tarjeta_pegar' columna.columna_id|default:columna.id %}"
+                disabled>
+                Pegar tarjeta
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                class="dropdown-item"
+                data-operacion-copy-clear="1"
+                disabled>
+                Cancelar copia
+              </button>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <button
+                type="button"
+                class="dropdown-item"
+                data-operacion-column-edit-open="1">
+                Editar columna
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                class="dropdown-item text-danger"
+                data-operacion-column-delete-open="1">
+                Eliminar columna
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
     </div>
   </header>
 
-  <div class="operaciones-column__actions px-3 pt-3">
-    <button
-      type="button"
-      class="btn btn-sm operaciones-column__add-btn"
-      data-operacion-inline-open="1"
-      data-estado="{{ columna.estado }}"
-    >
-      + Nueva operacion
-    </button>
-  </div>
+  {% if es_primera_columna %}
+    <div class="operaciones-column__actions px-3 pt-3">
+      <button
+        type="button"
+        class="btn btn-sm operaciones-column__add-btn"
+        data-operacion-inline-open="1"
+        data-columna-id="{{ columna.columna_id|default:columna.id }}"
+        data-estado="{{ columna.estado }}"
+        data-estado-label="{{ columna.titulo|default:columna.estado_texto }}"
+      >
+        + Nueva operacion
+      </button>
+    </div>
+  {% endif %}
 
-  <div class="operaciones-column__body panel-operaciones-col d-flex flex-column gap-3" data-estado="{{ columna.estado }}">
+  <div
+    class="operaciones-column__body panel-operaciones-col d-flex flex-column gap-3"
+    data-columna-id="{{ columna.columna_id|default:columna.id }}"
+    data-columna-codigo="{{ columna.codigo|default:columna.estado }}"
+    data-columna-nombre="{{ columna.nombre|default:columna.titulo }}"
+    data-estado="{{ columna.estado }}">
     {% for operacion in columna.items %}
       {% include "operaciones/_operacion_card.html" with operacion=operacion estados=estados only %}
     {% empty %}

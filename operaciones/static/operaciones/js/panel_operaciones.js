@@ -20,16 +20,26 @@
     const drawerSupported = Boolean(drawerElement && drawerContent);
     const confirmModalElement = document.getElementById('OperacionEliminarConfirmModal');
     const confirmModalInstance = confirmModalElement && window.bootstrap ? new bootstrap.Modal(confirmModalElement) : null;
+    const columnCreateModalElement = document.getElementById('OperacionColumnCreateModal');
+    const columnCreateModalInstance = columnCreateModalElement && window.bootstrap ? new bootstrap.Modal(columnCreateModalElement) : null;
+    const columnEditModalElement = document.getElementById('OperacionColumnEditModal');
+    const columnEditModalInstance = columnEditModalElement && window.bootstrap ? new bootstrap.Modal(columnEditModalElement) : null;
+    const columnDeleteModalElement = document.getElementById('OperacionColumnDeleteModal');
+    const columnDeleteModalInstance = columnDeleteModalElement && window.bootstrap ? new bootstrap.Modal(columnDeleteModalElement) : null;
     const pendingCardIds = new Set();
     const quickEditingCardIds = new Set();
     const quickEditOriginalHtml = new WeakMap();
     const inlineCreateUrl = config.inlineCreateUrl;
     const inlineFormUrl = config.inlineFormUrl;
+    const boardUrl = config.boardUrl || '';
+    const columnCreateUrl = config.columnCreateUrl || '';
+    const columnReorderUrl = config.columnReorderUrl || '';
     const inlineHost = document.querySelector('[data-operacion-inline-host="1"]');
     const inlineContainer = document.querySelector('[data-operacion-inline-container="1"]');
     const inlineFormSlot = inlineContainer?.querySelector('[data-operacion-inline-form-slot="1"]');
     const inlineLoading = inlineContainer?.querySelector('[data-operacion-inline-loading="1"]');
     const inlineLoadError = inlineContainer?.querySelector('[data-operacion-inline-load-error="1"]');
+    const copiedCardStorageKey = 'operaciones.copiedCard';
     let inlineInitialFormHtml = '';
     let inlineFormLoaded = false;
     let inlineFormLoadPromise = null;
@@ -37,6 +47,7 @@
     let toastContainer = null;
     const detailState = {id: null, url: null, layout: drawerSupported ? 'drawer' : 'modal', pending: false};
     let operacionDeleteUrl = null;
+    let activeColumnShell = null;
     const columnLoadRequests = new Map();
     let boardVersion = 0;
 
@@ -100,6 +111,45 @@
       });
     }
 
+    function getCopiedCardPayload() {
+      try {
+        const raw = window.sessionStorage.getItem(copiedCardStorageKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (
+          !parsed ||
+          parsed.modulo !== 'operaciones' ||
+          !Number.isInteger(parsed.tarjeta_id) ||
+          parsed.tarjeta_id <= 0
+        ) {
+          return null;
+        }
+        return parsed;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function setCopiedCardPayload(payload) {
+      window.sessionStorage.setItem(copiedCardStorageKey, JSON.stringify(payload));
+      syncCopyActions();
+    }
+
+    function clearCopiedCardPayload() {
+      window.sessionStorage.removeItem(copiedCardStorageKey);
+      syncCopyActions();
+    }
+
+    function syncCopyActions() {
+      const payload = getCopiedCardPayload();
+      document.querySelectorAll('[data-operacion-column-paste="1"]').forEach((button) => {
+        button.disabled = !payload;
+      });
+      document.querySelectorAll('[data-operacion-copy-clear="1"]').forEach((button) => {
+        button.disabled = !payload;
+      });
+    }
+
     function ensureEmptyState(column) {
       if (!column) return;
       const cards = column.querySelectorAll('[data-panel-operacion-card="1"]');
@@ -115,6 +165,23 @@
 
     function getColumnShell(column) {
       return column?.closest('[data-operaciones-column="1"]') || null;
+    }
+
+    function getColumnItems(shell) {
+      return shell?.querySelector('.panel-operaciones-col') || null;
+    }
+
+    function getColumnId(shell) {
+      const value = shell?.dataset.columnaId || getColumnItems(shell)?.dataset.columnaId || '';
+      return value || '';
+    }
+
+    function getColumnState(shell) {
+      return shell?.dataset.estado || getColumnItems(shell)?.dataset.estado || '';
+    }
+
+    function getColumnName(shell) {
+      return shell?.dataset.columnaNombre || shell?.querySelector('[data-operacion-column-title="1"]')?.textContent?.trim() || '';
     }
 
     function getColumnTotal(column) {
@@ -246,6 +313,8 @@
 
       const formData = new FormData();
       formData.append('estado', targetState);
+      const targetColumnId = targetColumn?.dataset.columnaId || '';
+      if (targetColumnId) formData.append('columna_id', targetColumnId);
 
       return postForm(card.dataset.operacionMoveUrl, formData)
         .then(async (response) => {
@@ -456,6 +525,58 @@
       return card;
     }
 
+    function pasteCopiedCard(button) {
+      const payload = getCopiedCardPayload();
+      const shell = button?.closest('[data-operaciones-column="1"]');
+      const column = shell?.querySelector('.panel-operaciones-col');
+      const pasteUrl = button?.dataset.pasteUrl || '';
+      const selectedUserId = document.getElementById('OperacionesUserFilter')?.value || '';
+      if (!payload || !shell || !column || !pasteUrl) {
+        syncCopyActions();
+        showInlineNotification('No hay una tarjeta copiada valida.', 'danger');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('tarjeta_id', String(payload.tarjeta_id));
+      formData.append('modulo', payload.modulo);
+      button.disabled = true;
+
+      postForm(pasteUrl, formData)
+        .then(async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok || !data.html) {
+            throw new Error(data.error || `Error ${response.status}`);
+          }
+          return data;
+        })
+        .then((data) => {
+          const assignedUserIds = Array.isArray(data.assigned_user_ids)
+            ? data.assigned_user_ids.map(String)
+            : [];
+          const shouldInsertCard = !selectedUserId || assignedUserIds.includes(selectedUserId);
+          if (shouldInsertCard) {
+            const inserted = insertCardFromHtml(column, data.html);
+            if (!inserted) {
+              throw new Error('No se pudo insertar la tarjeta copiada.');
+            }
+          } else {
+            syncColumnState(column, data.column_count);
+          }
+          invalidateColumnLoads();
+          showInlineNotification('Tarjeta pegada correctamente.', 'success');
+          syncCopyActions();
+        })
+        .catch((error) => {
+          console.error('No se pudo pegar la tarjeta:', error);
+          showInlineNotification(error.message || 'No se pudo pegar la tarjeta.', 'danger');
+          syncCopyActions();
+        })
+        .finally(() => {
+          button.disabled = false;
+        });
+    }
+
     function createOperacionInline(form) {
       const container = form.closest('[data-operacion-inline-container="1"]');
       const estado = form.querySelector('[name="estado"]')?.value;
@@ -532,6 +653,107 @@
       card.replaceWith(nextCard);
       syncColumnState(nextCard.closest('.panel-operaciones-col'));
       return nextCard;
+    }
+
+    function showColumnFormError(form, message) {
+      if (!form) return;
+      const errorNode = form.querySelector('[data-operacion-column-create-error="1"], [data-operacion-column-edit-error="1"], [data-operacion-column-delete-error="1"]');
+      if (!errorNode) return;
+      errorNode.textContent = message || '';
+      errorNode.classList.toggle('d-none', !message);
+    }
+
+    function appendColumnFromHtml(columnHtml) {
+      if (!columnHtml) return null;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = columnHtml.trim();
+      const shell = wrapper.firstElementChild;
+      if (!shell) return null;
+      root.appendChild(shell);
+      initSortable();
+      syncInlineCreateAccess();
+      return shell;
+    }
+
+    function syncDeleteDestinationOptions(currentShell) {
+      if (!columnDeleteForm) return;
+      const select = columnDeleteForm.querySelector('select[name="columna_destino_id"]');
+      if (!select) return;
+      const currentId = getColumnId(currentShell);
+      const options = Array.from(root.querySelectorAll('[data-operaciones-column="1"]'))
+        .filter((shell) => getColumnId(shell) && getColumnId(shell) !== currentId)
+        .map((shell) => ({ id: getColumnId(shell), name: getColumnName(shell) }));
+      select.innerHTML = '<option value="">Selecciona una columna</option>';
+      options.forEach((option) => {
+        const node = document.createElement('option');
+        node.value = option.id;
+        node.textContent = option.name;
+        select.appendChild(node);
+      });
+    }
+
+    function updateColumnMetadata(shell, { name }) {
+      if (!shell || !name) return;
+      shell.dataset.columnaNombre = name;
+      const title = shell.querySelector('[data-operacion-column-title="1"]');
+      if (title) title.textContent = name;
+      const body = getColumnItems(shell);
+      if (body) body.dataset.columnaNombre = name;
+      const inlineButton = shell.querySelector('[data-operacion-inline-open="1"]');
+      if (inlineButton) inlineButton.dataset.estadoLabel = name;
+    }
+
+    function buildInlineOpenButtonMarkup(shell) {
+      const columnId = getColumnId(shell);
+      const state = getColumnState(shell);
+      const label = getColumnName(shell);
+      return `
+        <button
+          type="button"
+          class="btn btn-sm operaciones-column__add-btn"
+          data-operacion-inline-open="1"
+          data-columna-id="${columnId}"
+          data-estado="${state}"
+          data-estado-label="${label}">
+          + Nueva operacion
+        </button>
+      `.trim();
+    }
+
+    function ensureColumnActions(shell) {
+      if (!shell) return null;
+      let actions = shell.querySelector('.operaciones-column__actions');
+      if (!actions) {
+        actions = document.createElement('div');
+        actions.className = 'operaciones-column__actions px-3 pt-3';
+        const header = shell.querySelector('.operaciones-column__header');
+        header?.insertAdjacentElement('afterend', actions);
+      }
+      return actions;
+    }
+
+    function syncInlineCreateAccess() {
+      const shells = Array.from(root.querySelectorAll('[data-operaciones-column="1"]'));
+      const firstShell = shells[0] || null;
+      const currentActions = root.querySelector('.operaciones-column__actions');
+
+      if (!firstShell) {
+        currentActions?.remove();
+        closeSharedInlineForm({reset: false});
+        return;
+      }
+
+      const targetActions = ensureColumnActions(firstShell);
+      if (!targetActions) return;
+
+      if (currentActions && currentActions !== targetActions) {
+        if (inlineContainer && !inlineContainer.classList.contains('d-none')) {
+          closeSharedInlineForm({reset: false});
+        }
+        currentActions.remove();
+      }
+
+      targetActions.innerHTML = buildInlineOpenButtonMarkup(firstShell);
     }
 
     function restoreQuickEditCard(card) {
@@ -805,8 +1027,38 @@
       return request;
     }
 
+    function submitColumnOrder() {
+      if (!columnReorderUrl) return Promise.resolve();
+      const formData = new FormData();
+      Array.from(root.querySelectorAll('[data-operaciones-column="1"]')).forEach((shell) => {
+        const columnId = getColumnId(shell);
+        if (columnId) formData.append('columnas[]', columnId);
+      });
+      return postForm(columnReorderUrl, formData).then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || `Error ${response.status}`);
+        return data;
+      });
+    }
+
     function initSortable() {
       if (typeof Sortable === 'undefined') return;
+      if (root.dataset.columnSortableReady !== '1') {
+        root.dataset.columnSortableReady = '1';
+        Sortable.create(root, {
+          animation: 150,
+          draggable: '[data-operaciones-column="1"]',
+          ghostClass: 'panel-operacion-ghost',
+          dragClass: 'panel-operacion-drag',
+          onEnd: function () {
+            syncInlineCreateAccess();
+            submitColumnOrder().catch((error) => {
+              console.error('No se pudo reordenar las columnas:', error);
+              reloadBoard();
+            });
+          }
+        });
+      }
       document.querySelectorAll('.panel-operaciones-col').forEach((column) => {
         if (column.dataset.sortableReady === '1') return;
         column.dataset.sortableReady = '1';
@@ -1405,6 +1657,19 @@
         return;
       }
 
+      const copyCardButton = e.target.closest('[data-operacion-copy-card="1"]');
+      if (copyCardButton) {
+        e.preventDefault();
+        const cardId = Number.parseInt(copyCardButton.dataset.tarjetaId || '', 10);
+        if (Number.isNaN(cardId) || cardId <= 0) {
+          showInlineNotification('No se pudo copiar la tarjeta.', 'danger');
+          return;
+        }
+        setCopiedCardPayload({ modulo: 'operaciones', tarjeta_id: cardId });
+        showInlineNotification('Tarjeta copiada. Selecciona una columna para pegarla.', 'success');
+        return;
+      }
+
       const inlineOpenButton = e.target.closest('[data-operacion-inline-open="1"]');
       if (inlineOpenButton) {
         e.preventDefault();
@@ -1423,6 +1688,47 @@
         actions.insertAdjacentElement('afterend', inlineContainer);
         inlineContainer.classList.remove('d-none');
         loadSharedInlineForm();
+        return;
+      }
+
+      const pasteButton = e.target.closest('[data-operacion-column-paste="1"]');
+      if (pasteButton) {
+        e.preventDefault();
+        pasteCopiedCard(pasteButton);
+        return;
+      }
+
+      const clearCopyButton = e.target.closest('[data-operacion-copy-clear="1"]');
+      if (clearCopyButton) {
+        e.preventDefault();
+        clearCopiedCardPayload();
+        showInlineNotification('Copia cancelada.', 'success');
+        return;
+      }
+
+      const columnEditButton = e.target.closest('[data-operacion-column-edit-open="1"]');
+      if (columnEditButton) {
+        e.preventDefault();
+        activeColumnShell = columnEditButton.closest('[data-operaciones-column="1"]');
+        if (!activeColumnShell || !columnEditForm) return;
+        columnEditForm.querySelector('input[name="columna_id"]').value = getColumnId(activeColumnShell);
+        columnEditForm.querySelector('input[name="nombre"]').value = getColumnName(activeColumnShell);
+        showColumnFormError(columnEditForm, '');
+        columnEditModalInstance?.show();
+        return;
+      }
+
+      const columnDeleteButton = e.target.closest('[data-operacion-column-delete-open="1"]');
+      if (columnDeleteButton) {
+        e.preventDefault();
+        activeColumnShell = columnDeleteButton.closest('[data-operaciones-column="1"]');
+        if (!activeColumnShell || !columnDeleteForm) return;
+        columnDeleteForm.querySelector('input[name="columna_id"]').value = getColumnId(activeColumnShell);
+        const copy = columnDeleteForm.querySelector('[data-operacion-column-delete-copy="1"]');
+        if (copy) copy.textContent = `Eliminar la columna "${getColumnName(activeColumnShell)}".`;
+        syncDeleteDestinationOptions(activeColumnShell);
+        showColumnFormError(columnDeleteForm, '');
+        columnDeleteModalInstance?.show();
         return;
       }
 
@@ -1773,6 +2079,85 @@
       }
     });
 
+    document.addEventListener('click', (e) => {
+      const createButton = e.target.closest('[data-operacion-column-create-open="1"]');
+      if (!createButton || !columnCreateForm) return;
+      e.preventDefault();
+      columnCreateForm.reset();
+      showColumnFormError(columnCreateForm, '');
+      columnCreateModalInstance?.show();
+    });
+
+    document.addEventListener('submit', (e) => {
+      const createForm = e.target.closest('[data-operacion-column-create-form="1"]');
+      if (createForm) {
+        e.preventDefault();
+        if (!columnCreateUrl) return;
+        showColumnFormError(createForm, '');
+        postForm(columnCreateUrl, new FormData(createForm), createForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok || !data.html) throw new Error(data.error || 'No se pudo crear la columna.');
+            return data;
+          })
+          .then((data) => {
+            appendColumnFromHtml(data.html);
+            columnCreateModalInstance?.hide();
+          })
+          .catch((error) => {
+            console.error('No se pudo crear la columna:', error);
+            showColumnFormError(createForm, error.message || 'No se pudo crear la columna.');
+          });
+        return;
+      }
+
+      const editForm = e.target.closest('[data-operacion-column-edit-form="1"]');
+      if (editForm) {
+        e.preventDefault();
+        const columnId = editForm.querySelector('input[name="columna_id"]')?.value || '';
+        const url = activeColumnShell?.dataset.editUrl || (columnId ? `/operaciones/columnas/${columnId}/editar/` : '');
+        if (!url) return;
+        showColumnFormError(editForm, '');
+        postForm(url, new FormData(editForm), editForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo editar la columna.');
+            return data;
+          })
+          .then((data) => {
+            updateColumnMetadata(activeColumnShell, { name: data.nombre });
+            columnEditModalInstance?.hide();
+          })
+          .catch((error) => {
+            console.error('No se pudo editar la columna:', error);
+            showColumnFormError(editForm, error.message || 'No se pudo editar la columna.');
+          });
+        return;
+      }
+
+      const deleteForm = e.target.closest('[data-operacion-column-delete-form="1"]');
+      if (deleteForm) {
+        e.preventDefault();
+        const columnId = deleteForm.querySelector('input[name="columna_id"]')?.value || '';
+        const url = activeColumnShell?.dataset.deleteUrl || (columnId ? `/operaciones/columnas/${columnId}/eliminar/` : '');
+        if (!url) return;
+        showColumnFormError(deleteForm, '');
+        postForm(url, new FormData(deleteForm), deleteForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo eliminar la columna.');
+            return data;
+          })
+          .then(() => {
+            reloadBoard();
+          })
+          .catch((error) => {
+            console.error('No se pudo eliminar la columna:', error);
+            showColumnFormError(deleteForm, error.message || 'No se pudo eliminar la columna.');
+          });
+      }
+    });
+
     document.addEventListener('submit', (e) => {
       const commentForm = e.target.closest('[data-operacion-comentario-form="1"]');
       if (!commentForm) return;
@@ -1790,5 +2175,7 @@
     });
     rootObserver.observe(document.documentElement, {childList: true, subtree: true});
 
+    syncCopyActions();
+    syncInlineCreateAccess();
     initSortable();
   })();

@@ -4,14 +4,16 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, F, Window
+from django.db.models import Count, F, Q, Window
 from django.db import IntegrityError, transaction
 from django.db.models.functions import RowNumber
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 # pyrefly: ignore [missing-import]
@@ -19,6 +21,8 @@ from .forms import (
     OperacionArchivosForm,
     OperacionArchivoUploadForm,
     OperacionComentarioForm,
+    OperacionColumnaCreateForm,
+    OperacionColumnaUpdateForm,
     OperacionEditarForm,
     OperacionEnlaceCreateForm,
     OperacionEnlaceForm,
@@ -33,35 +37,118 @@ from .forms import (
 from .models import (
     Operacion,
     OperacionArchivo,
+    OperacionColumna,
     OperacionComentario,
     OperacionEnlace,
     OperacionEtiqueta,
     OperacionOpcion,
 )
 from solicitudes.models import Referencia
-from .services import obtener_initial_operacion_desde_referencia
+from .services import (
+    copiar_operacion_a_columna,
+    obtener_initial_operacion_desde_referencia,
+)
 from cuenta_gastos.services import crear_cuenta_gastos_desde_operacion_si_corresponde
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-# El orden del tablero es una regla de presentacion compartida por la vista y
-# los parciales. No modifica los estados persistidos en el modelo.
-COLUMNAS = list(Operacion.Estado.choices)
+COLUMNAS_INICIALES = (
+    (Operacion.Estado.PENDIENTE, "Pendientes"),
+    (Operacion.Estado.SEGUROS, "Seguros"),
+    (Operacion.Estado.PRUEBA_VALOR, "Prueba de valor"),
+    (Operacion.Estado.EN_ADUANA, "En aduana"),
+    (Operacion.Estado.TRANSITO_NACIONAL, "Tránsito nacional"),
+    (Operacion.Estado.COORDINAR_PICKUP, "Pick up"),
+    (Operacion.Estado.TRANSITO_INTERNACIONAL, "Tránsito internacional"),
+    (Operacion.Estado.EXPEDIENTE_CG, "Expediente CG"),
+    (Operacion.Estado.SOLICITUD_CUENTA_GASTOS, "Solicitud de cuenta gastos"),
+)
 INITIAL_CARDS_PER_COLUMN = 5
 CARDS_PAGE_SIZE = 10
 OPERACION_ORDERING = ("-fecha_creacion", "-id")
-ESTADOS_VISIBLES = frozenset(estado for estado, _label in COLUMNAS)
+
+
+def _columnas_activas_queryset():
+    return OperacionColumna.objects.filter(activa=True).order_by("orden", "id")
+
+
+def _columnas_activas():
+    return list(_columnas_activas_queryset())
+
+
+def _primer_columna_activa():
+    return _columnas_activas_queryset().first()
+
+
+def _columnas_estado_choices():
+    return [(columna.codigo, columna.nombre) for columna in _columnas_activas()]
+
+
+def _buscar_columna_activa_por_codigo(codigo: str):
+    return _columnas_activas_queryset().filter(codigo=codigo).first()
+
+
+def _buscar_columna_destino(request):
+    columna_id = (request.POST.get("columna_id") or "").strip()
+    if columna_id.isdigit():
+        return _columnas_activas_queryset().filter(pk=int(columna_id)).first()
+    estado = (request.POST.get("estado") or "").strip()
+    if estado:
+        return _buscar_columna_activa_por_codigo(estado)
+    return None
 
 
 def _estado_label(estado):
-    return dict(Operacion.Estado.choices).get(estado, estado)
+    columna = _buscar_columna_activa_por_codigo(estado)
+    if columna is not None:
+        return columna.nombre
+    return dict(COLUMNAS_INICIALES).get(estado, estado)
 
 
 def _estados_disponibles():
-    campo_estado = Operacion._meta.get_field("estado")
-    return {valor for valor, _etiqueta in campo_estado.choices}
+    return [codigo for codigo, _nombre in _columnas_estado_choices()]
+
+
+def _generar_codigo_columna(nombre: str) -> str:
+    base = slugify(nombre).replace("-", "_").upper()
+    if not base:
+        base = "COLUMNA"
+    if base[0].isdigit():
+        base = f"COLUMNA_{base}"
+    candidato = base
+    indice = 2
+    while OperacionColumna.objects.filter(codigo=candidato).exists():
+        candidato = f"{base}_{indice}"
+        indice += 1
+    return candidato
+
+
+def _siguiente_orden_columna() -> int:
+    ultima = OperacionColumna.objects.order_by("-orden", "-id").first()
+    return (ultima.orden + 1) if ultima is not None else 1
+
+
+def _column_context(*, columna: OperacionColumna, items, count: int, loaded: int):
+    return {
+        "id": columna.pk,
+        "columna_id": columna.pk,
+        "codigo": columna.codigo,
+        "estado": columna.codigo,
+        "nombre": columna.nombre,
+        "titulo": columna.nombre,
+        "estado_texto": columna.nombre,
+        "items": items,
+        "count": count,
+        "loaded": loaded,
+        "has_more": count > loaded,
+        "remaining": max(0, count - loaded),
+        "load_url": reverse(
+            "operaciones:tarjetas_columna",
+            kwargs={"codigo": columna.codigo},
+        ),
+    }
 
 
 def _nombre_corto_usuario(usuario):
@@ -84,7 +171,7 @@ def _es_ajax(request):
 
 def _operacion_queryset():
     return (
-        Operacion.objects.select_related("cliente", "creado_por")
+        Operacion.objects.select_related("cliente", "creado_por", "columna")
         .prefetch_related("asignados", "etiquetas")
         .annotate(
             comentarios_count=Count("comentarios", distinct=True),
@@ -96,13 +183,17 @@ def _operacion_queryset():
 
 
 def _board_queryset(usuario=None):
-    queryset = _operacion_queryset().filter(estado__in=ESTADOS_VISIBLES)
+    codigos_activos = [codigo for codigo, _nombre in _columnas_estado_choices()]
+    queryset = _operacion_queryset().filter(estado__in=codigos_activos).filter(
+        Q(columna__activa=True) | Q(columna__isnull=True)
+    )
     if usuario is not None:
         queryset = queryset.filter(asignados__id=usuario.id).distinct()
     return queryset.order_by(*OPERACION_ORDERING)
 
 
 def _columnas_kanban(usuario=None):
+    columnas = _columnas_activas()
     operaciones = list(
         _board_queryset(usuario)
         .annotate(
@@ -121,48 +212,21 @@ def _columnas_kanban(usuario=None):
         )
         .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
     )
-    items_por_estado = {estado: [] for estado, _label in COLUMNAS}
-    totales = {estado: 0 for estado, _label in COLUMNAS}
+    items_por_estado = {columna.codigo: [] for columna in columnas}
+    totales = {columna.codigo: 0 for columna in columnas}
     for operacion in operaciones:
-        items_por_estado[operacion.estado].append(operacion)
-        totales[operacion.estado] = operacion.total_columna
+        if operacion.estado in items_por_estado:
+            items_por_estado[operacion.estado].append(operacion)
+            totales[operacion.estado] = operacion.total_columna
 
     return [
-        {
-            "posicion": posicion,
-            "estado": estado,
-            "titulo": titulo,
-            "items": items_por_estado[estado],
-            "count": totales[estado],
-            "loaded": len(items_por_estado[estado]),
-            "has_more": totales[estado] > len(items_por_estado[estado]),
-            "remaining": max(
-                0, totales[estado] - len(items_por_estado[estado])
-            ),
-            "load_url": reverse(
-                "operaciones:tarjetas_columna",
-                kwargs={"estado": estado},
-            ),
-        }
-        for posicion, (estado, titulo) in enumerate(COLUMNAS, start=1)
-    ]
-
-
-def _construir_columnas(operaciones):
-    """Agrupa las operaciones para que el tablero solo reciba datos de UI."""
-    operaciones_por_estado = {estado: [] for estado, _label in COLUMNAS}
-    for operacion in operaciones:
-        operaciones_por_estado.setdefault(operacion.estado, []).append(operacion)
-
-    return [
-        {
-            "posicion": posicion,
-            "estado": estado,
-            "titulo": titulo,
-            "items": operaciones_por_estado.get(estado, []),
-            "count": len(operaciones_por_estado.get(estado, [])),
-        }
-        for posicion, (estado, titulo) in enumerate(COLUMNAS, start=1)
+        _column_context(
+            columna=columna,
+            items=items_por_estado[columna.codigo],
+            count=totales[columna.codigo],
+            loaded=len(items_por_estado[columna.codigo]),
+        )
+        for columna in columnas
     ]
 
 
@@ -437,6 +501,32 @@ def _guardar_archivos_y_enlaces_inline(request, operacion, form):
         )
 
 
+def _estado_inicial_operacion():
+    return _primer_columna_activa()
+
+
+def _columna_manual_permitida():
+    return _primer_columna_activa()
+
+
+def _column_count(columna: OperacionColumna) -> int:
+    return Operacion.objects.filter(
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
+    ).count()
+
+
+def _es_columna_base(columna: OperacionColumna) -> bool:
+    return columna.codigo in {codigo for codigo, _nombre in COLUMNAS_INICIALES}
+
+
+def _get_operacion_para_copia(pk: int) -> Operacion:
+    return get_object_or_404(
+        Operacion.objects.select_related("columna", "cliente", "creado_por")
+        .prefetch_related("asignados", "etiquetas", "opciones"),
+        pk=pk,
+    )
+
+
 def _render_card_html(request, operacion):
     # Las respuestas AJAX reutilizan la misma tarjeta enriquecida del tablero.
     operacion = _operacion_queryset().filter(pk=operacion.pk).first() or operacion
@@ -445,19 +535,20 @@ def _render_card_html(request, operacion):
         {
             "operacion": operacion,
             "comentario_form": OperacionComentarioForm(),
-            "estados": COLUMNAS,
+            "estados": _columnas_estado_choices(),
         },
         request=request,
     )
 
 
-def _render_inline_create_form(request, form, estado):
+def _render_inline_create_form(request, form, columna):
     return render_to_string(
         "operaciones/_inline_create_form.html",
         {
             "form": form,
-            "estado": estado,
-            "estado_label": dict(COLUMNAS).get(estado, estado),
+            "estado": columna.codigo,
+            "estado_label": columna.nombre,
+            "columna": columna,
         },
         request=request,
     )
@@ -500,20 +591,42 @@ def panel_operaciones(request):
 
     return render(request, "operaciones/panel_operaciones.html", {
         "columnas": columnas,
-        "estados": COLUMNAS,
+        "estados": _columnas_estado_choices(),
+        "columnas_activas": _columnas_activas(),
+        "columna_create_form": OperacionColumnaCreateForm(),
         "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
         "current": "panel_operaciones",
+        "today": timezone.localdate(),
         "panel_config": {
             "inlineCreateUrl": reverse("operaciones:crear_operacion_inline"),
             "inlineFormUrl": reverse("operaciones:formulario_operacion_inline"),
+            "boardUrl": reverse("operaciones:tablero_partial"),
+            "columnCreateUrl": reverse("operaciones:columna_crear"),
+            "columnReorderUrl": reverse("operaciones:columna_reordenar"),
         },
     })
 
 
 @login_required
 @require_GET
-def tarjetas_columna(request, estado):
-    if estado not in ESTADOS_VISIBLES:
+def tablero_partial(request):
+    usuario = _get_usuario_filter(request)
+    return render(
+        request,
+        "operaciones/_tablero.html",
+        {
+            "columnas": _columnas_kanban(usuario),
+            "estados": _columnas_estado_choices(),
+            "today": timezone.localdate(),
+        },
+    )
+
+
+@login_required
+@require_GET
+def tarjetas_columna(request, codigo):
+    columna_obj = _buscar_columna_activa_por_codigo(codigo)
+    if columna_obj is None:
         return JsonResponse(
             {"ok": False, "error": "Estado no encontrado."},
             status=404,
@@ -536,7 +649,7 @@ def tarjetas_columna(request, estado):
             status=400,
         )
 
-    columna = _board_queryset(usuario).filter(estado=estado)
+    columna = _board_queryset(usuario).filter(estado=columna_obj.codigo)
     total = columna.count()
     recognized_loaded_ids = set(
         columna.filter(pk__in=loaded_ids).values_list("pk", flat=True)
@@ -549,10 +662,11 @@ def tarjetas_columna(request, estado):
     )
     has_more = len(siguientes) > CARDS_PAGE_SIZE
     operaciones = siguientes[:CARDS_PAGE_SIZE]
+    estados = _columnas_estado_choices()
     html = "".join(
         render_to_string(
             "operaciones/_operacion_card.html",
-            {"operacion": operacion, "estados": COLUMNAS},
+            {"operacion": operacion, "estados": estados},
             request=request,
         )
         for operacion in operaciones
@@ -561,7 +675,9 @@ def tarjetas_columna(request, estado):
     return JsonResponse(
         {
             "ok": True,
-            "estado": estado,
+            "estado": columna_obj.codigo,
+            "columna_id": columna_obj.pk,
+            "columna_codigo": columna_obj.codigo,
             "html": html,
             "loaded": loaded,
             "next_offset": len(recognized_loaded_ids) + loaded,
@@ -575,17 +691,26 @@ def tarjetas_columna(request, estado):
 @login_required
 def crear_operacion(request):
     next_url = _safe_next_url(request)
+    columna_inicial = _estado_inicial_operacion()
+    if columna_inicial is None:
+        raise PermissionDenied("No hay columnas disponibles en operaciones.")
     if request.method == "POST":
         form = OperacionForm(request.POST)
         archivos_form = OperacionArchivosForm(request.POST, request.FILES)
         enlace_form = OperacionEnlaceForm(request.POST, prefix="enlace")
         if form.is_valid():
-            operacion = form.save(commit=False)
-            operacion.creado_por = request.user
-            operacion.save()
-            form.save_m2m()
-            if archivos_form.is_valid() and enlace_form.is_valid():
-                _guardar_adjuntos_enlaces(request, operacion, enlace_form)
+            with transaction.atomic():
+                operacion = form.save(commit=False)
+                operacion.creado_por = request.user
+                operacion.columna = columna_inicial
+                operacion.estado = columna_inicial.codigo
+                operacion.save()
+                form.save_m2m()
+                if archivos_form.is_valid() and enlace_form.is_valid():
+                    _guardar_adjuntos_enlaces(request, operacion, enlace_form)
+                crear_cuenta_gastos_desde_operacion_si_corresponde(
+                    operacion, creado_por=request.user
+                )
             
             if _es_ajax(request):
                 return JsonResponse({
@@ -631,6 +756,9 @@ def enviar_referencia_a_operaciones(request, pk):
                     operacion = form.save(commit=False)
                     operacion.creado_por = request.user
                     operacion.referencia_origen = referencia
+                    operacion.columna = _buscar_columna_activa_por_codigo(
+                        Operacion.Estado.COORDINAR_PICKUP
+                    )
                     # El estado se impone en el servidor para que un POST
                     # manipulado no pueda sacar la conversiÃ³n de Pick up.
                     operacion.estado = Operacion.Estado.COORDINAR_PICKUP
@@ -657,14 +785,20 @@ def enviar_referencia_a_operaciones(request, pk):
 @login_required
 @require_GET
 def formulario_operacion_inline(request):
-    estado = COLUMNAS[0][0]
+    columna = _estado_inicial_operacion()
+    if columna is None:
+        return JsonResponse(
+            {"ok": False, "error": "No hay columnas disponibles."},
+            status=400,
+        )
     return render(
         request,
         "operaciones/_inline_create_form.html",
         {
             "form": OperacionInlineCreateForm(),
-            "estado": estado,
-            "estado_label": dict(COLUMNAS).get(estado, estado),
+            "estado": columna.codigo,
+            "estado_label": columna.nombre,
+            "columna": columna,
         },
     )
 
@@ -674,11 +808,37 @@ def formulario_operacion_inline(request):
 def crear_operacion_inline(request):
     estados_recibidos = request.POST.getlist("estado")
     estado = (estados_recibidos[0] if len(estados_recibidos) == 1 else "").strip()
-    if len(estados_recibidos) != 1 or estado not in _estados_disponibles():
+    if len(estados_recibidos) != 1:
         return _json_error(
             "INVALID_STATE",
             message="Estado invalido.",
             errors={"estado": [{"message": "Estado invalido.", "code": "invalid"}]},
+            status=400,
+        )
+    columna = _buscar_columna_activa_por_codigo(estado)
+    if columna is None:
+        return _json_error(
+            "INVALID_STATE",
+            message="Estado invalido.",
+            errors={"estado": [{"message": "Estado invalido.", "code": "invalid"}]},
+            status=400,
+        )
+    columna_permitida = _columna_manual_permitida()
+    if (
+        columna_permitida is None
+        or columna.pk != columna_permitida.pk
+    ):
+        return _json_error(
+            "INVALID_STATE",
+            message="Solo se pueden crear tarjetas desde la primera columna activa.",
+            errors={
+                "estado": [
+                    {
+                        "message": "Solo se pueden crear tarjetas desde la primera columna activa.",
+                        "code": "invalid",
+                    }
+                ]
+            },
             status=400,
         )
 
@@ -688,14 +848,15 @@ def crear_operacion_inline(request):
             "FORM_INVALID",
             message="No se pudo crear la operacion.",
             errors=form.errors.get_json_data(escape_html=True),
-            html_form=_render_inline_create_form(request, form, estado),
-            html=_render_inline_create_form(request, form, estado),
+            html_form=_render_inline_create_form(request, form, columna),
+            html=_render_inline_create_form(request, form, columna),
             status=400,
         )
 
     with transaction.atomic():
         operacion = form.save(commit=False)
-        operacion.estado = estado
+        operacion.columna = columna
+        operacion.estado = columna.codigo
         operacion.creado_por = request.user
         operacion.save()
         form.save_m2m()
@@ -711,6 +872,7 @@ def crear_operacion_inline(request):
             "operacion_id": operacion.id,
             "id": operacion.id,
             "estado": operacion.estado,
+            "columna_id": columna.pk,
             "message": "Operacion creada correctamente.",
             "cuenta_gastos_creada": cuenta_gastos_creada,
             "cuenta_gastos_id": cuenta_gastos.pk if cuenta_gastos else None,
@@ -1144,6 +1306,218 @@ def quitar_opcion_operacion(request, operacion_id, opcion_id):
 
 @login_required
 @require_POST
+def columna_crear(request):
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    form = OperacionColumnaCreateForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            status=400,
+        )
+    with transaction.atomic():
+        columna = form.save(commit=False)
+        columna.codigo = _generar_codigo_columna(columna.nombre)
+        columna.orden = _siguiente_orden_columna()
+        columna.creada_por = request.user
+        columna.save()
+    html = render_to_string(
+        "operaciones/_columna.html",
+        {
+            "columna": _column_context(columna=columna, items=[], count=0, loaded=0),
+            "estados": _columnas_estado_choices(),
+            "es_primera_columna": False,
+            "today": timezone.localdate(),
+        },
+        request=request,
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
+            "nombre": columna.nombre,
+            "html": html,
+        },
+        status=201,
+    )
+
+
+@login_required
+@require_POST
+def columna_editar(request, pk):
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    columna = get_object_or_404(OperacionColumna, pk=pk, activa=True)
+    form = OperacionColumnaUpdateForm(request.POST, instance=columna)
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            status=400,
+        )
+    form.save()
+    return JsonResponse(
+        {
+            "ok": True,
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
+            "nombre": columna.nombre,
+        }
+    )
+
+
+@login_required
+@require_POST
+def columna_reordenar(request):
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    raw_ids = request.POST.getlist("columnas[]") or request.POST.getlist("columnas")
+    if not raw_ids:
+        return JsonResponse({"ok": False, "error": "Debes enviar columnas."}, status=400)
+    if any(not value.isdigit() or int(value) <= 0 for value in raw_ids):
+        return JsonResponse({"ok": False, "error": "IDs invalidos."}, status=400)
+    ids = [int(value) for value in raw_ids]
+    if len(ids) != len(set(ids)):
+        return JsonResponse({"ok": False, "error": "IDs duplicados."}, status=400)
+    columnas = list(OperacionColumna.objects.filter(pk__in=ids, activa=True))
+    if len(columnas) != len(ids):
+        return JsonResponse({"ok": False, "error": "Columna no encontrada."}, status=400)
+    with transaction.atomic():
+        for orden, columna_id in enumerate(ids, start=1):
+            OperacionColumna.objects.filter(pk=columna_id).update(orden=orden)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+def columna_eliminar(request, pk):
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    columna = get_object_or_404(OperacionColumna, pk=pk, activa=True)
+    if _es_columna_base(columna):
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "Esta columna base no puede eliminarse porque tiene dependencias criticas.",
+            },
+            status=400,
+        )
+    activas = _columnas_activas()
+    if len(activas) <= 1:
+        return JsonResponse(
+            {"ok": False, "error": "No puedes eliminar la ultima columna activa."},
+            status=400,
+        )
+    operaciones_qs = Operacion.objects.filter(
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
+    )
+    total_operaciones = operaciones_qs.count()
+    destino_id = (request.POST.get("columna_destino_id") or "").strip()
+    if total_operaciones > 0:
+        if not destino_id.isdigit():
+            return JsonResponse(
+                {"ok": False, "error": "Debes seleccionar una columna destino."},
+                status=400,
+            )
+        if int(destino_id) == columna.pk:
+            return JsonResponse(
+                {"ok": False, "error": "La columna destino debe ser distinta."},
+                status=400,
+            )
+        destino = get_object_or_404(OperacionColumna, pk=int(destino_id), activa=True)
+    else:
+        destino = None
+
+    with transaction.atomic():
+        if destino is not None:
+            operaciones = list(operaciones_qs.select_related("columna"))
+            for operacion in operaciones:
+                operacion.columna = destino
+                operacion.estado = destino.codigo
+                operacion.save(update_fields=["columna", "estado"])
+                crear_cuenta_gastos_desde_operacion_si_corresponde(
+                    operacion, creado_por=request.user
+                )
+        columna.activa = False
+        columna.save(update_fields=["activa", "fecha_actualizacion"])
+        for orden, columna_id in enumerate(
+            OperacionColumna.objects.filter(activa=True)
+            .order_by("orden", "id")
+            .values_list("pk", flat=True),
+            start=1,
+        ):
+            OperacionColumna.objects.filter(pk=columna_id).update(orden=orden)
+
+    response_data = {"ok": True, "columna_id": columna.pk}
+    if destino is not None:
+        response_data.update(
+            {
+                "moved_count": total_operaciones,
+                "columna_destino_id": destino.pk,
+                "columna_destino_codigo": destino.codigo,
+                "column_count": _column_count(destino),
+            }
+        )
+    return JsonResponse(response_data)
+
+
+@login_required
+@require_POST
+def tarjeta_pegar(request, columna_id):
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    if not _puede_mover_operacion(request.user):
+        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
+
+    raw_tarjeta_id = (request.POST.get("tarjeta_id") or "").strip()
+    modulo = (request.POST.get("modulo") or "").strip()
+    if modulo != "operaciones":
+        return JsonResponse(
+            {"ok": False, "error": "Solo se permite copiar tarjetas de operaciones."},
+            status=400,
+        )
+    if not raw_tarjeta_id.isdigit() or int(raw_tarjeta_id) <= 0:
+        return JsonResponse({"ok": False, "error": "Tarjeta invalida."}, status=400)
+
+    columna_destino = get_object_or_404(
+        OperacionColumna,
+        pk=columna_id,
+        activa=True,
+    )
+    operacion_original = _get_operacion_para_copia(int(raw_tarjeta_id))
+    if not _puede_mover_operacion(request.user):
+        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
+
+    nueva = copiar_operacion_a_columna(
+        operacion_original=operacion_original,
+        columna_destino=columna_destino,
+        usuario=request.user,
+    )
+    nueva = get_object_or_404(_operacion_queryset(), pk=nueva.pk)
+    return JsonResponse(
+        {
+            "ok": True,
+            "tarjeta_id": nueva.pk,
+            "columna_id": columna_destino.pk,
+            "html": _render_card_html(request, nueva),
+            "estado": nueva.estado,
+            "column_count": _column_count(columna_destino),
+            "assigned_user_ids": list(
+                nueva.asignados.values_list("id", flat=True)
+            ),
+        },
+        status=201,
+    )
+
+
+@login_required
+@require_POST
 def crear_opcion(request):
     nombre = (request.POST.get("nombre") or "").strip()
     if not nombre:
@@ -1215,8 +1589,8 @@ def mover_operacion(request, operacion_id):
         )
         return _json_error("FORBIDDEN", message="No tienes permiso para mover operaciones.", status=403)
 
-    estado = (request.POST.get("estado") or "").strip()
-    if estado not in _estados_disponibles():
+    columna = _buscar_columna_destino(request)
+    if columna is None:
         return _json_error(
             "INVALID_STATE",
             message="Estado invalido.",
@@ -1225,8 +1599,9 @@ def mover_operacion(request, operacion_id):
         )
 
     with transaction.atomic():
-        operacion.estado = estado
-        operacion.save(update_fields=["estado"])
+        operacion.columna = columna
+        operacion.estado = columna.codigo
+        operacion.save(update_fields=["columna", "estado"])
         cuenta_gastos, cuenta_gastos_creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
             operacion, creado_por=request.user
         )
@@ -1236,7 +1611,9 @@ def mover_operacion(request, operacion_id):
         "status": "ok",
         "id": operacion.id,
         "estado": operacion.estado,
-        "estado_label": _estado_label(operacion.estado),
+        "estado_label": columna.nombre,
+        "columna_id": columna.pk,
+        "columna_codigo": columna.codigo,
         "cuenta_gastos_creada": cuenta_gastos_creada,
         "cuenta_gastos_id": cuenta_gastos.pk if cuenta_gastos else None,
     })

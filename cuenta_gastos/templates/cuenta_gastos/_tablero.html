@@ -1,4 +1,4 @@
-<div class="cuenta-board" data-cuenta-board="1">
+<div class="cuenta-board" data-cuenta-board="1" data-cuenta-columns="1">
   {% for columna in columnas %}
     {% include "cuenta_gastos/_columna.html" with columna=columna estados_ui=estados_ui es_primera_columna=forloop.first only %}
   {% endfor %}

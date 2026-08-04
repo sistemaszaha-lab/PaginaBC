@@ -10,6 +10,16 @@
 <h2 class="mb-4">Panel de Cotizaciones</h2>
 <div style="display:none;">{% csrf_token %}</div>
 
+<div class="d-flex justify-content-end mb-3">
+  <button
+    type="button"
+    class="btn btn-primary btn-sm"
+    data-bs-toggle="modal"
+    data-bs-target="#panelCotizacionColumnaCrearModal">
+    + Agregar columna
+  </button>
+</div>
+
 <div class="mb-3 d-flex gap-2 flex-wrap align-items-end">
   <div class="ms-auto panel-cotizacion-filter-box">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
@@ -23,11 +33,13 @@
 </div>
 
 <div id="panelCotizacionesBoard" class="panel-cotizaciones-board">
-  {% include "panel_cotizaciones/_tablero.html" with columnas_kanban=columnas_kanban only %}
+  {% include "panel_cotizaciones/_tablero.html" with columnas_kanban=columnas_kanban columnas_estado=columnas_estado only %}
 </div>
 <div data-panel-cotizacion-inline-slot-home="1">
   <div class="px-3 pt-3 d-none" data-panel-cotizacion-inline-container="1" data-panel-cotizacion-inline-shared-slot="1"></div>
 </div>
+
+
 
 <div class="modal fade" id="panelCotizacionDetalleModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -57,6 +69,88 @@
         <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
         <button type="button" class="btn btn-danger" data-panel-cotizacion-confirm-delete="1">Eliminar</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="panelCotizacionColumnaCrearModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form data-panel-cotizacion-column-create-form="1">
+        <div class="modal-header">
+          <h5 class="modal-title">Agregar columna</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label" for="panelCotizacionNuevaColumnaNombre">Nombre</label>
+          <input
+            type="text"
+            class="form-control"
+            id="panelCotizacionNuevaColumnaNombre"
+            name="nombre"
+            placeholder="Nombre de la columna">
+          <div class="text-danger small mt-2" data-panel-cotizacion-column-create-error="1"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Crear columna</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="panelCotizacionColumnaEditarModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form data-panel-cotizacion-column-edit-form="1">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar columna</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="columna_id" value="">
+          <label class="form-label" for="panelCotizacionEditarColumnaNombre">Nombre</label>
+          <input type="text" class="form-control" id="panelCotizacionEditarColumnaNombre" name="nombre">
+          <div class="text-danger small mt-2" data-panel-cotizacion-column-edit-error="1"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="panelCotizacionColumnaEliminarModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form data-panel-cotizacion-column-delete-form="1">
+        <div class="modal-header">
+          <h5 class="modal-title">Eliminar columna</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="columna_id" value="">
+          <p class="mb-3" data-panel-cotizacion-column-delete-message="1">Confirma la eliminación de la columna.</p>
+          <div class="mb-3">
+            <label class="form-label" for="panelCotizacionColumnaDestino">Mover tarjetas a</label>
+            <select class="form-select" id="panelCotizacionColumnaDestino" name="columna_destino_id">
+              <option value="">Selecciona una columna</option>
+              {% for columna in columnas_activas %}
+                <option value="{{ columna.id }}">{{ columna.nombre }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Solo es obligatorio si la columna contiene tarjetas.</div>
+          </div>
+          <div class="text-danger small mt-2" data-panel-cotizacion-column-delete-error="1"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Eliminar columna</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>

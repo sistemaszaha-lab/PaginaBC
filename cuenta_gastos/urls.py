@@ -37,6 +37,31 @@ urlpatterns = [
         name="crear_cuenta_gastos"
     ),
     path(
+        "columnas/crear/",
+        views.columna_crear,
+        name="columna_crear"
+    ),
+    path(
+        "columnas/reordenar/",
+        views.columna_reordenar,
+        name="columna_reordenar"
+    ),
+    path(
+        "columnas/<int:pk>/editar/",
+        views.columna_editar,
+        name="columna_editar"
+    ),
+    path(
+        "columnas/<int:pk>/eliminar/",
+        views.columna_eliminar,
+        name="columna_eliminar"
+    ),
+    path(
+        "columnas/<int:columna_id>/pegar/",
+        views.tarjeta_pegar,
+        name="tarjeta_pegar"
+    ),
+    path(
         "crear-inline/",
         views.crear_cuenta_gastos_inline,
         name="crear_cuenta_gastos_inline"
@@ -47,7 +72,7 @@ urlpatterns = [
         name="formulario_cuenta_gastos_inline",
     ),
     path(
-        "columna/<str:estado>/tarjetas/",
+        "columna/<str:codigo>/tarjetas/",
         views.tarjetas_columna,
         name="tarjetas_columna",
     ),

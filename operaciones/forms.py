@@ -8,7 +8,13 @@ from django.core.validators import URLValidator
 
 from clientes.models import Cliente
 
-from .models import Operacion, OperacionEnlace, OperacionEtiqueta, OperacionOpcion
+from .models import (
+    Operacion,
+    OperacionColumna,
+    OperacionEnlace,
+    OperacionEtiqueta,
+    OperacionOpcion,
+)
 
 
 MAX_OPERACION_ARCHIVO_SIZE = 10 * 1024 * 1024
@@ -438,3 +444,22 @@ class OperacionOpcionCreateForm(forms.Form):
 
     def clean_nombre(self):
         return self.cleaned_data["nombre"].strip()
+
+
+class OperacionColumnaCreateForm(forms.ModelForm):
+    class Meta:
+        model = OperacionColumna
+        fields = ["nombre"]
+        widgets = {
+            "nombre": forms.TextInput(attrs={"class": "form-control"}),
+        }
+
+    def clean_nombre(self):
+        nombre = (self.cleaned_data.get("nombre") or "").strip()
+        if not nombre:
+            raise forms.ValidationError("Debes capturar un nombre.")
+        return nombre
+
+
+class OperacionColumnaUpdateForm(OperacionColumnaCreateForm):
+    pass

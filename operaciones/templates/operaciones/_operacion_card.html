@@ -15,7 +15,29 @@
           {{ operacion.cliente|default:"Sin cliente" }}
         </div>
       </div>
-      <span class="operaciones-chip operaciones-chip--{{ operacion.prioridad|lower }}">{{ operacion.get_prioridad_display|upper }}</span>
+      <div class="d-flex align-items-start gap-2">
+        <span class="operaciones-chip operaciones-chip--{{ operacion.prioridad|lower }}">{{ operacion.get_prioridad_display|upper }}</span>
+        <div class="dropdown">
+          <button
+            type="button"
+            class="btn btn-sm btn-light"
+            data-bs-toggle="dropdown"
+            aria-expanded="false">
+            Opciones
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+              <button
+                type="button"
+                class="dropdown-item"
+                data-operacion-copy-card="1"
+                data-tarjeta-id="{{ operacion.id }}">
+                Copiar tarjeta
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
     </div>
 
     {% if operacion.descripcion %}

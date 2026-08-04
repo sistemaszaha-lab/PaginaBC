@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, F, Window
+from django.db.models import Count, F, Q, Window
 from django.db.models.functions import RowNumber
 from pathlib import Path
 
@@ -14,11 +14,13 @@ from django.urls import reverse
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET, require_POST
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.text import slugify
 
 
 from .models import (
     CuentaGastos,
     CuentaGastosArchivo,
+    CuentaGastosColumna,
     CuentaGastosComentario,
     CuentaGastosEnlace,
     CuentaGastosEtiqueta,
@@ -34,6 +36,8 @@ from .forms import (
     CuentaGastosAsignadosInlineForm,
     CuentaGastosInlineCreateForm,
     CuentaGastosComentarioForm,
+    CuentaGastosColumnaCreateForm,
+    CuentaGastosColumnaUpdateForm,
     CuentaGastosEtiquetasSectionForm,
     CuentaGastosOpcionesSectionForm,
     CuentaGastosEtiquetaCreateForm,
@@ -43,6 +47,7 @@ from .forms import (
     CuentaGastosEtiquetaForm,
     CuentaGastosOpcionForm,
 )
+from .services import copiar_cuenta_gastos_a_columna
 
 INLINE_FIELD_FORMS = {
     "titulo": CuentaGastosTituloInlineForm,
@@ -53,7 +58,7 @@ INLINE_FIELD_FORMS = {
 }
 
 
-COLUMNAS = [
+COLUMNAS_INICIALES = (
 
     ("SOLICITUD_PAGO","Solicitud de pago"),
     ("SOLICITUD_FACTURAS","Solicitud de facturas"),
@@ -71,21 +76,96 @@ COLUMNAS = [
     ("DEUDORES_MOROSOS","Deudores Morosos"),
     ("COMERCIALIZADORAS","Comercializadoras"),
 
-]
+)
 
 INITIAL_CARDS_PER_COLUMN = 3
 CARDS_PAGE_SIZE = 10
 CUENTA_ORDERING = ("-fecha_creacion", "-id")
-ESTADOS_VALIDOS = frozenset(estado for estado, _nombre in COLUMNAS)
 REPOSITORIO_INITIAL_LIMIT = 5
 PDF_INVALID_MESSAGE = "EL FORMATO NO ES VÁLIDO"
+
+
+def _columnas_activas_queryset():
+    return CuentaGastosColumna.objects.filter(activa=True).order_by("orden", "id")
+
+
+def _columnas_activas():
+    return list(_columnas_activas_queryset())
+
+
+def _primer_columna_activa():
+    return _columnas_activas_queryset().first()
+
+
+def _columnas_estado_choices():
+    return [(columna.codigo, columna.nombre) for columna in _columnas_activas()]
+
+
+def _buscar_columna_activa_por_codigo(codigo: str):
+    return _columnas_activas_queryset().filter(codigo=codigo).first()
+
+
+def _estado_label(estado):
+    columna = _buscar_columna_activa_por_codigo(estado)
+    if columna is not None:
+        return columna.nombre
+    return dict(COLUMNAS_INICIALES).get(estado, estado)
+
+
+def _puede_operar_cuenta_gastos(user) -> bool:
+    return bool(user and user.is_authenticated)
+
+
+def _estados_disponibles():
+    return [codigo for codigo, _nombre in _columnas_estado_choices()]
+
+
+def _generar_codigo_columna(nombre: str) -> str:
+    base = slugify(nombre).replace("-", "_").upper()
+    if not base:
+        base = "COLUMNA"
+    if base[0].isdigit():
+        base = f"COLUMNA_{base}"
+    candidato = base
+    indice = 2
+    while CuentaGastosColumna.objects.filter(codigo=candidato).exists():
+        candidato = f"{base}_{indice}"
+        indice += 1
+    return candidato
+
+
+def _siguiente_orden_columna() -> int:
+    ultima = CuentaGastosColumna.objects.order_by("-orden", "-id").first()
+    return (ultima.orden + 1) if ultima is not None else 1
+
+
+def _column_context(*, columna: CuentaGastosColumna, items, count: int, loaded: int):
+    return {
+        "id": columna.pk,
+        "columna_id": columna.pk,
+        "codigo": columna.codigo,
+        "estado": columna.codigo,
+        "nombre": columna.nombre,
+        "titulo": columna.nombre,
+        "estado_texto": columna.nombre,
+        "items": items,
+        "count": count,
+        "loaded": loaded,
+        "has_more": count > loaded,
+        "remaining": max(0, count - loaded),
+        "load_url": reverse(
+            "cuenta_gastos:tarjetas_columna",
+            kwargs={"codigo": columna.codigo},
+        ),
+    }
 
 
 def _cuenta_queryset():
     return CuentaGastos.objects\
         .select_related(
             "cliente",
-            "creado_por"
+            "creado_por",
+            "columna",
         )\
         .prefetch_related(
             "asignados",
@@ -103,16 +183,19 @@ def _cuenta_queryset():
 
 
 def _cuentas_filtradas(usuario=None):
-    queryset = CuentaGastos.objects.all()
+    codigos_activos = [codigo for codigo, _nombre in _columnas_estado_choices()]
+    queryset = _cuenta_queryset().filter(estado__in=codigos_activos).filter(
+        Q(columna__activa=True) | Q(columna__isnull=True)
+    )
     if usuario is not None:
-        queryset = queryset.filter(asignados=usuario)
+        queryset = queryset.filter(asignados=usuario).distinct()
     return queryset.order_by(*CUENTA_ORDERING)
 
 
 def _columnas_panel(usuario=None):
-    base = _cuentas_filtradas(usuario).filter(estado__in=ESTADOS_VALIDOS)
-    filas_iniciales = list(
-        base.annotate(
+    columnas = _columnas_activas()
+    cuentas = list(
+        _cuentas_filtradas(usuario).annotate(
             posicion_columna=Window(
                 expression=RowNumber(),
                 partition_by=[F("estado")],
@@ -124,37 +207,22 @@ def _columnas_panel(usuario=None):
             ),
         )
         .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
-        .values_list("id", "estado", "total_columna")
     )
-    ids_iniciales = [pk for pk, _estado, _total in filas_iniciales]
-    cuentas = list(_cuenta_queryset().filter(pk__in=ids_iniciales))
-    cuentas_por_id = {cuenta.pk: cuenta for cuenta in cuentas}
-    cuentas_por_estado = {estado: [] for estado, _nombre in COLUMNAS}
-    totales = {estado: 0 for estado, _nombre in COLUMNAS}
-    for pk, estado, total in filas_iniciales:
-        cuenta = cuentas_por_id.get(pk)
-        if cuenta is not None and estado in cuentas_por_estado:
-            cuentas_por_estado[estado].append(cuenta)
-            totales[estado] = total
+    cuentas_por_estado = {columna.codigo: [] for columna in columnas}
+    totales = {columna.codigo: 0 for columna in columnas}
+    for cuenta in cuentas:
+        if cuenta.estado in cuentas_por_estado:
+            cuentas_por_estado[cuenta.estado].append(cuenta)
+            totales[cuenta.estado] = cuenta.total_columna
 
     return [
-        {
-            "posicion": posicion,
-            "titulo": nombre,
-            "estado": estado,
-            "items": cuentas_por_estado[estado],
-            "count": totales[estado],
-            "loaded": len(cuentas_por_estado[estado]),
-            "has_more": totales[estado] > len(cuentas_por_estado[estado]),
-            "remaining": max(
-                0, totales[estado] - len(cuentas_por_estado[estado])
-            ),
-            "load_url": reverse(
-                "cuenta_gastos:tarjetas_columna",
-                kwargs={"estado": estado},
-            ),
-        }
-        for posicion, (estado, nombre) in enumerate(COLUMNAS, start=1)
+        _column_context(
+            columna=columna,
+            items=cuentas_por_estado[columna.codigo],
+            count=totales[columna.codigo],
+            loaded=len(cuentas_por_estado[columna.codigo]),
+        )
+        for columna in columnas
     ]
 
 
@@ -207,11 +275,28 @@ def _matches_filter(cuenta, usuario_id):
     return cuenta.asignados.filter(pk=usuario_id).exists()
 
 
-def _column_count(estado, usuario_id=None):
+def _estado_inicial_cuenta():
+    return _primer_columna_activa()
+
+
+def _columna_manual_permitida():
+    return _primer_columna_activa()
+
+
+def _column_count(columna_o_estado, usuario_id=None):
+    estado = (
+        columna_o_estado.codigo
+        if isinstance(columna_o_estado, CuentaGastosColumna)
+        else columna_o_estado
+    )
     queryset = CuentaGastos.objects.filter(estado=estado)
     if usuario_id is not None:
         queryset = queryset.filter(asignados__pk=usuario_id)
     return queryset.count()
+
+
+def _es_columna_base(columna: CuentaGastosColumna) -> bool:
+    return columna.codigo in {codigo for codigo, _nombre in COLUMNAS_INICIALES}
 
 
 def _usuarios_filtro(selected_user_id=None):
@@ -249,13 +334,14 @@ def _es_ajax(request):
     return request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
 
-def _render_inline_create_form(request, form, estado):
+def _render_inline_create_form(request, form, columna):
     return render_to_string(
         "cuenta_gastos/_inline_create_form.html",
         {
             "form": form,
-            "estado": estado,
-            "estado_label": dict(COLUMNAS).get(estado, estado),
+            "estado": columna.codigo,
+            "estado_label": columna.nombre,
+            "columna_id": columna.pk,
         },
         request=request,
     )
@@ -264,8 +350,16 @@ def _render_inline_create_form(request, form, estado):
 def _render_card_html(request, cuenta):
     return render_to_string(
         "cuenta_gastos/_card.html",
-        {"cuenta": cuenta, "estados_ui": COLUMNAS},
+        {"cuenta": cuenta, "estados_ui": _columnas_estado_choices()},
         request=request,
+    )
+
+
+def _get_cuenta_para_copia(pk: int) -> CuentaGastos:
+    return get_object_or_404(
+        CuentaGastos.objects.select_related("cliente", "creado_por", "columna")
+        .prefetch_related("asignados", "etiquetas", "opciones"),
+        pk=pk,
     )
 
 
@@ -495,7 +589,9 @@ def panel_cuenta_gastos(request):
 
         {
             "columnas":columnas,
-            "estados_ui": COLUMNAS,
+            "estados_ui": _columnas_estado_choices(),
+            "columnas_activas": _columnas_activas(),
+            "columna_create_form": CuentaGastosColumnaCreateForm(),
             "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
             "usuario_filtro_id": usuario.id if usuario else "",
             "current":"panel_cuenta_gastos",
@@ -512,6 +608,12 @@ def panel_cuenta_gastos(request):
                 ),
                 "repositorioUploadUrl": reverse(
                     "cuenta_gastos:repositorio_subir"
+                ),
+                "columnCreateUrl": reverse(
+                    "cuenta_gastos:columna_crear"
+                ),
+                "columnReorderUrl": reverse(
+                    "cuenta_gastos:columna_reordenar"
                 ),
             },
         }
@@ -603,8 +705,9 @@ def repositorio_descargar(request, pk):
 
 @login_required
 @require_GET
-def tarjetas_columna(request, estado):
-    if estado not in ESTADOS_VALIDOS:
+def tarjetas_columna(request, codigo):
+    columna_obj = _buscar_columna_activa_por_codigo(codigo)
+    if columna_obj is None:
         return JsonResponse(
             {"ok": False, "error": "Estado no encontrado."},
             status=404,
@@ -627,7 +730,7 @@ def tarjetas_columna(request, estado):
             status=400,
         )
 
-    columna = _cuentas_filtradas(usuario).filter(estado=estado)
+    columna = _cuentas_filtradas(usuario).filter(estado=columna_obj.codigo)
     total = columna.count()
     recognized_loaded_ids = set(
         columna.filter(pk__in=loaded_ids).values_list("pk", flat=True)
@@ -653,7 +756,7 @@ def tarjetas_columna(request, estado):
     html = "".join(
         render_to_string(
             "cuenta_gastos/_card.html",
-            {"cuenta": cuenta, "estados_ui": COLUMNAS},
+            {"cuenta": cuenta, "estados_ui": _columnas_estado_choices()},
             request=request,
         )
         for cuenta in cuentas
@@ -662,7 +765,8 @@ def tarjetas_columna(request, estado):
     return JsonResponse(
         {
             "ok": True,
-            "estado": estado,
+            "estado": columna_obj.codigo,
+            "columna_id": columna_obj.pk,
             "html": html,
             "loaded": loaded,
             "next_offset": effective_offset + loaded,
@@ -684,11 +788,13 @@ def crear_cuenta_gastos(request):
         )
 
         if form.is_valid():
-
+            columna_inicial = _estado_inicial_cuenta()
             cuenta = form.save(
             commit=False
             )
-
+            if columna_inicial is not None:
+                cuenta.columna = columna_inicial
+                cuenta.estado = columna_inicial.codigo
             cuenta.creado_por = (
             request.user
             )
@@ -720,14 +826,20 @@ def crear_cuenta_gastos(request):
 @login_required
 @require_GET
 def formulario_cuenta_gastos_inline(request):
-    estado = COLUMNAS[0][0]
+    columna = _estado_inicial_cuenta()
+    if columna is None:
+        return JsonResponse(
+            {"ok": False, "error": "No hay columnas disponibles."},
+            status=400,
+        )
     return render(
         request,
         "cuenta_gastos/_inline_create_form.html",
         {
             "form": CuentaGastosInlineCreateForm(),
-            "estado": estado,
-            "estado_label": dict(COLUMNAS)[estado],
+            "estado": columna.codigo,
+            "estado_label": columna.nombre,
+            "columna_id": columna.pk,
         },
     )
 
@@ -771,11 +883,46 @@ def crear_cuenta_gastos_inline(request):
             status=400,
         )
 
+    columna_id = (request.POST.get("columna_id") or "").strip()
     estado = (request.POST.get("estado") or "").strip().upper()
-    estados_validos = {value for value, _label in COLUMNAS}
-    if estado not in estados_validos:
+    columna = None
+    if columna_id:
+        if not columna_id.isdigit():
+            return JsonResponse(
+                {"ok": False, "errors": {"columna_id": ["Columna invalida."]}},
+                status=400,
+            )
+        columna = CuentaGastosColumna.objects.filter(
+            pk=int(columna_id),
+            activa=True,
+        ).first()
+    elif estado:
+        columna = _buscar_columna_activa_por_codigo(estado)
+    else:
+        columna = _estado_inicial_cuenta()
+    if columna is None:
         return JsonResponse(
             {"ok": False, "errors": {"estado": ["Estado invalido."]}},
+            status=400,
+        )
+    columna_permitida = _columna_manual_permitida()
+    if (
+        columna_permitida is None
+        or columna.pk != columna_permitida.pk
+    ):
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Solo se pueden crear tarjetas desde la primera columna activa.",
+                "errors": {
+                    "estado": [
+                        {
+                            "message": "Solo se pueden crear tarjetas desde la primera columna activa.",
+                            "code": "invalid",
+                        }
+                    ]
+                },
+            },
             status=400,
         )
 
@@ -786,14 +933,15 @@ def crear_cuenta_gastos_inline(request):
                 "ok": False,
                 "message": "Revisa los campos indicados.",
                 "errors": form.errors.get_json_data(escape_html=True),
-                "html": _render_inline_create_form(request, form, estado),
+                "html": _render_inline_create_form(request, form, columna),
             },
             status=400,
         )
 
     with transaction.atomic():
         cuenta = form.save(commit=False)
-        cuenta.estado = estado
+        cuenta.columna = columna
+        cuenta.estado = columna.codigo
         cuenta.creado_por = request.user
         cuenta.save()
         form.save_m2m()
@@ -826,6 +974,7 @@ def crear_cuenta_gastos_inline(request):
             "id": cuenta.pk,
             "cuenta_id": cuenta.pk,
             "estado": cuenta.estado,
+            "columna_id": cuenta.columna_id,
             "column_count": _column_count(
                 cuenta.estado, usuario_filtro_id
             ),
@@ -888,6 +1037,7 @@ def actualizar_cuenta_inline(request, pk):
             "field": field_name,
             "html": _render_inline_field(request, cuenta, field_name),
             "estado": cuenta.estado,
+            "columna_id": cuenta.columna_id,
             "matches_filter": _matches_filter(cuenta, usuario_filtro_id),
             "column_count": _column_count(
                 cuenta.estado, usuario_filtro_id
@@ -938,7 +1088,7 @@ def editar_cuenta(request, pk):
                 )
                 card_html = render_to_string(
                     "cuenta_gastos/_card.html",
-                    {"cuenta": cuenta, "estados_ui": COLUMNAS},
+                    {"cuenta": cuenta, "estados_ui": _columnas_estado_choices()},
                     request=request,
                 )
                 usuario_filtro_id = _filtro_post_id(request)
@@ -1049,7 +1199,7 @@ def eliminar_etiqueta(request, etiqueta_id):
             )
             card_html = render_to_string(
                 "cuenta_gastos/_card.html",
-                {"cuenta": cuenta, "estados_ui": COLUMNAS},
+                {"cuenta": cuenta, "estados_ui": _columnas_estado_choices()},
                 request=request,
             )
             return JsonResponse({"success": True, "html": html, "card_html": card_html, "id": cuenta.pk})
@@ -1083,7 +1233,7 @@ def actualizar_etiquetas_cuenta(request, pk):
             "html": _render_etiquetas_section(request, cuenta, layout=layout),
             "card_html": render_to_string(
                 "cuenta_gastos/_card.html",
-                {"cuenta": cuenta, "estados_ui": COLUMNAS},
+                {"cuenta": cuenta, "estados_ui": _columnas_estado_choices()},
                 request=request,
             ),
             "id": cuenta.pk,
@@ -1117,7 +1267,7 @@ def crear_etiqueta_cuenta(request, pk):
             "html": _render_etiquetas_section(request, cuenta, layout=layout),
             "card_html": render_to_string(
                 "cuenta_gastos/_card.html",
-                {"cuenta": cuenta, "estados_ui": COLUMNAS},
+                {"cuenta": cuenta, "estados_ui": _columnas_estado_choices()},
                 request=request,
             ),
             "id": cuenta.pk,
@@ -1141,7 +1291,7 @@ def quitar_etiqueta_cuenta(request, pk, etiqueta_id):
             "html": _render_etiquetas_section(request, cuenta, layout=layout),
             "card_html": render_to_string(
                 "cuenta_gastos/_card.html",
-                {"cuenta": cuenta, "estados_ui": COLUMNAS},
+                {"cuenta": cuenta, "estados_ui": _columnas_estado_choices()},
                 request=request,
             ),
             "id": cuenta.pk,
@@ -1372,6 +1522,215 @@ def eliminar_enlace(request, pk):
 
 
 @login_required
+@require_POST
+def columna_crear(request):
+    if not _puede_operar_cuenta_gastos(request.user):
+        raise PermissionDenied("No tienes permisos para crear columnas.")
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    form = CuentaGastosColumnaCreateForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            status=400,
+        )
+    with transaction.atomic():
+        columna = form.save(commit=False)
+        columna.codigo = _generar_codigo_columna(columna.nombre)
+        columna.orden = _siguiente_orden_columna()
+        columna.creada_por = request.user
+        columna.save()
+    html = render_to_string(
+        "cuenta_gastos/_columna.html",
+        {
+            "columna": _column_context(columna=columna, items=[], count=0, loaded=0),
+            "estados_ui": _columnas_estado_choices(),
+        },
+        request=request,
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
+            "nombre": columna.nombre,
+            "html": html,
+        },
+        status=201,
+    )
+
+
+@login_required
+@require_POST
+def columna_editar(request, pk):
+    if not _puede_operar_cuenta_gastos(request.user):
+        raise PermissionDenied("No tienes permisos para editar columnas.")
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    columna = get_object_or_404(CuentaGastosColumna, pk=pk, activa=True)
+    form = CuentaGastosColumnaUpdateForm(request.POST, instance=columna)
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            status=400,
+        )
+    form.save()
+    return JsonResponse(
+        {
+            "ok": True,
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
+            "nombre": columna.nombre,
+        }
+    )
+
+
+@login_required
+@require_POST
+def columna_reordenar(request):
+    if not _puede_operar_cuenta_gastos(request.user):
+        raise PermissionDenied("No tienes permisos para reordenar columnas.")
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    raw_ids = request.POST.getlist("columnas[]") or request.POST.getlist("columnas")
+    if not raw_ids:
+        return JsonResponse({"ok": False, "error": "Debes enviar columnas."}, status=400)
+    if any(not value.isdigit() or int(value) <= 0 for value in raw_ids):
+        return JsonResponse({"ok": False, "error": "IDs invalidos."}, status=400)
+    ids = [int(value) for value in raw_ids]
+    if len(ids) != len(set(ids)):
+        return JsonResponse({"ok": False, "error": "IDs duplicados."}, status=400)
+    columnas = list(CuentaGastosColumna.objects.filter(pk__in=ids, activa=True))
+    if len(columnas) != len(ids):
+        return JsonResponse({"ok": False, "error": "Columna no encontrada."}, status=400)
+    with transaction.atomic():
+        for orden, columna_id in enumerate(ids, start=1):
+            CuentaGastosColumna.objects.filter(pk=columna_id).update(orden=orden)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+def columna_eliminar(request, pk):
+    if not _puede_operar_cuenta_gastos(request.user):
+        raise PermissionDenied("No tienes permisos para eliminar columnas.")
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    columna = get_object_or_404(CuentaGastosColumna, pk=pk, activa=True)
+    if _es_columna_base(columna):
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "Esta columna base no puede eliminarse porque tiene dependencias historicas.",
+            },
+            status=400,
+        )
+    activas = _columnas_activas()
+    if len(activas) <= 1:
+        return JsonResponse(
+            {"ok": False, "error": "No puedes eliminar la ultima columna activa."},
+            status=400,
+        )
+    destino_id = (request.POST.get("columna_destino_id") or "").strip()
+    cuentas_qs = CuentaGastos.objects.filter(
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
+    )
+    total_cuentas = cuentas_qs.count()
+    if total_cuentas > 0:
+        if not destino_id.isdigit():
+            return JsonResponse(
+                {"ok": False, "error": "Debes seleccionar una columna destino."},
+                status=400,
+            )
+        if int(destino_id) == columna.pk:
+            return JsonResponse(
+                {"ok": False, "error": "La columna destino debe ser distinta."},
+                status=400,
+            )
+        destino = get_object_or_404(CuentaGastosColumna, pk=int(destino_id), activa=True)
+    else:
+        destino = None
+    with transaction.atomic():
+        if destino is not None:
+            cuentas_qs.update(columna=destino, estado=destino.codigo)
+        columna.activa = False
+        columna.save(update_fields=["activa", "fecha_actualizacion"])
+        for orden, columna_id in enumerate(
+            CuentaGastosColumna.objects.filter(activa=True)
+            .order_by("orden", "id")
+            .values_list("pk", flat=True),
+            start=1,
+        ):
+            CuentaGastosColumna.objects.filter(pk=columna_id).update(orden=orden)
+    response_data = {"ok": True, "columna_id": columna.pk}
+    if destino is not None:
+        response_data.update(
+            {
+                "moved_count": total_cuentas,
+                "columna_destino_id": destino.pk,
+                "columna_destino_codigo": destino.codigo,
+                "column_count": _column_count(destino),
+            }
+        )
+    return JsonResponse(response_data)
+
+
+@login_required
+@require_POST
+def tarjeta_pegar(request, columna_id):
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    if not _puede_operar_cuenta_gastos(request.user):
+        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
+
+    raw_tarjeta_id = (request.POST.get("tarjeta_id") or "").strip()
+    modulo = (request.POST.get("modulo") or "").strip()
+    if modulo != "cuenta_gastos":
+        return JsonResponse(
+            {"ok": False, "error": "Solo se permite copiar tarjetas de cuenta_gastos."},
+            status=400,
+        )
+    if not raw_tarjeta_id.isdigit() or int(raw_tarjeta_id) <= 0:
+        return JsonResponse({"ok": False, "error": "Tarjeta invalida."}, status=400)
+
+    columna_destino = get_object_or_404(
+        CuentaGastosColumna,
+        pk=columna_id,
+        activa=True,
+    )
+    cuenta_original = _get_cuenta_para_copia(int(raw_tarjeta_id))
+    if not _puede_modificar_cuenta(request.user, cuenta_original):
+        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
+
+    nueva = copiar_cuenta_gastos_a_columna(
+        cuenta_original=cuenta_original,
+        columna_destino=columna_destino,
+        usuario=request.user,
+    )
+    nueva = get_object_or_404(_cuenta_queryset(), pk=nueva.pk)
+    return JsonResponse(
+        {
+            "ok": True,
+            "tarjeta_id": nueva.pk,
+            "columna_id": columna_destino.pk,
+            "html": _render_card_html(request, nueva),
+            "estado": nueva.estado,
+            "column_count": _column_count(columna_destino),
+            "assigned_user_ids": list(
+                nueva.asignados.values_list("id", flat=True)
+            ),
+        },
+        status=201,
+    )
+
+
+@login_required
 def eliminar_cuenta(request, pk):
     cuenta = get_object_or_404(CuentaGastos, pk=pk)
     if not _puede_modificar_cuenta(request.user, cuenta):
@@ -1398,31 +1757,20 @@ def mover_cuenta_gastos(
     if not _puede_modificar_cuenta(request.user, cuenta):
         raise PermissionDenied("No tienes permisos para mover esta cuenta de gastos.")
 
-    estado=request.POST.get(
-        "estado"
-    )
+    columna_id = (request.POST.get("columna_id") or "").strip()
+    estado = (request.POST.get("estado") or "").strip().upper()
+    if columna_id:
+        if not columna_id.isdigit():
+            return JsonResponse({"ok": False, "error": "Columna invalida."}, status=400)
+        columna = CuentaGastosColumna.objects.filter(pk=int(columna_id), activa=True).first()
+    else:
+        columna = _buscar_columna_activa_por_codigo(estado)
+    if columna is None:
+        return JsonResponse({"ok": False, "error": "Columna no encontrada."}, status=404)
 
-
-    estados_validos=[
-
-        e[0]
-        for e in COLUMNAS
-
-    ]
-
-
-    if estado not in estados_validos:
-
-        return JsonResponse({
-
-            "ok":False
-
-        })
-
-
-    cuenta.estado=estado
-
-    cuenta.save()
+    cuenta.columna = columna
+    cuenta.estado = columna.codigo
+    cuenta.save(update_fields=["columna", "estado"])
 
 
     return JsonResponse({
@@ -1430,6 +1778,8 @@ def mover_cuenta_gastos(
         "ok":True,
         "id": cuenta.pk,
         "estado": cuenta.estado,
-        "estado_label": cuenta.get_estado_display(),
+        "estado_label": columna.nombre,
+        "columna_id": columna.pk,
+        "columna_codigo": columna.codigo,
 
     })

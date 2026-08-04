@@ -1,32 +1,102 @@
+<div class="cuenta-column-item" data-cuenta-column-item="1">
 <section
   class="cuenta-column card border-0 shadow-sm flex-shrink-0"
   data-cuenta-column="1"
+  data-columna-id="{{ columna.columna_id|default:columna.id }}"
+  data-columna-codigo="{{ columna.codigo|default:columna.estado }}"
+  data-columna-nombre="{{ columna.nombre|default:columna.titulo }}"
+  data-modulo="cuenta_gastos"
+  data-edit-url="{% url 'cuenta_gastos:columna_editar' columna.columna_id|default:columna.id %}"
+  data-delete-url="{% url 'cuenta_gastos:columna_eliminar' columna.columna_id|default:columna.id %}"
+  data-paste-url="{% url 'cuenta_gastos:tarjeta_pegar' columna.columna_id|default:columna.id %}"
   data-estado="{{ columna.estado }}"
   data-total="{{ columna.count }}"
   data-loaded="{{ columna.loaded }}"
 >
   <header class="cuenta-column__header">
     <div class="d-flex align-items-start justify-content-between gap-3">
-      <h3 class="cuenta-column__title mb-0">{{ columna.titulo }}</h3>
-      <span class="cuenta-column__count" data-cuenta-column-count="1">{{ columna.count }}</span>
+      <h3 class="cuenta-column__title mb-0" data-cuenta-column-title="1">{{ columna.titulo }}</h3>
+      <div class="d-flex align-items-start gap-2">
+        <span class="cuenta-column__count" data-cuenta-column-count="1">{{ columna.count }}</span>
+        <div class="dropdown">
+          <button
+            class="btn btn-sm btn-light"
+            type="button"
+            data-bs-toggle="dropdown"
+            aria-expanded="false"
+          >
+            Opciones
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+              <button
+                type="button"
+                class="dropdown-item"
+                data-cuenta-column-paste="1"
+                data-paste-url="{% url 'cuenta_gastos:tarjeta_pegar' columna.columna_id|default:columna.id %}"
+                disabled
+              >
+                Pegar tarjeta
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                class="dropdown-item"
+                data-cuenta-copy-clear="1"
+                disabled
+              >
+                Cancelar copia
+              </button>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <button
+                type="button"
+                class="dropdown-item"
+                data-cuenta-column-edit-open="1"
+              >
+                Editar columna
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                class="dropdown-item text-danger"
+                data-cuenta-column-delete-open="1"
+              >
+                Eliminar columna
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
     </div>
   </header>
 
   {% if es_primera_columna %}
-  <div class="cuenta-column__actions px-3 pt-3">
-    <button
-      type="button"
-      class="btn btn-sm cuenta-column__add-btn"
-      data-cuenta-inline-open="1"
-      data-estado="{{ columna.estado }}"
-      data-estado-label="{{ columna.titulo }}"
-    >
-      + Nueva cuenta
-    </button>
-  </div>
+    <div class="cuenta-column__actions px-3 pt-3">
+      <button
+        type="button"
+        class="btn btn-sm cuenta-column__add-btn"
+        data-cuenta-inline-open="1"
+        data-columna-id="{{ columna.columna_id|default:columna.id }}"
+        data-estado="{{ columna.estado }}"
+        data-estado-label="{{ columna.titulo }}"
+      >
+        + Nueva cuenta
+      </button>
+    </div>
   {% endif %}
 
-  <div class="cuenta-column__body columna-drop d-flex flex-column gap-3" data-estado="{{ columna.estado }}">
+  <div
+    class="cuenta-column__body columna-drop d-flex flex-column gap-3"
+    data-columna-id="{{ columna.columna_id|default:columna.id }}"
+    data-columna-codigo="{{ columna.codigo|default:columna.estado }}"
+    data-columna-nombre="{{ columna.nombre|default:columna.titulo }}"
+    data-modulo="cuenta_gastos"
+    data-estado="{{ columna.estado }}"
+  >
     {% for cuenta in columna.items %}
       {% include "cuenta_gastos/_card.html" with cuenta=cuenta estados_ui=estados_ui only %}
     {% empty %}
@@ -60,3 +130,4 @@
     ></div>
   </div>
 </section>
+</div>

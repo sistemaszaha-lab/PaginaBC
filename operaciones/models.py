@@ -12,6 +12,30 @@ operaciones_upload_storage = FileSystemStorage(
 )
 
 
+class OperacionColumna(models.Model):
+    nombre = models.CharField(max_length=120)
+    codigo = models.CharField(max_length=60, unique=True)
+    orden = models.PositiveIntegerField(default=0)
+    activa = models.BooleanField(default=True)
+    creada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="operaciones_columnas_creadas",
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["orden", "id"]
+        verbose_name = "Columna de operaciones"
+        verbose_name_plural = "Columnas de operaciones"
+
+    def __str__(self):
+        return self.nombre
+
+
 class Operacion(models.Model):
     class Estado(models.TextChoices):
         PENDIENTE = "PENDIENTE", "Pendientes"
@@ -36,6 +60,13 @@ class Operacion(models.Model):
         max_length=30,
         choices=Estado.choices,
         default=Estado.PENDIENTE,
+    )
+    columna = models.ForeignKey(
+        "OperacionColumna",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="operaciones",
     )
     prioridad = models.CharField(
         max_length=20,
@@ -68,6 +99,39 @@ class Operacion(models.Model):
 
     class Meta:
         ordering = ["-fecha_creacion", "-id"]
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            update_fields = set(update_fields)
+        if self.columna_id:
+            if self.estado != self.columna.codigo:
+                columna = (
+                    OperacionColumna.objects.filter(codigo=self.estado)
+                    .only("id")
+                    .first()
+                )
+                if columna is not None:
+                    self.columna_id = columna.pk
+                    if update_fields is not None:
+                        update_fields.add("columna")
+                else:
+                    self.estado = self.columna.codigo
+                    if update_fields is not None:
+                        update_fields.add("estado")
+        elif self.estado:
+            columna = (
+                OperacionColumna.objects.filter(codigo=self.estado)
+                .only("id")
+                .first()
+            )
+            if columna is not None:
+                self.columna_id = columna.pk
+                if update_fields is not None:
+                    update_fields.add("columna")
+        if update_fields is not None:
+            kwargs["update_fields"] = list(update_fields)
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.titulo

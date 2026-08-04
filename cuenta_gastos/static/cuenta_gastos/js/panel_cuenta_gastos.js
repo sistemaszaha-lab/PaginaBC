@@ -153,6 +153,7 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     const root = document.querySelector('[data-cuenta-board="1"]');
+    const copiedCardStorageKey = 'cuenta_gastos.copiedCard';
     const configElement = document.getElementById('panel-cuenta-gastos-config');
     if (!root || !configElement || root.dataset.panelJsInitialized === '1') return;
 
@@ -191,6 +192,21 @@
     };
     const repositorioListUrl = config.repositorioListUrl;
     const repositorioUploadUrl = config.repositorioUploadUrl;
+    const columnCreateUrl = config.columnCreateUrl;
+    const columnReorderUrl = config.columnReorderUrl;
+    const columnCreateModalElement = document.getElementById('cuentaColumnCreateModal');
+    const columnEditModalElement = document.getElementById('cuentaColumnEditModal');
+    const columnDeleteModalElement = document.getElementById('cuentaColumnDeleteModal');
+    const columnCreateModal = columnCreateModalElement && typeof bootstrap !== 'undefined' && bootstrap.Modal
+      ? bootstrap.Modal.getOrCreateInstance(columnCreateModalElement)
+      : null;
+    const columnEditModal = columnEditModalElement && typeof bootstrap !== 'undefined' && bootstrap.Modal
+      ? bootstrap.Modal.getOrCreateInstance(columnEditModalElement)
+      : null;
+    const columnDeleteModal = columnDeleteModalElement && typeof bootstrap !== 'undefined' && bootstrap.Modal
+      ? bootstrap.Modal.getOrCreateInstance(columnDeleteModalElement)
+      : null;
+    let columnsSortable = null;
 
     document.getElementById('CuentaGastosUserFilter')?.addEventListener('change', function () {
       filterVersion += 1;
@@ -621,9 +637,167 @@
       return column?.closest('[data-cuenta-column="1"]') || null;
     }
 
+    function getColumnsContainer() {
+      return root.querySelector('[data-cuenta-columns="1"]');
+    }
+
+    function getCopiedCardPayload() {
+      try {
+        const rawValue = window.sessionStorage?.getItem(copiedCardStorageKey) || '';
+        if (!rawValue) return null;
+        const data = JSON.parse(rawValue);
+        const parsedId = Number.parseInt(data?.tarjeta_id, 10);
+        if (data?.modulo !== 'cuenta_gastos' || Number.isNaN(parsedId) || parsedId <= 0) {
+          return null;
+        }
+        return { modulo: 'cuenta_gastos', tarjeta_id: parsedId };
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function setCopiedCardPayload(payload) {
+      window.sessionStorage?.setItem(copiedCardStorageKey, JSON.stringify(payload));
+      syncCopyActions();
+    }
+
+    function clearCopiedCardPayload() {
+      window.sessionStorage?.removeItem(copiedCardStorageKey);
+      syncCopyActions();
+    }
+
+    function syncCopyActions() {
+      const payload = getCopiedCardPayload();
+      root.querySelectorAll('[data-cuenta-column-paste="1"]').forEach((button) => {
+        button.disabled = !payload;
+      });
+      root.querySelectorAll('[data-cuenta-copy-clear="1"]').forEach((button) => {
+        button.disabled = !payload;
+      });
+    }
+
+    function getColumnShellById(columnId) {
+      return root.querySelector(`[data-cuenta-column="1"][data-columna-id="${columnId}"]`);
+    }
+
+    function getColumnId(element) {
+      return element?.closest('[data-cuenta-column="1"]')?.dataset.columnaId || element?.dataset.columnaId || '';
+    }
+
+    function getColumnCode(element) {
+      return element?.closest('[data-cuenta-column="1"]')?.dataset.columnaCodigo || element?.dataset.columnaCodigo || '';
+    }
+
+    function getColumnName(element) {
+      return element?.closest('[data-cuenta-column="1"]')?.dataset.columnaNombre || element?.dataset.columnaNombre || '';
+    }
+
     function getColumnTotal(column) {
       const value = Number.parseInt(getColumnShell(column)?.dataset.total || '0', 10);
       return Number.isInteger(value) && value >= 0 ? value : 0;
+    }
+
+    function setColumnFormError(form, message) {
+      const errorNode = form?.querySelector('[data-cuenta-column-create-error="1"], [data-cuenta-column-edit-error="1"], [data-cuenta-column-delete-error="1"]');
+      if (!errorNode) return;
+      errorNode.textContent = message || '';
+      errorNode.classList.toggle('d-none', !message);
+    }
+
+    function getDeleteDestinationOptions(excludedId) {
+      return Array.from(root.querySelectorAll('[data-cuenta-column="1"]'))
+        .filter((shell) => shell.dataset.columnaId !== String(excludedId))
+        .map((shell) => ({
+          id: shell.dataset.columnaId,
+          name: shell.dataset.columnaNombre || shell.querySelector('[data-cuenta-column-title="1"]')?.textContent?.trim() || shell.dataset.estado || '',
+        }));
+    }
+
+    function syncDeleteDestinationOptions(excludedId) {
+      const select = columnDeleteModalElement?.querySelector('[name="columna_destino_id"]');
+      if (!select) return;
+      const currentValue = select.value;
+      const options = getDeleteDestinationOptions(excludedId);
+      select.innerHTML = '<option value="">Selecciona una columna</option>';
+      options.forEach((option) => {
+        const node = document.createElement('option');
+        node.value = option.id;
+        node.textContent = option.name;
+        select.appendChild(node);
+      });
+      if (options.some((option) => option.id === currentValue)) {
+        select.value = currentValue;
+      }
+    }
+
+    function updateColumnPresentation(columnShell, data) {
+      if (!columnShell) return;
+      if (data.nombre) {
+        columnShell.dataset.columnaNombre = data.nombre;
+        const title = columnShell.querySelector('[data-cuenta-column-title="1"]');
+        if (title) title.textContent = data.nombre;
+        const addButton = columnShell.querySelector('[data-cuenta-inline-open="1"]');
+        if (addButton) {
+          addButton.dataset.estadoLabel = data.nombre;
+        }
+        const body = columnShell.querySelector('.columna-drop');
+        if (body) {
+          body.dataset.columnaNombre = data.nombre;
+        }
+      }
+    }
+
+    function buildInlineOpenButtonMarkup(shell) {
+      const columnId = shell?.dataset.columnaId || '';
+      const state = shell?.dataset.estado || '';
+      const label = shell?.dataset.columnaNombre || shell?.querySelector('[data-cuenta-column-title="1"]')?.textContent?.trim() || '';
+      return (
+        '<button ' +
+        'type="button" ' +
+        'class="btn btn-sm cuenta-column__add-btn" ' +
+        'data-cuenta-inline-open="1" ' +
+        `data-columna-id="${columnId}" ` +
+        `data-estado="${state}" ` +
+        `data-estado-label="${label}">` +
+        '+ Nueva cuenta' +
+        '</button>'
+      );
+    }
+
+    function ensureColumnActions(shell) {
+      if (!shell) return null;
+      let actions = shell.querySelector('.cuenta-column__actions');
+      if (!actions) {
+        actions = document.createElement('div');
+        actions.className = 'cuenta-column__actions px-3 pt-3';
+        const header = shell.querySelector('.cuenta-column__header');
+        header?.insertAdjacentElement('afterend', actions);
+      }
+      return actions;
+    }
+
+    function syncInlineCreateAccess() {
+      const shells = Array.from(document.querySelectorAll('[data-cuenta-column="1"]'));
+      const firstShell = shells[0] || null;
+      const currentActions = document.querySelector('.cuenta-column__actions');
+
+      if (!firstShell) {
+        currentActions?.remove();
+        closeInlineCreate({ reset: false });
+        return;
+      }
+
+      const targetActions = ensureColumnActions(firstShell);
+      if (!targetActions) return;
+
+      if (currentActions && currentActions !== targetActions) {
+        if (inlineSharedSlot && !inlineSharedSlot.classList.contains('d-none')) {
+          closeInlineCreate({ reset: false });
+        }
+        currentActions.remove();
+      }
+
+      targetActions.innerHTML = buildInlineOpenButtonMarkup(firstShell);
     }
 
     function ensureEmptyState(column) {
@@ -672,8 +846,10 @@
       if (!inlineSharedSlot || !target) return;
       const form = inlineSharedSlot.querySelector('[data-cuenta-inline-form="1"]');
       const stateInput = form?.querySelector('[name="estado"]');
+      const columnIdInput = form?.querySelector('[name="columna_id"]');
       const destination = inlineSharedSlot.querySelector('[data-cuenta-inline-destination="1"]');
       if (stateInput) stateInput.value = target.state;
+      if (columnIdInput) columnIdInput.value = target.columnId || '';
       if (destination) destination.textContent = `Crear en: ${target.label}`;
       inlineSharedSlot.dataset.estado = target.state;
       if (clearErrors) clearInlineFormErrors(inlineSharedSlot);
@@ -1186,6 +1362,19 @@
       targetColumn.insertBefore(card, cards[index]);
     }
 
+    function insertCardFromHtml(column, html) {
+      if (!column || !html) return null;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const card = wrapper.querySelector('[data-cuenta-card="1"]');
+      const cardId = getCardId(card);
+      if (!card || !cardId || getCardElement(cardId)) return null;
+      column.querySelector('.cuenta-column__empty')?.remove();
+      column.prepend(card);
+      adjustColumnTotal(column, 1);
+      return card;
+    }
+
     function getEstadoLabel(value) {
       const option = document.querySelector(`[data-cuenta-state-select="1"] option[value="${value}"]`);
       return option ? option.textContent.trim() : value || '';
@@ -1366,6 +1555,7 @@
 
     async function moveCuentaGastosCard({
       card,
+      targetColumnId,
       targetState,
       sourceColumn,
       targetColumn,
@@ -1401,7 +1591,7 @@
             'X-CSRFToken': window.getCSRFToken(),
             'Content-Type': 'application/x-www-form-urlencoded'
           },
-          body: `estado=${encodeURIComponent(targetState)}`
+          body: `estado=${encodeURIComponent(targetState)}&columna_id=${encodeURIComponent(targetColumnId || '')}`
         });
 
         if (!response.ok) {
@@ -1414,6 +1604,9 @@
         }
 
         syncCardStateUI(card, data.estado || targetState, data.estado_label || getEstadoLabel(targetState));
+        if (data.columna_id) {
+          card.dataset.cuentaColumnId = String(data.columna_id);
+        }
         if (!sameColumn) {
           adjustColumnTotal(sourceColumn, -1);
           adjustColumnTotal(targetColumn, 1);
@@ -1433,6 +1626,80 @@
       } finally {
         setCardPending(card, false);
       }
+    }
+
+    function initCardSortables() {
+      document.querySelectorAll('.columna-drop').forEach((col) => {
+        if (col.dataset.sortableInitialized === '1') return;
+        syncColumnState(col);
+        Sortable.create(col, {
+          group: 'cuentas',
+          animation: 150,
+          onMove: function (evt) {
+            if (isCardPending(evt.dragged)) return false;
+            return true;
+          },
+          onEnd: function (evt) {
+            const card = evt.item;
+            const sourceColumn = evt.from;
+            const targetColumn = evt.to;
+            const targetState = targetColumn?.dataset.estado;
+            const targetColumnId = targetColumn?.dataset.columnaId;
+            const sourceIndex = evt.oldIndex;
+            const targetIndex = evt.newIndex;
+
+            if (!card || !sourceColumn || !targetColumn || !targetState || !targetColumnId) return;
+
+            moveCuentaGastosCard({
+              card,
+              targetColumnId,
+              targetState,
+              sourceColumn,
+              targetColumn,
+              sourceIndex,
+              targetIndex,
+              trigger: 'drag',
+            }).catch((error) => {
+              console.error('No se pudo mover la cuenta de gastos:', error);
+            });
+          }
+        });
+        col.dataset.sortableInitialized = '1';
+      });
+    }
+
+    function initColumnSortable() {
+      const container = getColumnsContainer();
+      if (!container || !columnReorderUrl || container.dataset.sortableColumnsInitialized === '1') return;
+      columnsSortable = Sortable.create(container, {
+        animation: 150,
+        draggable: '[data-cuenta-column-item="1"]',
+        onEnd: function () {
+          syncInlineCreateAccess();
+          const ids = Array.from(container.querySelectorAll('[data-cuenta-column="1"]'))
+            .map((shell) => shell.dataset.columnaId)
+            .filter(Boolean);
+          const fd = new FormData();
+          ids.forEach((id) => fd.append('columnas[]', id));
+          fetch(columnReorderUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest',
+              'X-CSRFToken': window.getCSRFToken(),
+            },
+            body: fd,
+          }).then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+              throw new Error(data.error || `Error ${response.status}`);
+            }
+          }).catch((error) => {
+            console.error('No se pudo reordenar las columnas:', error);
+          });
+        }
+      });
+      container.dataset.sortableColumnsInitialized = '1';
     }
 
     document.addEventListener('click', function (e) {
@@ -1482,9 +1749,130 @@
         if (!column) return;
         openInlineCreate({
           column,
+          columnId: column.dataset.columnaId || '',
           state: inlineOpenButton.dataset.estado || '',
           label: inlineOpenButton.dataset.estadoLabel || '',
         });
+        return;
+      }
+
+      const copyCardButton = e.target.closest('[data-cuenta-copy-card="1"]');
+      if (copyCardButton) {
+        e.preventDefault();
+        const cardId = Number.parseInt(copyCardButton.dataset.tarjetaId || '', 10);
+        if (!Number.isInteger(cardId) || cardId <= 0) return;
+        setCopiedCardPayload({ modulo: 'cuenta_gastos', tarjeta_id: cardId });
+        showInlineNotification('Tarjeta copiada. Selecciona una columna para pegarla.', 'success');
+        return;
+      }
+
+      const pasteButton = e.target.closest('[data-cuenta-column-paste="1"]');
+      if (pasteButton) {
+        e.preventDefault();
+        const payload = getCopiedCardPayload();
+        const shell = pasteButton.closest('[data-cuenta-column="1"]');
+        const column = shell?.querySelector('.columna-drop');
+        const pasteUrl = pasteButton.dataset.pasteUrl || shell?.dataset.pasteUrl || '';
+        const selectedUserId = document.getElementById('CuentaGastosUserFilter')?.value || '';
+        if (!payload || !shell || !column || !pasteUrl) {
+          syncCopyActions();
+          showInlineNotification('No hay una tarjeta copiada valida.', 'danger');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('tarjeta_id', String(payload.tarjeta_id));
+        formData.append('modulo', payload.modulo);
+        pasteButton.disabled = true;
+
+        fetch(pasteUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(),
+          },
+          body: formData,
+        })
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok || !data.html) {
+              throw new Error(data.error || `Error ${response.status}`);
+            }
+            return data;
+          })
+          .then((data) => {
+            const assignedUserIds = Array.isArray(data.assigned_user_ids)
+              ? data.assigned_user_ids.map(String)
+              : [];
+            const shouldInsertCard = !selectedUserId || assignedUserIds.includes(selectedUserId);
+            if (shouldInsertCard) {
+              const inserted = insertCardFromHtml(column, data.html);
+              if (!inserted) {
+                throw new Error('No se pudo insertar la tarjeta copiada.');
+              }
+            } else {
+              syncColumnState(column, data.column_count);
+            }
+            showInlineNotification('Tarjeta pegada correctamente.', 'success');
+            syncCopyActions();
+          })
+          .catch((error) => {
+            console.error('No se pudo pegar la tarjeta:', error);
+            showInlineNotification(error.message || 'No se pudo pegar la tarjeta.', 'danger');
+            syncCopyActions();
+          })
+          .finally(() => {
+            pasteButton.disabled = false;
+          });
+        return;
+      }
+
+      const clearCopyButton = e.target.closest('[data-cuenta-copy-clear="1"]');
+      if (clearCopyButton) {
+        e.preventDefault();
+        clearCopiedCardPayload();
+        showInlineNotification('Copia cancelada.', 'success');
+        return;
+      }
+
+      const columnCreateButton = e.target.closest('[data-cuenta-column-create-open="1"]');
+      if (columnCreateButton) {
+        e.preventDefault();
+        const form = columnCreateModalElement?.querySelector('[data-cuenta-column-create-form="1"]');
+        if (!form) return;
+        form.reset();
+        setColumnFormError(form, '');
+        columnCreateModal?.show();
+        return;
+      }
+
+      const columnEditButton = e.target.closest('[data-cuenta-column-edit-open="1"]');
+      if (columnEditButton) {
+        e.preventDefault();
+        const shell = columnEditButton.closest('[data-cuenta-column="1"]');
+        const form = columnEditModalElement?.querySelector('[data-cuenta-column-edit-form="1"]');
+        if (!shell || !form) return;
+        form.elements.columna_id.value = shell.dataset.columnaId || '';
+        form.elements.nombre.value = shell.dataset.columnaNombre || '';
+        setColumnFormError(form, '');
+        columnEditModal?.show();
+        return;
+      }
+
+      const columnDeleteButton = e.target.closest('[data-cuenta-column-delete-open="1"]');
+      if (columnDeleteButton) {
+        e.preventDefault();
+        const shell = columnDeleteButton.closest('[data-cuenta-column="1"]');
+        const form = columnDeleteModalElement?.querySelector('[data-cuenta-column-delete-form="1"]');
+        const messageNode = columnDeleteModalElement?.querySelector('[data-cuenta-column-delete-message="1"]');
+        if (!shell || !form || !messageNode) return;
+        form.elements.columna_id.value = shell.dataset.columnaId || '';
+        form.elements.columna_destino_id.value = '';
+        messageNode.textContent = `Vas a eliminar la columna "${shell.dataset.columnaNombre || ''}".`;
+        syncDeleteDestinationOptions(shell.dataset.columnaId || '');
+        setColumnFormError(form, '');
+        columnDeleteModal?.show();
         return;
       }
 
@@ -1564,39 +1952,10 @@
       cargarDetalleCuentaDrawer(cuentaId, url);
     });
 
-    document.querySelectorAll('.columna-drop').forEach((col) => {
-      syncColumnState(col);
-      Sortable.create(col, {
-        group: 'cuentas',
-        animation: 150,
-        onMove: function (evt) {
-          if (isCardPending(evt.dragged)) return false;
-          return true;
-        },
-        onEnd: function (evt) {
-          const card = evt.item;
-          const sourceColumn = evt.from;
-          const targetColumn = evt.to;
-          const targetState = targetColumn?.dataset.estado;
-          const sourceIndex = evt.oldIndex;
-          const targetIndex = evt.newIndex;
-
-          if (!card || !sourceColumn || !targetColumn || !targetState) return;
-
-          moveCuentaGastosCard({
-            card,
-            targetState,
-            sourceColumn,
-            targetColumn,
-            sourceIndex,
-            targetIndex,
-            trigger: 'drag',
-          }).catch((error) => {
-            console.error('No se pudo mover la cuenta de gastos:', error);
-          });
-        }
-      });
-    });
+    initCardSortables();
+    initColumnSortable();
+    syncInlineCreateAccess();
+    syncCopyActions();
 
     document.addEventListener('change', function (e) {
       const repositorioInput = e.target;
@@ -1623,7 +1982,7 @@
         return;
       }
 
-      const targetColumn = document.querySelector(`.columna-drop[data-estado="${targetState}"]`);
+      const targetColumn = document.querySelector(`.columna-drop[data-columna-codigo="${targetState}"]`);
       if (!targetColumn) {
         syncCardStateUI(card, previousState, getEstadoLabel(previousState));
         return;
@@ -1636,6 +1995,7 @@
 
       moveCuentaGastosCard({
         card,
+        targetColumnId: targetColumn.dataset.columnaId || '',
         targetState,
         sourceColumn,
         targetColumn,
@@ -1760,11 +2120,13 @@
         e.preventDefault();
         if (inlineForm.dataset.submitting === '1') return;
         const submittedState = inlineForm.querySelector('[name="estado"]')?.value || '';
-        const submittedColumn = document.querySelector(
-          `.columna-drop[data-estado="${submittedState}"]`
-        );
+        const submittedColumnId = inlineForm.querySelector('[name="columna_id"]')?.value || '';
+        const submittedColumn = submittedColumnId
+          ? document.querySelector(`.columna-drop[data-columna-id="${submittedColumnId}"]`)
+          : document.querySelector(`.columna-drop[data-columna-codigo="${submittedState}"]`);
         const submittedTarget = {
           column: submittedColumn?.closest('[data-cuenta-column="1"]'),
+          columnId: submittedColumn?.dataset.columnaId || submittedColumnId,
           state: submittedState,
           label: submittedColumn?.closest('[data-cuenta-column="1"]')
             ?.querySelector('[data-cuenta-inline-open="1"]')?.dataset.estadoLabel || submittedState,
@@ -1806,9 +2168,9 @@
             if (!card) return;
 
             if (data.matches_filter !== false) {
-              const targetColumn = document.querySelector(
-                `.columna-drop[data-estado="${data.estado}"]`
-              );
+              const targetColumn = data.columna_id
+                ? document.querySelector(`.columna-drop[data-columna-id="${data.columna_id}"]`)
+                : document.querySelector(`.columna-drop[data-columna-codigo="${data.estado}"]`);
               if (targetColumn) {
                 const emptyState = targetColumn.querySelector('.cuenta-column__empty');
                 if (emptyState) emptyState.remove();
@@ -1855,6 +2217,122 @@
             }
             delete inlineForm.dataset.submitting;
         });
+        return;
+      }
+
+      const columnCreateForm = e.target.closest('[data-cuenta-column-create-form="1"]');
+      if (columnCreateForm) {
+        e.preventDefault();
+        setColumnFormError(columnCreateForm, '');
+        const fd = new FormData(columnCreateForm);
+        fetch(columnCreateUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(columnCreateForm),
+          },
+          body: fd,
+        })
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = data.html || '';
+            const columnItem = wrapper.firstElementChild;
+            if (!columnItem) throw new Error('HTML de columna invalido.');
+            getColumnsContainer()?.appendChild(columnItem);
+            initCardSortables();
+            syncDeleteDestinationOptions('');
+            columnCreateModal?.hide();
+          })
+          .catch((error) => {
+            const message = error?.errors?.nombre?.map((item) => item.message).join(' ') || error?.error || 'No se pudo crear la columna.';
+            setColumnFormError(columnCreateForm, message);
+          });
+        return;
+      }
+
+      const columnEditForm = e.target.closest('[data-cuenta-column-edit-form="1"]');
+      if (columnEditForm) {
+        e.preventDefault();
+        setColumnFormError(columnEditForm, '');
+        const columnId = columnEditForm.elements.columna_id.value;
+        const url = getColumnShellById(columnId)?.dataset.editUrl;
+        if (!url) return;
+        const fd = new FormData(columnEditForm);
+        fetch(url, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(columnEditForm),
+          },
+          body: fd,
+        })
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            updateColumnPresentation(getColumnShellById(columnId), data);
+            syncDeleteDestinationOptions(columnId);
+            columnEditModal?.hide();
+          })
+          .catch((error) => {
+            const message = error?.errors?.nombre?.map((item) => item.message).join(' ') || error?.error || 'No se pudo editar la columna.';
+            setColumnFormError(columnEditForm, message);
+          });
+        return;
+      }
+
+      const columnDeleteForm = e.target.closest('[data-cuenta-column-delete-form="1"]');
+      if (columnDeleteForm) {
+        e.preventDefault();
+        setColumnFormError(columnDeleteForm, '');
+        const columnId = columnDeleteForm.elements.columna_id.value;
+        const columnShell = getColumnShellById(columnId);
+        const url = columnShell?.dataset.deleteUrl;
+        if (!url) return;
+        const fd = new FormData(columnDeleteForm);
+        fetch(url, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': window.getCSRFToken(columnDeleteForm),
+          },
+          body: fd,
+        })
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            const destinationBody = data.columna_destino_id
+              ? document.querySelector(`.columna-drop[data-columna-id="${data.columna_destino_id}"]`)
+              : null;
+            if (columnShell && destinationBody) {
+              columnShell.querySelectorAll('[data-cuenta-card="1"]').forEach((card) => {
+                syncCardStateUI(card, data.columna_destino_codigo, getEstadoLabel(data.columna_destino_codigo));
+                card.dataset.cuentaColumnId = String(data.columna_destino_id);
+                destinationBody.prepend(card);
+              });
+              syncColumnState(destinationBody, data.column_count);
+            }
+            columnShell?.closest('[data-cuenta-column-item="1"]')?.remove();
+            syncDeleteDestinationOptions('');
+            columnDeleteModal?.hide();
+          })
+          .catch((error) => {
+            const message = error?.error || 'No se pudo eliminar la columna.';
+            setColumnFormError(columnDeleteForm, message);
+          });
         return;
       }
 

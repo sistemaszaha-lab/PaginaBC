@@ -16,6 +16,8 @@
     const boardUrl = config.boardUrl;
     const inlineCreateUrl = config.inlineCreateUrl;
     const inlineFormUrl = config.inlineFormUrl;
+    const columnCreateUrl = config.columnCreateUrl || '';
+    const columnReorderUrl = config.columnReorderUrl || '';
 
     const modalElement = document.getElementById('panelCotizacionDetalleModal');
     const modalContent = document.getElementById('panelCotizacionDetalleModalContent');
@@ -25,6 +27,12 @@
     const drawerInstance = drawerElement && window.bootstrap ? new bootstrap.Offcanvas(drawerElement) : null;
     const confirmModalElement = document.getElementById('panelCotizacionEliminarConfirmModal');
     const confirmModalInstance = confirmModalElement && window.bootstrap ? new bootstrap.Modal(confirmModalElement) : null;
+    const columnCreateModalElement = document.getElementById('panelCotizacionColumnaCrearModal');
+    const columnCreateModalInstance = columnCreateModalElement && window.bootstrap ? new bootstrap.Modal(columnCreateModalElement) : null;
+    const columnEditModalElement = document.getElementById('panelCotizacionColumnaEditarModal');
+    const columnEditModalInstance = columnEditModalElement && window.bootstrap ? new bootstrap.Modal(columnEditModalElement) : null;
+    const columnDeleteModalElement = document.getElementById('panelCotizacionColumnaEliminarModal');
+    const columnDeleteModalInstance = columnDeleteModalElement && window.bootstrap ? new bootstrap.Modal(columnDeleteModalElement) : null;
     let panelCotizacionDeleteUrl = null;
     const pendingCardIds = new Set();
     let currentDetailUrl = '';
@@ -39,6 +47,151 @@
     let inlineEditorVersion = 0;
     let boardVersion = 0;
     let boardRefreshController = null;
+    let columnSortable = null;
+    let lastColumnOrder = [];
+    const clipboardStorageKey = 'panel_cotizaciones_clipboard';
+
+    function getColumnsContainer() {
+      return document.querySelector('[data-panel-cotizacion-columns="1"]');
+    }
+
+    function getColumnCodeFromElement(element) {
+      return element?.dataset.columnaCodigo || element?.dataset.estado || '';
+    }
+
+    function getColumnIdFromElement(element) {
+      return element?.dataset.columnaId || '';
+    }
+
+    function getColumnNameFromElement(element) {
+      return element?.dataset.columnaNombre || '';
+    }
+
+    function getColumnNameByCode(code) {
+      if (!code) return '';
+      const body = document.querySelector(`.panel-cotizaciones-col[data-columna-codigo="${code}"]`);
+      if (body) {
+        return getColumnNameFromElement(body);
+      }
+      const shell = document.querySelector(`[data-panel-cotizacion-column="1"][data-columna-codigo="${code}"]`);
+      return getColumnNameFromElement(shell) || code;
+    }
+
+    function getCurrentColumnOrder() {
+      return Array.from(
+        document.querySelectorAll('[data-panel-cotizacion-column-item="1"] [data-panel-cotizacion-column="1"]')
+      )
+        .map((shell) => getColumnIdFromElement(shell))
+        .filter(Boolean);
+    }
+
+    function readClipboard() {
+      try {
+        const raw = window.sessionStorage.getItem(clipboardStorageKey);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (
+          !data ||
+          data.modulo !== 'panel_cotizaciones' ||
+          !Number.isInteger(Number(data.tarjeta_id)) ||
+          Number(data.tarjeta_id) <= 0
+        ) {
+          return null;
+        }
+        return {
+          modulo: 'panel_cotizaciones',
+          tarjeta_id: String(data.tarjeta_id),
+        };
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function writeClipboard(cardId) {
+      window.sessionStorage.setItem(
+        clipboardStorageKey,
+        JSON.stringify({
+          modulo: 'panel_cotizaciones',
+          tarjeta_id: Number(cardId),
+        })
+      );
+    }
+
+    function clearClipboard() {
+      window.sessionStorage.removeItem(clipboardStorageKey);
+    }
+
+    function syncPasteActions() {
+      const clipboard = readClipboard();
+      const canPaste = Boolean(clipboard?.tarjeta_id);
+      document.querySelectorAll('[data-panel-cotizacion-column-paste="1"]').forEach((button) => {
+        button.disabled = !canPaste;
+      });
+      document.querySelectorAll('[data-panel-cotizacion-copy-clear="1"]').forEach((button) => {
+        button.disabled = !canPaste;
+      });
+    }
+
+    function createCardFromHtml(html) {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html || '';
+      return wrapper.querySelector('[data-panel-cotizacion-card="1"]');
+    }
+
+    function pasteCardIntoColumn(shell) {
+      const clipboard = readClipboard();
+      const targetColumn = shell?.querySelector('.panel-cotizaciones-col');
+      const pasteUrl = shell?.dataset.pasteUrl || '';
+      if (!clipboard || !targetColumn || !pasteUrl) {
+        showInlineNotification('No hay una tarjeta valida copiada para pegar.', 'warning');
+        syncPasteActions();
+        return Promise.resolve();
+      }
+
+      const fd = new FormData();
+      fd.set('tarjeta_id', clipboard.tarjeta_id);
+      return postForm(pasteUrl, fd, shell)
+        .then((response) => readJsonResponse(response).then((data) => ({response, data})))
+        .then(({response, data}) => {
+          if (!response.ok || !data.ok) {
+            const error = new Error(data.error || `Error ${response.status}`);
+            error.data = data;
+            error.status = response.status;
+            throw error;
+          }
+          const card = createCardFromHtml(data.html);
+          if (!card) {
+            throw new Error('No se recibio una tarjeta valida.');
+          }
+          targetColumn.querySelector('.panel-cotizacion-empty')?.remove();
+          targetColumn.prepend(card);
+          syncColumnState(targetColumn, data.column_count);
+          showInlineNotification('Tarjeta pegada correctamente.', 'success');
+          return data;
+        })
+        .catch((error) => {
+          showInlineNotification(
+            error?.data?.error || error?.message || 'No se pudo pegar la tarjeta.',
+            'danger'
+          );
+          throw error;
+        });
+    }
+
+    function syncDeleteDestinationOptions(columnId) {
+      const select = columnDeleteModalElement?.querySelector('[name="columna_destino_id"]');
+      if (!select) return;
+      const options = ['<option value="">Selecciona una columna</option>'];
+      document.querySelectorAll('[data-panel-cotizacion-column="1"]').forEach((shell) => {
+        const currentId = getColumnIdFromElement(shell);
+        if (!currentId) return;
+        const disabled = Boolean(columnId) && currentId === String(columnId);
+        options.push(
+          `<option value="${currentId}"${disabled ? ' disabled' : ''}>${getColumnNameFromElement(shell)}</option>`
+        );
+      });
+      select.innerHTML = options.join('');
+    }
 
     function postForm(url, formData, formElement = null) {
       const token = window.getCSRFToken(formElement);
@@ -139,10 +292,7 @@
     }
 
     function getEstadoLabel(value) {
-      if (value === 'REQUERIMIENTO') return 'Requerimiento';
-      if (value === 'EN_PROGRESO') return 'En progreso';
-      if (value === 'ENVIADA') return 'Enviada';
-      return value || '';
+      return getColumnNameByCode(value) || value || '';
     }
 
     function syncCardStateUI(card, estado, estadoLabel) {
@@ -730,8 +880,45 @@
       return request;
     }
 
-    function initSortable() {
+    function initSortables() {
       if (typeof Sortable === 'undefined') return;
+      const columnsContainer = getColumnsContainer();
+      if (columnsContainer && columnsContainer.dataset.sortableReady !== '1' && columnReorderUrl) {
+        columnsContainer.dataset.sortableReady = '1';
+        lastColumnOrder = getCurrentColumnOrder();
+        columnSortable = Sortable.create(columnsContainer, {
+          animation: 150,
+          direction: 'horizontal',
+          draggable: '[data-panel-cotizacion-column-item="1"]',
+          handle: '.panel-cotizacion-column__header',
+          ghostClass: 'panel-cotizacion-ghost',
+          dragClass: 'panel-cotizacion-drag',
+          chosenClass: 'panel-cotizacion-chosen',
+          onStart: function () {
+            lastColumnOrder = getCurrentColumnOrder();
+          },
+          onEnd: function () {
+            const nextOrder = getCurrentColumnOrder();
+            if (!nextOrder.length || nextOrder.join(',') === lastColumnOrder.join(',')) {
+              return;
+            }
+            const fd = new FormData();
+            nextOrder.forEach((columnId) => fd.append('columnas[]', columnId));
+            postForm(columnReorderUrl, fd, columnsContainer)
+              .then((response) => readJsonResponse(response).then((data) => ({response, data})))
+              .then(({response, data}) => {
+                if (!response.ok || !data.ok) {
+                  throw new Error(data.error || `Error ${response.status}`);
+                }
+                lastColumnOrder = nextOrder;
+              })
+              .catch((error) => {
+                console.error('No se pudo reordenar las columnas:', error);
+                refreshBoard();
+              });
+          },
+        });
+      }
       document.querySelectorAll('.panel-cotizaciones-col').forEach((column) => {
         if (column.dataset.sortableReady === '1') return;
         column.dataset.sortableReady = '1';
@@ -752,7 +939,7 @@
             const target = evt.to;
             const source = evt.from;
             const id = card.getAttribute('data-panel-cotizacion-id');
-            const nuevoEstado = target.getAttribute('data-estado');
+            const nuevoEstado = getColumnCodeFromElement(target);
             if (!id || !nuevoEstado || source === target || isCardPending(card)) {
               ensureEmptyState(source);
               ensureEmptyState(target);
@@ -762,7 +949,7 @@
               return;
             }
 
-            const previousState = source.dataset.estado;
+            const previousState = getColumnCodeFromElement(source);
 
             persistCardState(card, source, target, nuevoEstado, previousState, card)
               .catch((error) => {
@@ -889,7 +1076,8 @@
           if (!board) return;
           closeInlineCreateForm();
           board.innerHTML = html;
-          initSortable();
+          initSortables();
+          syncPasteActions();
         })
         .catch((error) => {
           if (error.name === 'AbortError' || requestVersion !== boardVersion) return;
@@ -966,6 +1154,73 @@
         stateSelect.dataset.previousValue = previousState;
         stateSelect.value = nextState;
         handleCardStateChange(stateSelect, statusButton);
+        return;
+      }
+
+      const copyCardButton = e.target.closest('[data-panel-cotizacion-copy="1"]');
+      if (copyCardButton) {
+        e.preventDefault();
+        const card = copyCardButton.closest('[data-panel-cotizacion-card="1"]');
+        const cardId = getCardId(card);
+        if (!cardId) return;
+        writeClipboard(cardId);
+        syncPasteActions();
+        showInlineNotification('Tarjeta copiada. Selecciona una columna para pegarla.', 'success');
+        return;
+      }
+
+      const pasteCardButton = e.target.closest('[data-panel-cotizacion-column-paste="1"]');
+      if (pasteCardButton) {
+        e.preventDefault();
+        if (pasteCardButton.disabled) return;
+        const shell = pasteCardButton.closest('[data-panel-cotizacion-column="1"]');
+        pasteCardIntoColumn(shell).catch((error) => {
+          console.error('No se pudo pegar la tarjeta:', error);
+        });
+        return;
+      }
+
+      const clearCopyButton = e.target.closest('[data-panel-cotizacion-copy-clear="1"]');
+      if (clearCopyButton) {
+        e.preventDefault();
+        clearClipboard();
+        syncPasteActions();
+        showInlineNotification('Se limpio la tarjeta copiada.', 'secondary');
+        return;
+      }
+
+      const columnEditButton = e.target.closest('[data-panel-cotizacion-column-edit-open="1"]');
+      if (columnEditButton) {
+        e.preventDefault();
+        const shell = columnEditButton.closest('[data-panel-cotizacion-column="1"]');
+        const form = columnEditModalElement?.querySelector('[data-panel-cotizacion-column-edit-form="1"]');
+        if (!shell || !form) return;
+        form.dataset.action = shell.dataset.editUrl || '';
+        form.querySelector('[name="columna_id"]').value = getColumnIdFromElement(shell);
+        form.querySelector('[name="nombre"]').value = getColumnNameFromElement(shell);
+        const errorNode = form.querySelector('[data-panel-cotizacion-column-edit-error="1"]');
+        if (errorNode) errorNode.textContent = '';
+        columnEditModalInstance?.show();
+        return;
+      }
+
+      const columnDeleteButton = e.target.closest('[data-panel-cotizacion-column-delete-open="1"]');
+      if (columnDeleteButton) {
+        e.preventDefault();
+        const shell = columnDeleteButton.closest('[data-panel-cotizacion-column="1"]');
+        const form = columnDeleteModalElement?.querySelector('[data-panel-cotizacion-column-delete-form="1"]');
+        if (!shell || !form) return;
+        form.dataset.action = shell.dataset.deleteUrl || '';
+        form.querySelector('[name="columna_id"]').value = getColumnIdFromElement(shell);
+        form.querySelector('[name="columna_destino_id"]').value = '';
+        syncDeleteDestinationOptions(getColumnIdFromElement(shell));
+        const messageNode = form.querySelector('[data-panel-cotizacion-column-delete-message="1"]');
+        if (messageNode) {
+          messageNode.textContent = `Si la columna "${getColumnNameFromElement(shell)}" tiene tarjetas, deberas elegir una columna destino.`;
+        }
+        const errorNode = form.querySelector('[data-panel-cotizacion-column-delete-error="1"]');
+        if (errorNode) errorNode.textContent = '';
+        columnDeleteModalInstance?.show();
         return;
       }
 
@@ -1130,6 +1385,84 @@
     });
 
     document.addEventListener('submit', (e) => {
+      const columnCreateForm = e.target.closest('[data-panel-cotizacion-column-create-form="1"]');
+      if (columnCreateForm) {
+        e.preventDefault();
+        const errorNode = columnCreateForm.querySelector('[data-panel-cotizacion-column-create-error="1"]');
+        if (errorNode) errorNode.textContent = '';
+        const fd = new FormData(columnCreateForm);
+        postForm(columnCreateUrl, fd, columnCreateForm)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (!data.ok) return;
+            columnCreateModalInstance?.hide();
+            columnCreateForm.reset();
+            refreshBoard();
+          })
+          .catch((error) => {
+            if (errorNode) {
+              const errors = error?.errors?.nombre || error?.errors?.__all__ || [];
+              errorNode.textContent = errors.map((item) => item.message).join(' ') || 'No se pudo crear la columna.';
+            }
+          });
+        return;
+      }
+
+      const columnEditForm = e.target.closest('[data-panel-cotizacion-column-edit-form="1"]');
+      if (columnEditForm) {
+        e.preventDefault();
+        const errorNode = columnEditForm.querySelector('[data-panel-cotizacion-column-edit-error="1"]');
+        if (errorNode) errorNode.textContent = '';
+        const fd = new FormData(columnEditForm);
+        postForm(columnEditForm.dataset.action || '', fd, columnEditForm)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (!data.ok) return;
+            columnEditModalInstance?.hide();
+            refreshBoard();
+          })
+          .catch((error) => {
+            if (errorNode) {
+              const errors = error?.errors?.nombre || error?.errors?.__all__ || [];
+              errorNode.textContent = errors.map((item) => item.message).join(' ') || 'No se pudo actualizar la columna.';
+            }
+          });
+        return;
+      }
+
+      const columnDeleteForm = e.target.closest('[data-panel-cotizacion-column-delete-form="1"]');
+      if (columnDeleteForm) {
+        e.preventDefault();
+        const errorNode = columnDeleteForm.querySelector('[data-panel-cotizacion-column-delete-error="1"]');
+        if (errorNode) errorNode.textContent = '';
+        const fd = new FormData(columnDeleteForm);
+        postForm(columnDeleteForm.dataset.action || '', fd, columnDeleteForm)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (!data.ok) return;
+            columnDeleteModalInstance?.hide();
+            refreshBoard();
+          })
+          .catch((error) => {
+            if (errorNode) {
+              errorNode.textContent = error?.error || 'No se pudo eliminar la columna.';
+            }
+          });
+        return;
+      }
+
       const inlineEditor = e.target.closest('[data-panel-cotizacion-inline-editor="1"]');
       if (inlineEditor) {
         e.preventDefault();
@@ -1441,5 +1774,6 @@
       refreshBoard();
     });
 
-    initSortable();
+    initSortables();
+    syncPasteActions();
   })();

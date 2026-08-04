@@ -5,18 +5,21 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, F, Window
+from django.db.models import Count, F, Q, Window
 from django.db.models.functions import RowNumber
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import (
     PanelCotizacionArchivosForm,
     PanelCotizacionComentarioForm,
+    PanelCotizacionColumnaCreateForm,
+    PanelCotizacionColumnaUpdateForm,
     PanelCotizacionCreateForm,
     PanelCotizacionEnlaceForm,
     PanelCotizacionInlineAsignadosForm,
@@ -31,9 +34,11 @@ from .forms import (
 from .models import (
     PanelCotizacion,
     PanelCotizacionArchivo,
+    PanelCotizacionColumna,
     PanelCotizacionComentario,
     PanelCotizacionEnlace,
 )
+from .services import copiar_cotizacion_a_columna
 
 User = get_user_model()
 
@@ -45,12 +50,11 @@ INLINE_FIELD_FORMS = {
     "asignados": PanelCotizacionInlineAsignadosForm,
 }
 
-ESTADOS_KANBAN = (
+COLUMNAS_INICIALES = (
     (PanelCotizacion.Estado.REQUERIMIENTO, "Requerimiento"),
     (PanelCotizacion.Estado.EN_PROGRESO, "En progreso"),
     (PanelCotizacion.Estado.ENVIADA, "Enviada"),
 )
-ESTADOS_VISIBLES = frozenset(estado for estado, _label in ESTADOS_KANBAN)
 INITIAL_CARDS_PER_COLUMN = 10
 CARDS_PAGE_SIZE = 10
 PANEL_ORDERING = ("-fecha_creacion", "-id")
@@ -111,10 +115,86 @@ def _get_usuarios_filter_estricto(request: HttpRequest):
     return usuarios, None
 
 
+def _columnas_activas_queryset():
+    return PanelCotizacionColumna.objects.filter(activa=True).order_by("orden", "id")
+
+
+def _columnas_activas():
+    return list(_columnas_activas_queryset())
+
+
+def _primer_columna_activa():
+    return _columnas_activas_queryset().first()
+
+
+def _columnas_estado_choices():
+    return [(columna.codigo, columna.nombre) for columna in _columnas_activas()]
+
+
+def _buscar_columna_activa_por_codigo(codigo: str):
+    return _columnas_activas_queryset().filter(codigo=codigo).first()
+
+
+def _puede_operar_panel(user) -> bool:
+    return bool(user.is_authenticated and user.is_active)
+
+
+def _generar_codigo_columna(nombre: str) -> str:
+    base = slugify(nombre).replace("-", "_").upper()
+    if not base:
+        base = "COLUMNA"
+    if base[0].isdigit():
+        base = f"COLUMNA_{base}"
+    candidato = base
+    indice = 2
+    while PanelCotizacionColumna.objects.filter(codigo=candidato).exists():
+        candidato = f"{base}_{indice}"
+        indice += 1
+    return candidato
+
+
+def _siguiente_orden_columna() -> int:
+    ultima = PanelCotizacionColumna.objects.order_by("-orden", "-id").first()
+    return (ultima.orden + 1) if ultima is not None else 1
+
+
+def _column_context(
+    *,
+    columna: PanelCotizacionColumna,
+    items,
+    count: int,
+    loaded: int,
+):
+    return {
+        "id": columna.pk,
+        "columna_id": columna.pk,
+        "codigo": columna.codigo,
+        "estado": columna.codigo,
+        "nombre": columna.nombre,
+        "estado_texto": columna.nombre,
+        "items": items,
+        "count": count,
+        "loaded": loaded,
+        "has_more": count > loaded,
+        "remaining": max(0, count - loaded),
+        "load_url": reverse(
+            "panel_cotizaciones:tarjetas_columna",
+            kwargs={"codigo": columna.codigo},
+        ),
+        "paste_url": reverse(
+            "panel_cotizaciones:columna_pegar",
+            kwargs={"columna_id": columna.pk},
+        ),
+    }
+
+
 def _board_queryset(usuarios):
+    codigos_activos = [codigo for codigo, _nombre in _columnas_estado_choices()]
     qs = (
-        PanelCotizacion.objects.filter(estado__in=ESTADOS_VISIBLES)
-        .select_related("creado_por")
+        PanelCotizacion.objects.filter(estado__in=codigos_activos).filter(
+            Q(columna__activa=True) | Q(columna__isnull=True)
+        )
+        .select_related("columna", "creado_por")
         .prefetch_related("asignados", "etiquetas")
         .annotate(comentarios_count=Count("comentarios"))
     )
@@ -124,6 +204,7 @@ def _board_queryset(usuarios):
 
 
 def _columnas_kanban(usuarios):
+    columnas = _columnas_activas()
     objetos = list(
         _board_queryset(usuarios)
         .annotate(
@@ -142,30 +223,21 @@ def _columnas_kanban(usuarios):
         )
         .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
     )
-    items_por_estado = {estado: [] for estado, _label in ESTADOS_KANBAN}
-    totales = {estado: 0 for estado, _label in ESTADOS_KANBAN}
+    items_por_codigo = {columna.codigo: [] for columna in columnas}
+    totales = {columna.codigo: 0 for columna in columnas}
     for obj in objetos:
-        if obj.estado in items_por_estado:
-            items_por_estado[obj.estado].append(obj)
+        if obj.estado in items_por_codigo:
+            items_por_codigo[obj.estado].append(obj)
             totales[obj.estado] = obj.total_columna
 
     return [
-        {
-            "estado": estado,
-            "estado_texto": label,
-            "items": items_por_estado[estado],
-            "count": totales[estado],
-            "loaded": len(items_por_estado[estado]),
-            "has_more": totales[estado] > len(items_por_estado[estado]),
-            "remaining": max(
-                0, totales[estado] - len(items_por_estado[estado])
-            ),
-            "load_url": reverse(
-                "panel_cotizaciones:tarjetas_columna",
-                kwargs={"estado": estado},
-            ),
-        }
-        for estado, label in ESTADOS_KANBAN
+        _column_context(
+            columna=columna,
+            items=items_por_codigo[columna.codigo],
+            count=totales[columna.codigo],
+            loaded=len(items_por_codigo[columna.codigo]),
+        )
+        for columna in columnas
     ]
 
 
@@ -205,14 +277,15 @@ def _guardar_adjuntos_enlaces(
         )
 
 
-def _column_count(estado: str) -> int:
-    return PanelCotizacion.objects.filter(estado=estado).count()
+def _column_count(columna: PanelCotizacionColumna) -> int:
+    return PanelCotizacion.objects.filter(estado=columna.codigo).count()
 
 
-def _crear_panel_desde_form(*, form, creado_por, estado: str):
+def _crear_panel_desde_form(*, form, creado_por, columna: PanelCotizacionColumna):
     obj: PanelCotizacion = form.save(commit=False)
     obj.creado_por = creado_por
-    obj.estado = estado
+    obj.columna = columna
+    obj.estado = columna.codigo
     obj.save()
     form.save_m2m()
     return obj
@@ -221,22 +294,31 @@ def _crear_panel_desde_form(*, form, creado_por, estado: str):
 def _render_card_html(request: HttpRequest, obj: PanelCotizacion) -> str:
     return render_to_string(
         "panel_cotizaciones/_card.html",
-        {"c": obj},
+        {"c": obj, "columnas_estado": _columnas_estado_choices()},
         request=request,
+    )
+
+
+def _get_cotizacion_para_copia(pk: int) -> PanelCotizacion:
+    return get_object_or_404(
+        PanelCotizacion.objects.select_related("columna", "creado_por")
+        .prefetch_related("asignados", "etiquetas"),
+        pk=pk,
     )
 
 
 def _render_inline_create_form(
     request: HttpRequest,
     form: PanelCotizacionInlineCreateForm,
-    estado: str,
+    columna: PanelCotizacionColumna,
 ) -> str:
     return render_to_string(
         "panel_cotizaciones/_inline_create_form.html",
         {
             "form": form,
-            "estado": estado,
-            "estado_texto": PanelCotizacion.Estado(estado).label,
+            "estado": columna.codigo,
+            "estado_texto": columna.nombre,
+            "columna": columna,
         },
         request=request,
     )
@@ -281,7 +363,7 @@ def _get_cotizacion_detalle(pk: int) -> PanelCotizacion:
             "comentarios__creado_por",
             "archivos",
             "enlaces",
-        ),
+        ).select_related("columna"),
         pk=pk,
     )
 
@@ -336,17 +418,23 @@ def _preservar_vacios_cotizacion(form, objeto):
 @ensure_csrf_cookie
 def panel_cotizaciones(request: HttpRequest) -> HttpResponse:
     usuarios = _get_usuarios_filter(request)
+    columnas_activas = _columnas_activas()
     context = {
         "current": "panel_cotizaciones",
         "usuario_filter_form": PanelCotizacionUserFilterForm(
             initial={"usuario": [usuario.pk for usuario in usuarios]}
         ),
         "columnas_kanban": _columnas_kanban(usuarios),
+        "columnas_activas": columnas_activas,
+        "columnas_estado": _columnas_estado_choices(),
+        "columna_create_form": PanelCotizacionColumnaCreateForm(),
         "panel_config": {
             "estadoUpdateUrl": reverse("panel_cotizaciones:estado_update"),
             "boardUrl": reverse("panel_cotizaciones:tablero_partial"),
             "inlineCreateUrl": reverse("panel_cotizaciones:crear_inline"),
             "inlineFormUrl": reverse("panel_cotizaciones:formulario_inline"),
+            "columnCreateUrl": reverse("panel_cotizaciones:columna_crear"),
+            "columnReorderUrl": reverse("panel_cotizaciones:columna_reordenar"),
         },
     }
     return render(request, "panel_cotizaciones/panel.html", context)
@@ -361,14 +449,16 @@ def tablero_partial(request: HttpRequest) -> HttpResponse:
         "panel_cotizaciones/_tablero.html",
         {
             "columnas_kanban": _columnas_kanban(usuarios),
+            "columnas_estado": _columnas_estado_choices(),
         },
     )
 
 
 @login_required
 @require_GET
-def tarjetas_columna(request: HttpRequest, estado: str) -> JsonResponse:
-    if estado not in ESTADOS_VISIBLES:
+def tarjetas_columna(request: HttpRequest, codigo: str) -> JsonResponse:
+    columna_obj = _buscar_columna_activa_por_codigo(codigo)
+    if columna_obj is None:
         return JsonResponse(
             {"ok": False, "error": "Estado no encontrado."},
             status=404,
@@ -391,7 +481,7 @@ def tarjetas_columna(request: HttpRequest, estado: str) -> JsonResponse:
             status=400,
         )
 
-    columna = _board_queryset(usuarios).filter(estado=estado)
+    columna = _board_queryset(usuarios).filter(estado=columna_obj.codigo)
     total = columna.count()
     recognized_loaded_ids = set(
         columna.filter(pk__in=loaded_ids).values_list("pk", flat=True)
@@ -404,10 +494,11 @@ def tarjetas_columna(request: HttpRequest, estado: str) -> JsonResponse:
     )
     has_more = len(siguientes) > CARDS_PAGE_SIZE
     objetos = siguientes[:CARDS_PAGE_SIZE]
+    columnas_estado = _columnas_estado_choices()
     html = "".join(
         render_to_string(
             "panel_cotizaciones/_tarjeta.html",
-            {"c": obj},
+            {"c": obj, "columnas_estado": columnas_estado},
             request=request,
         )
         for obj in objetos
@@ -416,7 +507,9 @@ def tarjetas_columna(request: HttpRequest, estado: str) -> JsonResponse:
     return JsonResponse(
         {
             "ok": True,
-            "estado": estado,
+            "estado": columna_obj.codigo,
+            "columna_id": columna_obj.pk,
+            "columna_codigo": columna_obj.codigo,
             "html": html,
             "loaded": loaded,
             "next_offset": len(recognized_loaded_ids) + loaded,
@@ -430,12 +523,14 @@ def tarjetas_columna(request: HttpRequest, estado: str) -> JsonResponse:
 @login_required
 @require_GET
 def formulario_inline(request: HttpRequest) -> HttpResponse:
-    estado = PanelCotizacion.Estado.REQUERIMIENTO
+    columna = _primer_columna_activa()
+    if columna is None:
+        return HttpResponse("")
     return HttpResponse(
         _render_inline_create_form(
             request,
             PanelCotizacionInlineCreateForm(),
-            estado,
+            columna,
         )
     )
 
@@ -443,6 +538,9 @@ def formulario_inline(request: HttpRequest) -> HttpResponse:
 @login_required
 def crear_panel_cotizacion(request: HttpRequest) -> HttpResponse:
     next_url = _safe_next_url(request)
+    columna_inicial = _primer_columna_activa()
+    if columna_inicial is None:
+        raise PermissionDenied("No hay columnas disponibles en el panel.")
     if request.method == "POST":
         form = PanelCotizacionCreateForm(request.POST, request.FILES)
         archivos_form = PanelCotizacionArchivosForm(request.POST, request.FILES)
@@ -451,9 +549,20 @@ def crear_panel_cotizacion(request: HttpRequest) -> HttpResponse:
             obj = _crear_panel_desde_form(
                 form=form,
                 creado_por=request.user,
-                estado=PanelCotizacion.Estado.REQUERIMIENTO,
+                columna=columna_inicial,
             )
-            _guardar_adjuntos_enlaces(request, obj, enlace_form)
+            titulo = (enlace_form.cleaned_data.get("titulo") or "").strip()
+            url = (enlace_form.cleaned_data.get("url") or "").strip()
+            _guardar_adjuntos_enlaces(
+                request=request,
+                cotizacion=obj,
+                archivos=archivos_form.cleaned_data.get("archivos", []),
+                enlaces=(
+                    [{"titulo": titulo, "url": url}]
+                    if titulo and url
+                    else []
+                ),
+            )
             if next_url:
                 return redirect(next_url)
             return redirect("panel_cotizaciones:panel_cotizaciones")
@@ -507,7 +616,8 @@ def crear_inline(request: HttpRequest) -> JsonResponse:
         )
 
     estado = (request.POST.get("estado") or "").strip()
-    if estado not in PanelCotizacion.Estado.values:
+    columna = _buscar_columna_activa_por_codigo(estado)
+    if columna is None:
         return JsonResponse(
             {"ok": False, "errors": {"estado": ["Estado invalido."]}}, status=400
         )
@@ -519,7 +629,7 @@ def crear_inline(request: HttpRequest) -> JsonResponse:
                 "ok": False,
                 "message": "Revisa los campos indicados.",
                 "errors": form.errors.get_json_data(escape_html=True),
-                "html": _render_inline_create_form(request, form, estado),
+                "html": _render_inline_create_form(request, form, columna),
             },
             status=400,
         )
@@ -529,7 +639,7 @@ def crear_inline(request: HttpRequest) -> JsonResponse:
             obj = _crear_panel_desde_form(
                 form=form,
                 creado_por=request.user,
-                estado=estado,
+                columna=columna,
             )
             _guardar_adjuntos_enlaces(
                 request=request,
@@ -565,7 +675,9 @@ def crear_inline(request: HttpRequest) -> JsonResponse:
             "card_html": _render_card_html(request, obj),
             "id": obj.pk,
             "estado": obj.estado,
-            "column_count": _column_count(obj.estado),
+            "column_count": _column_count(columna),
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
         },
         status=201,
     )
@@ -632,21 +744,216 @@ def inline_update(request: HttpRequest, pk: int) -> JsonResponse:
 
 @login_required
 @require_POST
+def columna_crear(request: HttpRequest) -> JsonResponse:
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    form = PanelCotizacionColumnaCreateForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            status=400,
+        )
+    with transaction.atomic():
+        columna = form.save(commit=False)
+        columna.codigo = _generar_codigo_columna(columna.nombre)
+        columna.orden = _siguiente_orden_columna()
+        columna.creada_por = request.user
+        columna.save()
+    html = render_to_string(
+        "panel_cotizaciones/_columna.html",
+        {"columna": _column_context(columna=columna, items=[], count=0, loaded=0)},
+        request=request,
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
+            "html": html,
+        },
+        status=201,
+    )
+
+
+@login_required
+@require_POST
+def columna_editar(request: HttpRequest, pk: int) -> JsonResponse:
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    columna = get_object_or_404(PanelCotizacionColumna, pk=pk, activa=True)
+    form = PanelCotizacionColumnaUpdateForm(request.POST, instance=columna)
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            status=400,
+        )
+    form.save()
+    return JsonResponse(
+        {
+            "ok": True,
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
+            "nombre": columna.nombre,
+        }
+    )
+
+
+@login_required
+@require_POST
+def columna_reordenar(request: HttpRequest) -> JsonResponse:
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    raw_ids = request.POST.getlist("columnas[]") or request.POST.getlist("columnas")
+    if not raw_ids:
+        return JsonResponse({"ok": False, "error": "Debes enviar columnas."}, status=400)
+    if any(not value.isdigit() or int(value) <= 0 for value in raw_ids):
+        return JsonResponse({"ok": False, "error": "IDs invalidos."}, status=400)
+    ids = [int(value) for value in raw_ids]
+    if len(ids) != len(set(ids)):
+        return JsonResponse({"ok": False, "error": "IDs duplicados."}, status=400)
+    columnas = list(PanelCotizacionColumna.objects.filter(pk__in=ids, activa=True))
+    if len(columnas) != len(ids):
+        return JsonResponse({"ok": False, "error": "Columna no encontrada."}, status=400)
+    with transaction.atomic():
+        for orden, columna_id in enumerate(ids, start=1):
+            PanelCotizacionColumna.objects.filter(pk=columna_id).update(orden=orden)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+def columna_eliminar(request: HttpRequest, pk: int) -> JsonResponse:
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    columna = get_object_or_404(PanelCotizacionColumna, pk=pk, activa=True)
+    activas = _columnas_activas()
+    if len(activas) <= 1:
+        return JsonResponse(
+            {"ok": False, "error": "No puedes eliminar la ultima columna activa."},
+            status=400,
+        )
+
+    destino_id = (request.POST.get("columna_destino_id") or "").strip()
+    tarjetas_qs = PanelCotizacion.objects.filter(
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
+    )
+    total_tarjetas = tarjetas_qs.count()
+    if total_tarjetas > 0:
+        if not destino_id.isdigit():
+            return JsonResponse(
+                {"ok": False, "error": "Debes seleccionar una columna destino."},
+                status=400,
+            )
+        if int(destino_id) == columna.pk:
+            return JsonResponse(
+                {"ok": False, "error": "La columna destino debe ser distinta."},
+                status=400,
+            )
+        destino = get_object_or_404(PanelCotizacionColumna, pk=int(destino_id), activa=True)
+    else:
+        destino = None
+
+    with transaction.atomic():
+        if destino is not None:
+            tarjetas_qs.update(columna=destino, estado=destino.codigo)
+        columna.activa = False
+        columna.save(update_fields=["activa", "fecha_actualizacion"])
+        for orden, columna_id in enumerate(
+            PanelCotizacionColumna.objects.filter(activa=True)
+            .order_by("orden", "id")
+            .values_list("pk", flat=True),
+            start=1,
+        ):
+            PanelCotizacionColumna.objects.filter(pk=columna_id).update(orden=orden)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "columna_id": pk,
+            "movidas": total_tarjetas,
+            "columna_destino_id": destino.pk if destino is not None else None,
+        }
+    )
+
+
+@login_required
+@require_POST
+def columna_pegar(request: HttpRequest, columna_id: int) -> JsonResponse:
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    if not _puede_operar_panel(request.user):
+        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
+
+    raw_tarjeta_id = (request.POST.get("tarjeta_id") or "").strip()
+    if not raw_tarjeta_id.isdigit() or int(raw_tarjeta_id) <= 0:
+        return JsonResponse({"ok": False, "error": "Tarjeta invalida."}, status=400)
+
+    columna_destino = get_object_or_404(
+        PanelCotizacionColumna,
+        pk=columna_id,
+        activa=True,
+    )
+    cotizacion_original = _get_cotizacion_para_copia(int(raw_tarjeta_id))
+    if not _puede_operar_panel(request.user):
+        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
+
+    nueva = copiar_cotizacion_a_columna(
+        cotizacion_original=cotizacion_original,
+        columna_destino=columna_destino,
+        usuario=request.user,
+    )
+    nueva = (
+        PanelCotizacion.objects.filter(pk=nueva.pk)
+        .select_related("columna", "creado_por")
+        .prefetch_related("asignados", "etiquetas")
+        .annotate(comentarios_count=Count("comentarios"))
+        .get()
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "tarjeta_id": nueva.pk,
+            "columna_id": columna_destino.pk,
+            "html": _render_card_html(request, nueva),
+            "estado": nueva.estado,
+            "column_count": _column_count(columna_destino),
+        },
+        status=201,
+    )
+
+
+@login_required
+@require_POST
 def estado_update(request: HttpRequest) -> JsonResponse:
     if request.headers.get("X-Requested-With") != "XMLHttpRequest":
         return JsonResponse({"status": "error"}, status=400)
     cotizacion_id = (request.POST.get("cotizacion_id") or "").strip()
     nuevo_estado = (request.POST.get("nuevo_estado") or "").strip()
-    if not cotizacion_id or nuevo_estado not in PanelCotizacion.Estado.values:
+    if not cotizacion_id:
         return JsonResponse({"status": "error"}, status=400)
+    columna = _buscar_columna_activa_por_codigo(nuevo_estado)
+    if columna is None:
+        return JsonResponse(
+            {"status": "error", "error": "Columna destino invalida."},
+            status=400,
+        )
     obj = get_object_or_404(PanelCotizacion, pk=cotizacion_id)
-    obj.estado = nuevo_estado
-    obj.save(update_fields=["estado"])
+    obj.columna = columna
+    obj.estado = columna.codigo
+    obj.save(update_fields=["columna", "estado"])
     return JsonResponse(
         {
             "status": "ok",
             "estado": obj.estado,
-            "estado_display": obj.get_estado_display(),
+            "estado_display": columna.nombre,
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
         }
     )
 

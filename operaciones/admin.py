@@ -1,12 +1,28 @@
 from django.contrib import admin
 
-from .models import Operacion, OperacionEtiqueta, OperacionOpcion, OperacionComentario, OperacionArchivo, OperacionEnlace
+from .models import (
+    Operacion,
+    OperacionArchivo,
+    OperacionColumna,
+    OperacionComentario,
+    OperacionEnlace,
+    OperacionEtiqueta,
+    OperacionOpcion,
+)
+
+
+@admin.register(OperacionColumna)
+class OperacionColumnaAdmin(admin.ModelAdmin):
+    list_display = ("nombre", "codigo", "orden", "activa", "creada_por")
+    list_filter = ("activa",)
+    search_fields = ("nombre", "codigo")
+    readonly_fields = ("fecha_creacion", "fecha_actualizacion")
 
 
 @admin.register(Operacion)
 class OperacionAdmin(admin.ModelAdmin):
-    list_display = ("titulo", "cliente", "estado", "prioridad", "creado_por", "fecha_creacion")
-    list_filter = ("estado", "prioridad", "fecha_creacion")
+    list_display = ("titulo", "cliente", "estado", "columna", "prioridad", "creado_por", "fecha_creacion")
+    list_filter = ("estado", "columna", "prioridad", "fecha_creacion")
     search_fields = ("titulo", "descripcion", "cliente__nombre")
     readonly_fields = ("fecha_creacion",)
     filter_horizontal = ("asignados", "etiquetas", "opciones")

@@ -15,8 +15,13 @@ from django.urls import reverse
 from django.utils import timezone
 
 from clientes.models import Cliente
+from operaciones.models import Operacion
+from .services import (
+    copiar_cuenta_gastos_a_columna,
+    crear_cuenta_gastos_desde_operacion_si_corresponde,
+)
 from . import views
-from .models import CuentaGastos, CuentaGastosArchivo, CuentaGastosComentario, CuentaGastosEnlace, CuentaGastosEtiqueta, CuentaGastosOpcion, DocumentoRepositorio
+from .models import CuentaGastos, CuentaGastosArchivo, CuentaGastosColumna, CuentaGastosComentario, CuentaGastosEnlace, CuentaGastosEtiqueta, CuentaGastosOpcion, DocumentoRepositorio
 
 PANEL_JS_PATH = (
     Path(__file__).resolve().parent
@@ -36,8 +41,16 @@ PANEL_JS_PATH = (
 class CuentaGastosTests(TestCase):
     def setUp(self):
         User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin_cuenta_gastos",
+            password="pass",
+            first_name="Admin",
+            is_superuser=True,
+        )
         self.user = User.objects.create_user(username="tester", password="pass", first_name="Tester")
         self.asignado = User.objects.create_user(username="asignado", password="pass", first_name="Asignado")
+        self.columnas_base = list(CuentaGastosColumna.objects.order_by("orden", "id"))
+        self.columna_inicial = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.SOLICITUD_PAGO)
 
         self.cliente = Cliente.objects.create(nombre="Cliente Test", empresa="Empresa Test")
         self.etiqueta = CuentaGastosEtiqueta.objects.create(nombre="Urgente", color="#FF0000")
@@ -57,6 +70,18 @@ class CuentaGastosTests(TestCase):
 
         self.client = Client()
         self.client.force_login(self.user)
+
+    def _post_pegar(self, columna, cuenta=None, *, usuario=None, modulo="cuenta_gastos"):
+        if usuario is not None:
+            self.client.force_login(usuario)
+        return self.client.post(
+            reverse("cuenta_gastos:tarjeta_pegar", args=[columna.pk]),
+            {
+                "tarjeta_id": str((cuenta or self.cuenta).pk),
+                "modulo": modulo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
 
     def test_panel_cuenta_gastos_view(self):
         resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
@@ -89,7 +114,7 @@ class CuentaGastosTests(TestCase):
         )
         self.assertEqual(
             len(re.findall(r'<section\b[^>]*data-cuenta-column="1"', html)),
-            len(views.COLUMNAS),
+            len(self.columnas_base),
         )
         self.assertEqual(
             len(
@@ -124,6 +149,11 @@ class CuentaGastosTests(TestCase):
         self.assertIn("existing.controller.abort()", javascript)
         self.assertIn("data-cuenta-inline-editor-loading", javascript)
         self.assertIn("No se pudo cargar el editor. Intenta nuevamente.", javascript)
+        self.assertIn("const columnCreateUrl = config.columnCreateUrl", javascript)
+        self.assertIn("cuenta_gastos.copiedCard", javascript)
+        self.assertIn("data-cuenta-copy-card", javascript)
+        self.assertIn("data-cuenta-column-paste", javascript)
+        self.assertIn('data-cuenta-column-create-form="1"', html)
         self.assertNotIn("{% filter escapejs %}", javascript)
 
     def test_endpoint_editor_inline_get_real_solo_lectura_y_metodos_seguros(self):
@@ -265,7 +295,7 @@ class CuentaGastosTests(TestCase):
                 "asignados": [str(self.asignado.id)],
                 "etiquetas": [str(self.etiqueta.id)],
                 "opciones": [str(self.opcion.id)],
-                "estado": CuentaGastos.Estado.COBRANZA,
+                "estado": self.columna_inicial.codigo,
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
@@ -275,7 +305,7 @@ class CuentaGastosTests(TestCase):
         data = resp.json()
         self.assertTrue(data["ok"])
         self.assertEqual(data["message"], "La cuenta de gastos se creo correctamente.")
-        self.assertEqual(data["estado"], CuentaGastos.Estado.COBRANZA)
+        self.assertEqual(data["estado"], self.columna_inicial.codigo)
         self.assertEqual(data["cuenta_id"], data["id"])
         self.assertIn('data-cuenta-card="1"', data["card_html"])
 
@@ -294,7 +324,7 @@ class CuentaGastosTests(TestCase):
             reverse("cuenta_gastos:crear_cuenta_gastos_inline"),
             {
                 "titulo": "",
-                "estado": CuentaGastos.Estado.EN_PROCESO,
+                "estado": self.columna_inicial.codigo,
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
@@ -307,7 +337,7 @@ class CuentaGastosTests(TestCase):
         self.assertIn("titulo", data["errors"])
         self.assertIn('data-cuenta-inline-form-fragment="1"', data["html"])
         self.assertIn(
-            f'name="estado" value="{CuentaGastos.Estado.EN_PROCESO}"',
+            f'name="estado" value="{self.columna_inicial.codigo}"',
             data["html"],
         )
 
@@ -438,6 +468,327 @@ class CuentaGastosTests(TestCase):
         resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"), {"usuario": str(self.asignado.id)})
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Laptop HP")
+
+    def test_columnas_base_registradas_con_orden_original(self):
+        self.assertEqual(
+            list(
+                CuentaGastosColumna.objects.order_by("orden", "id").values_list(
+                    "codigo",
+                    "nombre",
+                )
+            ),
+            list(views.COLUMNAS_INICIALES),
+        )
+
+    def test_cuenta_existente_recibe_fk_de_columna_por_estado(self):
+        self.assertEqual(self.cuenta.estado, CuentaGastos.Estado.SOLICITUD_PAGO)
+        self.assertIsNotNone(self.cuenta.columna_id)
+        self.assertEqual(self.cuenta.columna.codigo, CuentaGastos.Estado.SOLICITUD_PAGO)
+
+    def test_crear_inline_sin_columna_usa_columna_inicial_real(self):
+        response = self.client.post(
+            reverse("cuenta_gastos:crear_cuenta_gastos_inline"),
+            {"titulo": "Sin columna explicita"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 201)
+        cuenta = CuentaGastos.objects.get(pk=response.json()["cuenta_id"])
+        self.assertEqual(cuenta.columna_id, self.columna_inicial.pk)
+        self.assertEqual(cuenta.estado, self.columna_inicial.codigo)
+
+    def test_crear_inline_en_columna_personalizada_se_rechaza(self):
+        columna = CuentaGastosColumna.objects.create(
+            nombre="Revision documental",
+            codigo="REVISION_DOCUMENTAL",
+            orden=99,
+            creada_por=self.user,
+        )
+        response = self.client.post(
+            reverse("cuenta_gastos:crear_cuenta_gastos_inline"),
+            {
+                "titulo": "En columna nueva",
+                "estado": columna.codigo,
+                "columna_id": str(columna.pk),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertEqual(
+            data["message"],
+            "Solo se pueden crear tarjetas desde la primera columna activa.",
+        )
+        self.assertFalse(
+            CuentaGastos.objects.filter(titulo="En columna nueva").exists()
+        )
+
+    def test_panel_solo_muestra_alta_manual_en_primera_columna_y_cambia_con_reorden(self):
+        response = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
+        html = response.content.decode()
+        self.assertEqual(html.count('data-cuenta-inline-open="1"'), 1)
+
+        columnas = list(CuentaGastosColumna.objects.order_by("orden", "id"))
+        nuevo_orden = [str(columna.pk) for columna in reversed(columnas)]
+        reorder_response = self.client.post(
+            reverse("cuenta_gastos:columna_reordenar"),
+            {"columnas[]": nuevo_orden},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(reorder_response.status_code, 200)
+
+        nuevo_primero = CuentaGastosColumna.objects.order_by("orden", "id").first()
+        response = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
+        html = response.content.decode()
+        self.assertEqual(html.count('data-cuenta-inline-open="1"'), 1)
+        self.assertIn(f'data-columna-id="{nuevo_primero.pk}"', html)
+
+    def test_mover_cuenta_a_columna_personalizada_sincroniza_estado_y_columna(self):
+        columna = CuentaGastosColumna.objects.create(
+            nombre="Revision operativa",
+            codigo="REVISION_OPERATIVA",
+            orden=100,
+            creada_por=self.user,
+        )
+        response = self.client.post(
+            reverse("cuenta_gastos:mover_cuenta_gastos", args=[self.cuenta.pk]),
+            {
+                "estado": columna.codigo,
+                "columna_id": str(columna.pk),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.cuenta.refresh_from_db()
+        self.assertEqual(self.cuenta.columna_id, columna.pk)
+        self.assertEqual(self.cuenta.estado, columna.codigo)
+
+    def test_no_se_puede_eliminar_columna_base(self):
+        response = self.client.post(
+            reverse("cuenta_gastos:columna_eliminar", args=[self.columna_inicial.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("base", response.json()["error"].lower())
+
+    def test_se_puede_eliminar_columna_personalizada_y_reasignar_tarjetas(self):
+        origen = CuentaGastosColumna.objects.create(
+            nombre="Temporal",
+            codigo="TEMPORAL",
+            orden=120,
+            creada_por=self.user,
+        )
+        destino = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.COBRANZA)
+        self.cuenta.columna = origen
+        self.cuenta.estado = origen.codigo
+        self.cuenta.save(update_fields=["columna", "estado"])
+
+        response = self.client.post(
+            reverse("cuenta_gastos:columna_eliminar", args=[origen.pk]),
+            {"columna_destino_id": str(destino.pk)},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.cuenta.refresh_from_db()
+        origen.refresh_from_db()
+        self.assertFalse(origen.activa)
+        self.assertEqual(self.cuenta.columna_id, destino.pk)
+        self.assertEqual(self.cuenta.estado, destino.codigo)
+
+    def test_creacion_automatica_desde_operaciones_asigna_columna_y_sigue_siendo_idempotente(self):
+        operacion = Operacion.objects.create(
+            titulo="Operacion CG",
+            descripcion="Generada para cuenta de gastos",
+            cliente=self.cliente,
+            prioridad=Operacion.Prioridad.ALTA,
+            creado_por=self.user,
+            estado=Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+        )
+        operacion.asignados.add(self.asignado)
+
+        cuenta, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
+            operacion,
+            creado_por=self.user,
+        )
+        self.assertTrue(creada)
+        self.assertEqual(cuenta.operacion_origen_id, operacion.pk)
+        self.assertIsNotNone(cuenta.columna_id)
+        self.assertEqual(cuenta.estado, CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS)
+        self.assertEqual(cuenta.columna.codigo, CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS)
+        self.assertEqual(list(cuenta.asignados.all()), [self.asignado])
+
+        segunda, creada_segunda = crear_cuenta_gastos_desde_operacion_si_corresponde(
+            operacion,
+            creado_por=self.user,
+        )
+        self.assertFalse(creada_segunda)
+        self.assertEqual(segunda.pk, cuenta.pk)
+
+    def test_servicio_copia_cuenta_a_columna_sin_operacion_origen(self):
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.COBRANZA)
+        operacion = Operacion.objects.create(
+            titulo="Operacion origen copia",
+            creado_por=self.user,
+            estado=Operacion.Estado.PENDIENTE,
+        )
+        self.cuenta.operacion_origen = operacion
+        self.cuenta.save(update_fields=["operacion_origen"])
+
+        nueva = copiar_cuenta_gastos_a_columna(self.cuenta, columna, self.admin)
+
+        self.assertNotEqual(nueva.pk, self.cuenta.pk)
+        self.assertEqual(nueva.columna_id, columna.pk)
+        self.assertEqual(nueva.estado, columna.codigo)
+        self.assertEqual(nueva.creado_por, self.admin)
+        self.assertIsNone(nueva.operacion_origen_id)
+
+    def test_admin_puede_copiar_y_pegar_tarjeta(self):
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.COBRANZA)
+        response = self._post_pegar(columna, usuario=self.admin)
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertIn('data-cuenta-card="1"', data["html"])
+        copia = CuentaGastos.objects.get(pk=data["tarjeta_id"])
+        self.assertNotEqual(copia.pk, self.cuenta.pk)
+        self.assertEqual(copia.columna_id, columna.pk)
+        self.assertEqual(copia.estado, columna.codigo)
+
+    def test_ejecutivo_puede_copiar_y_pegar_tarjeta(self):
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.EN_PROCESO)
+        response = self._post_pegar(columna, usuario=self.user)
+
+        self.assertEqual(response.status_code, 201)
+        copia = CuentaGastos.objects.get(pk=response.json()["tarjeta_id"])
+        self.assertEqual(copia.creado_por, self.user)
+
+    def test_copia_conserva_campos_editables_y_relaciones_validas(self):
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.EN_PROCESO)
+        response = self._post_pegar(columna)
+        copia = CuentaGastos.objects.get(pk=response.json()["tarjeta_id"])
+
+        self.assertEqual(copia.titulo, self.cuenta.titulo)
+        self.assertEqual(copia.descripcion, self.cuenta.descripcion)
+        self.assertEqual(copia.cliente, self.cuenta.cliente)
+        self.assertEqual(copia.prioridad, self.cuenta.prioridad)
+        self.assertEqual(str(copia.fecha_vencimiento), str(self.cuenta.fecha_vencimiento))
+        self.assertEqual(list(copia.asignados.all()), list(self.cuenta.asignados.all()))
+        self.assertEqual(list(copia.etiquetas.all()), list(self.cuenta.etiquetas.all()))
+        self.assertEqual(list(copia.opciones.all()), list(self.cuenta.opciones.all()))
+
+    def test_copia_no_modifica_tarjeta_original(self):
+        original_snapshot = {
+            "pk": self.cuenta.pk,
+            "estado": self.cuenta.estado,
+            "columna_id": self.cuenta.columna_id,
+            "titulo": self.cuenta.titulo,
+            "operacion_origen_id": self.cuenta.operacion_origen_id,
+        }
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.COBRANZA)
+        response = self._post_pegar(columna)
+
+        self.assertEqual(response.status_code, 201)
+        self.cuenta.refresh_from_db()
+        self.assertEqual(
+            {
+                "pk": self.cuenta.pk,
+                "estado": self.cuenta.estado,
+                "columna_id": self.cuenta.columna_id,
+                "titulo": self.cuenta.titulo,
+                "operacion_origen_id": self.cuenta.operacion_origen_id,
+            },
+            original_snapshot,
+        )
+
+    def test_copia_no_duplica_comentarios_archivos_ni_enlaces(self):
+        CuentaGastosComentario.objects.create(
+            cuenta_gasto=self.cuenta,
+            usuario=self.user,
+            comentario="Comentario original",
+        )
+        CuentaGastosArchivo.objects.create(
+            cuenta_gasto=self.cuenta,
+            archivo=SimpleUploadedFile("origen.txt", b"contenido"),
+            subido_por=self.user,
+        )
+        CuentaGastosEnlace.objects.create(
+            cuenta_gasto=self.cuenta,
+            titulo="Portal",
+            url="https://example.com",
+            creado_por=self.user,
+        )
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.COBRANZA)
+        response = self._post_pegar(columna)
+        copia = CuentaGastos.objects.get(pk=response.json()["tarjeta_id"])
+
+        self.assertEqual(copia.comentarios.count(), 0)
+        self.assertEqual(copia.archivos.count(), 0)
+        self.assertEqual(copia.enlaces.count(), 0)
+
+    def test_copia_no_duplica_operacion_origen_ni_crea_operacion_nueva(self):
+        operacion = Operacion.objects.create(
+            titulo="Operacion ligada",
+            creado_por=self.user,
+            estado=Operacion.Estado.PENDIENTE,
+        )
+        self.cuenta.operacion_origen = operacion
+        self.cuenta.save(update_fields=["operacion_origen"])
+        total_operaciones = Operacion.objects.count()
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.COBRANZA)
+
+        response = self._post_pegar(columna)
+        copia = CuentaGastos.objects.get(pk=response.json()["tarjeta_id"])
+
+        self.assertIsNone(copia.operacion_origen_id)
+        self.assertEqual(Operacion.objects.count(), total_operaciones)
+
+    def test_no_se_puede_pegar_en_columna_inexistente(self):
+        response = self.client.post(
+            reverse("cuenta_gastos:tarjeta_pegar", args=[999999]),
+            {"tarjeta_id": str(self.cuenta.pk), "modulo": "cuenta_gastos"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_no_se_puede_pegar_en_columna_inactiva(self):
+        columna = CuentaGastosColumna.objects.create(
+            nombre="Inactiva",
+            codigo="INACTIVA_COPY",
+            orden=300,
+            creada_por=self.user,
+            activa=False,
+        )
+        response = self._post_pegar(columna)
+        self.assertEqual(response.status_code, 404)
+
+    def test_usuario_sin_permiso_recibe_403_al_pegar(self):
+        otro = get_user_model().objects.create_user(
+            username="sin_permiso_copy_cg",
+            password="pass",
+        )
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.COBRANZA)
+        response = self._post_pegar(columna, usuario=otro)
+        self.assertEqual(response.status_code, 403)
+
+    def test_peticion_invalida_no_crea_registros_al_pegar(self):
+        total = CuentaGastos.objects.count()
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.COBRANZA)
+        response = self.client.post(
+            reverse("cuenta_gastos:tarjeta_pegar", args=[columna.pk]),
+            {"tarjeta_id": "abc", "modulo": "cuenta_gastos"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(CuentaGastos.objects.count(), total)
+
+    def test_pegar_varias_veces_crea_registros_independientes(self):
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.COBRANZA)
+        primera = self._post_pegar(columna).json()["tarjeta_id"]
+        segunda = self._post_pegar(columna).json()["tarjeta_id"]
+
+        self.assertNotEqual(primera, segunda)
+        self.assertTrue(CuentaGastos.objects.filter(pk=primera).exists())
+        self.assertTrue(CuentaGastos.objects.filter(pk=segunda).exists())
 
     def _bulk_cuentas(self, cantidad, *, estado=None):
         estado = estado or CuentaGastos.Estado.SOLICITUD_PAGO
@@ -720,6 +1071,7 @@ class CuentaGastosTests(TestCase):
 
     def test_endpoint_vacio_solo_lectura_y_lectura_autenticada_compartida(self):
         estado = CuentaGastos.Estado.APROBADAS
+        columna = CuentaGastosColumna.objects.get(codigo=estado)
         before = CuentaGastos.objects.count()
         response = self._endpoint_columna(estado)
         self.assertEqual(response.status_code, 200)
@@ -728,6 +1080,7 @@ class CuentaGastosTests(TestCase):
             {
                 "ok": True,
                 "estado": estado,
+                "columna_id": columna.pk,
                 "html": "",
                 "loaded": 0,
                 "next_offset": 0,
@@ -793,7 +1146,7 @@ class CuentaGastosTests(TestCase):
         self.assertIn("Tarjeta duplicada o incompatible.", javascript)
         self.assertIn("if (duplicateCard) duplicateCard.remove()", javascript)
         self.assertIn("data-cuenta-load-more", javascript)
-        self.assertEqual(javascript.count("Sortable.create("), 1)
+        self.assertEqual(javascript.count("Sortable.create("), 2)
         self.assertEqual(
             javascript.count("document.addEventListener('click'"), 1
         )

@@ -4,6 +4,7 @@
     data-id="{{ cuenta.id }}"
     data-cuenta-card="1"
     data-cuenta-state="{{ cuenta.estado }}"
+    data-cuenta-column-id="{{ cuenta.columna_id|default:'' }}"
     data-cuenta-editor-url="{% url 'cuenta_gastos:editor_cuenta_inline' cuenta.id %}"
 >
     <div class="cuenta-card__accent cuenta-card__accent--{{ cuenta.prioridad|lower }}"></div>
@@ -19,15 +20,39 @@
                 </div>
             </div>
 
-            <button
-                type="button"
-                class="btn btn-sm cuenta-card__detail-btn"
-                data-id="{{ cuenta.id }}"
-                data-cuenta-modal-open="1"
-                data-modal-url="/cuenta-gastos/detalle/{{ cuenta.id }}/"
-            >
-                Ver
-            </button>
+            <div class="d-flex align-items-start gap-2">
+                <button
+                    type="button"
+                    class="btn btn-sm cuenta-card__detail-btn"
+                    data-id="{{ cuenta.id }}"
+                    data-cuenta-modal-open="1"
+                    data-modal-url="/cuenta-gastos/detalle/{{ cuenta.id }}/"
+                >
+                    Ver
+                </button>
+                <div class="dropdown">
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-light"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        Opciones
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <button
+                                type="button"
+                                class="dropdown-item"
+                                data-cuenta-copy-card="1"
+                                data-tarjeta-id="{{ cuenta.id }}"
+                            >
+                                Copiar tarjeta
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
 
         <div class="cuenta-card__meta">

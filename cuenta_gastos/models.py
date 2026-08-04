@@ -21,6 +21,30 @@ def documento_repositorio_upload_to(_instance, _filename):
     )
 
 
+class CuentaGastosColumna(models.Model):
+    nombre = models.CharField(max_length=120)
+    codigo = models.CharField(max_length=60, unique=True)
+    orden = models.PositiveIntegerField(default=0)
+    activa = models.BooleanField(default=True)
+    creada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cuenta_gastos_columnas_creadas",
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["orden", "id"]
+        verbose_name = "Columna de cuenta de gastos"
+        verbose_name_plural = "Columnas de cuenta de gastos"
+
+    def __str__(self):
+        return self.nombre
+
+
 class CuentaGastos(models.Model):
 
     class Estado(models.TextChoices):
@@ -70,6 +94,13 @@ class CuentaGastos(models.Model):
         choices=Estado.choices,
         default=Estado.SOLICITUD_PAGO
     )
+    columna = models.ForeignKey(
+        "CuentaGastosColumna",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="cuentas_gastos",
+    )
 
     prioridad = models.CharField(
         max_length=20,
@@ -118,6 +149,33 @@ class CuentaGastos(models.Model):
 
     class Meta:
         ordering = ["-fecha_creacion", "-id"]
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            update_fields = set(update_fields)
+        if self.columna_id:
+            columna = getattr(self, "columna", None)
+            if columna is None or getattr(columna, "pk", None) != self.columna_id:
+                columna = CuentaGastosColumna.objects.filter(
+                    pk=self.columna_id
+                ).only("id", "codigo").first()
+                self.columna = columna
+            if columna is not None and self.estado != columna.codigo:
+                self.estado = columna.codigo
+                if update_fields is not None:
+                    update_fields.add("estado")
+        elif self.estado:
+            columna = CuentaGastosColumna.objects.filter(
+                codigo=self.estado
+            ).only("id").first()
+            if columna is not None:
+                self.columna_id = columna.pk
+                if update_fields is not None:
+                    update_fields.add("columna")
+        if update_fields is not None:
+            kwargs["update_fields"] = list(update_fields)
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.titulo

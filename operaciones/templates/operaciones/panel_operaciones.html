@@ -14,6 +14,12 @@
 <div style="display:none;">{% csrf_token %}</div>
 
 <div class="operaciones-toolbar">
+  <button
+    type="button"
+    class="btn btn-sm btn-dark"
+    data-operacion-column-create-open="1">
+    + Agregar columna
+  </button>
   <form method="get" class="operaciones-toolbar__filter">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
     <select id="OperacionesUserFilter" name="usuario" class="form-select">
@@ -55,6 +61,96 @@
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content" id="OperacionDetalleModalContent">
       <div class="modal-body p-4 text-center text-muted">Cargando...</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="OperacionColumnCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form data-operacion-column-create-form="1">
+        <div class="modal-header">
+          <h5 class="modal-title">Nueva columna</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="operacionColumnCreateNombre" class="form-label">Nombre</label>
+            <input
+              id="operacionColumnCreateNombre"
+              name="nombre"
+              type="text"
+              class="form-control"
+              maxlength="120"
+              required>
+          </div>
+          <div class="small text-danger d-none" data-operacion-column-create-error="1"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Crear columna</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="OperacionColumnEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form data-operacion-column-edit-form="1">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar columna</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="columna_id" value="">
+          <div class="mb-3">
+            <label for="operacionColumnEditNombre" class="form-label">Nombre</label>
+            <input
+              id="operacionColumnEditNombre"
+              name="nombre"
+              type="text"
+              class="form-control"
+              maxlength="120"
+              required>
+          </div>
+          <div class="small text-danger d-none" data-operacion-column-edit-error="1"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="OperacionColumnDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form data-operacion-column-delete-form="1">
+        <div class="modal-header">
+          <h5 class="modal-title">Eliminar columna</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="columna_id" value="">
+          <p class="mb-3" data-operacion-column-delete-copy="1"></p>
+          <div class="mb-3">
+            <label for="operacionColumnDeleteDestino" class="form-label">Mover operaciones a</label>
+            <select id="operacionColumnDeleteDestino" name="columna_destino_id" class="form-select">
+              <option value="">Selecciona una columna</option>
+            </select>
+            <div class="form-text">Solo es necesario si la columna tiene operaciones.</div>
+          </div>
+          <div class="small text-danger d-none" data-operacion-column-delete-error="1"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Eliminar columna</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>

@@ -46,6 +46,19 @@
   position: relative;
 }
 
+.garantias-columns {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.garantias-column-item {
+  flex: 0 0 min(360px, 88vw);
+  min-width: min(360px, 88vw);
+}
+
 .garantias-filter {
   min-width: min(100%, 290px);
 }
@@ -79,6 +92,9 @@
   color: var(--garantias-text);
   font-size: 1.02rem;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .garantias-column__count {
@@ -89,6 +105,11 @@
   background: var(--garantias-accent-soft);
   color: var(--garantias-accent);
   font-weight: 700;
+}
+
+.garantias-column__menu-btn {
+  border-radius: 999px;
+  border-color: var(--garantias-border);
 }
 
 .garantias-column__body {
@@ -124,6 +145,13 @@
   border-radius: 1rem;
   background: var(--garantias-surface);
   box-shadow: 0 12px 28px rgba(23, 32, 51, 0.08);
+}
+
+@media (max-width: 767.98px) {
+  .garantias-column-item {
+    flex-basis: 92vw;
+    min-width: 92vw;
+  }
 }
 
 .garantia-empty {

@@ -10,6 +10,12 @@
 <div class="visually-hidden">{% csrf_token %}</div>
 
 <div class="mb-3 d-flex gap-2 flex-wrap align-items-end">
+  <button
+    type="button"
+    class="btn btn-sm btn-dark"
+    data-garantia-column-create-open="1">
+    + Agregar columna
+  </button>
   <form method="get" class="ms-auto garantias-filter">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
     <select id="GarantiasUserFilter" name="usuario" class="form-select">
@@ -22,7 +28,7 @@
 </div>
 
 <div class="garantias-board">
-  {% include "garantias/_tablero.html" with columnas_kanban=columnas_kanban today=today only %}
+  {% include "garantias/_tablero.html" with columnas_kanban=columnas_kanban columnas_estado=columnas_estado today=today only %}
 </div>
 <div data-garantia-inline-slot-home="1">
   <div class="px-3 pt-3 d-none" data-garantia-inline-container="1" data-garantia-inline-shared-slot="1"></div>
@@ -40,6 +46,96 @@
       <div class="garantia-drawer__loading">Cargando...</div>
     </div>
   </aside>
+</div>
+
+<div class="modal fade" id="garantiaColumnCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form data-garantia-column-create-form="1">
+        <div class="modal-header">
+          <h5 class="modal-title">Nueva columna</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="garantiaColumnCreateNombre" class="form-label">Nombre</label>
+            <input
+              id="garantiaColumnCreateNombre"
+              name="nombre"
+              type="text"
+              class="form-control"
+              maxlength="120"
+              required>
+          </div>
+          <div class="small text-danger d-none" data-garantia-column-create-error="1"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Crear columna</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="garantiaColumnEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form data-garantia-column-edit-form="1">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar columna</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="columna_id" value="">
+          <div class="mb-3">
+            <label for="garantiaColumnEditNombre" class="form-label">Nombre</label>
+            <input
+              id="garantiaColumnEditNombre"
+              name="nombre"
+              type="text"
+              class="form-control"
+              maxlength="120"
+              required>
+          </div>
+          <div class="small text-danger d-none" data-garantia-column-edit-error="1"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="garantiaColumnDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form data-garantia-column-delete-form="1">
+        <div class="modal-header">
+          <h5 class="modal-title">Eliminar columna</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="columna_id" value="">
+          <p class="mb-3" data-garantia-column-delete-copy="1"></p>
+          <div class="mb-3">
+            <label for="garantiaColumnDeleteDestino" class="form-label">Mover garantias a</label>
+            <select id="garantiaColumnDeleteDestino" name="columna_destino_id" class="form-select">
+              <option value="">Selecciona una columna</option>
+            </select>
+            <div class="form-text">Solo es necesario si la columna tiene garantias.</div>
+          </div>
+          <div class="small text-danger d-none" data-garantia-column-delete-error="1"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Eliminar columna</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <div class="modal fade" id="garantiaDetalleModal" tabindex="-1" aria-hidden="true">

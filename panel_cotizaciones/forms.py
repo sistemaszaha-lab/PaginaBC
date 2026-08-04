@@ -9,6 +9,7 @@ from clientes.models import Cliente, normalizar_texto_cliente
 from .models import (
     PanelCotizacion,
     PanelCotizacionComentario,
+    PanelCotizacionColumna,
     PanelCotizacionEtiqueta,
 )
 
@@ -478,3 +479,27 @@ class PanelCotizacionUserFilterForm(forms.Form):
             }
         ),
     )
+
+
+class PanelCotizacionColumnaCreateForm(forms.ModelForm):
+    class Meta:
+        model = PanelCotizacionColumna
+        fields = ("nombre",)
+        widgets = {
+            "nombre": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Nombre de la columna",
+                }
+            )
+        }
+
+    def clean_nombre(self):
+        nombre = (self.cleaned_data.get("nombre") or "").strip()
+        if not nombre:
+            raise forms.ValidationError("Este campo es obligatorio.")
+        return nombre
+
+
+class PanelCotizacionColumnaUpdateForm(PanelCotizacionColumnaCreateForm):
+    pass

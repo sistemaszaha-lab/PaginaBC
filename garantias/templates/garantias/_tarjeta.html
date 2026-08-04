@@ -4,6 +4,7 @@
   class="garantia-card card border-0 shadow-sm mb-3"
   data-garantia-card="1"
   data-garantia-id="{{ g.id }}"
+  data-garantia-column-id="{{ g.columna_id|default:'' }}"
   data-garantia-state="{{ g.estado }}">
   <div class="card-body p-3">
     <div class="garantia-card__header">
@@ -64,7 +65,27 @@
         <span data-garantia-card-files-count="1">Archivos: {{ g.archivos_count|default:0 }}</span>
         <span data-garantia-card-links-count="1">Enlaces: {{ g.enlaces_count|default:0 }}</span>
       </div>
-      {% include "components/_kanban_status_control.html" with obj=g select_attr="data-garantia-state-select" only %}
+      <div class="dropdown">
+        <button
+          class="btn btn-sm btn-outline-secondary"
+          type="button"
+          data-bs-toggle="dropdown"
+          aria-expanded="false">
+          Acciones
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li>
+            <button
+              type="button"
+              class="dropdown-item"
+              data-garantia-copy-card="1"
+              data-tarjeta-id="{{ g.id }}">
+              Copiar tarjeta
+            </button>
+          </li>
+        </ul>
+      </div>
+      {% include "components/_kanban_status_control.html" with obj=g select_attr="data-garantia-state-select" choices=columnas_estado only %}
 
       <a
         href="{% url 'garantias:detalle_garantia' g.id %}"

@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, F, Window
+from django.db.models import Count, F, Q, Window
 from django.db.models.functions import RowNumber
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -12,6 +12,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from .decorators import admin_required
@@ -19,6 +20,8 @@ from .forms import (
     GarantiaArchivosForm,
     GarantiaArchivoUploadForm,
     GarantiaComentarioForm,
+    GarantiaColumnaCreateForm,
+    GarantiaColumnaUpdateForm,
     GarantiaEditarForm,
     GarantiaEnlaceForm,
     GarantiaEnlaceCreateForm,
@@ -26,39 +29,104 @@ from .forms import (
     GarantiaInlineCreateForm,
     GarantiaQuickEditForm,
 )
-from .models import Garantia, GarantiaArchivo, GarantiaComentario, GarantiaEnlace
+from .models import (
+    Garantia,
+    GarantiaArchivo,
+    GarantiaColumna,
+    GarantiaComentario,
+    GarantiaEnlace,
+)
+from .services import copiar_garantia_a_columna
 
 User = get_user_model()
 
 INITIAL_CARDS_PER_COLUMN = 10
 CARDS_PAGE_SIZE = 10
 GARANTIA_ORDERING = ("-fecha_creacion", "-id")
-ESTADOS_VISIBLES = frozenset(
-    (
-        Garantia.Estado.SOLICITUD_NAVIERA,
-        Garantia.Estado.EN_PROCESO,
-        Garantia.Estado.PAGO_NAVIERA_ZAHA,
-        Garantia.Estado.DEVOLUCION_CLIENTE,
-    )
+COLUMNAS_INICIALES = (
+    (Garantia.Estado.SOLICITUD_NAVIERA, "Solicitud a naviera"),
+    (Garantia.Estado.EN_PROCESO, "En proceso"),
+    (Garantia.Estado.PAGO_NAVIERA_ZAHA, "Pago naviera a zaha"),
+    (Garantia.Estado.DEVOLUCION_CLIENTE, "Devolución a cliente"),
 )
 
 
+def _columnas_activas_queryset():
+    return GarantiaColumna.objects.filter(activa=True).order_by("orden", "id")
+
+
+def _columnas_activas():
+    return list(_columnas_activas_queryset())
+
+
+def _primer_columna_activa():
+    return _columnas_activas_queryset().first()
+
+
+def _columnas_estado_choices():
+    return [(columna.codigo, columna.nombre) for columna in _columnas_activas()]
+
+
+def _buscar_columna_activa_por_codigo(codigo: str):
+    return _columnas_activas_queryset().filter(codigo=codigo).first()
+
+
 def _estado_label(estado):
-    return {
-        Garantia.Estado.SOLICITUD_NAVIERA: "Solicitud a naviera",
-        Garantia.Estado.EN_PROCESO: "En proceso",
-        Garantia.Estado.PAGO_NAVIERA_ZAHA: "Pago naviera a ZAHA",
-        Garantia.Estado.DEVOLUCION_CLIENTE: "Devolución a cliente",
-    }.get(estado, estado)
+    columna = _buscar_columna_activa_por_codigo(estado)
+    if columna is not None:
+        return columna.nombre
+    return dict(COLUMNAS_INICIALES).get(estado, estado)
+
+
+def _puede_operar_garantias(user) -> bool:
+    return bool(user.is_authenticated and user.is_active)
 
 
 def _estados_disponibles():
-    return [
-        Garantia.Estado.SOLICITUD_NAVIERA,
-        Garantia.Estado.EN_PROCESO,
-        Garantia.Estado.PAGO_NAVIERA_ZAHA,
-        Garantia.Estado.DEVOLUCION_CLIENTE,
-    ]
+    return [codigo for codigo, _nombre in _columnas_estado_choices()]
+
+
+def _generar_codigo_columna(nombre: str) -> str:
+    base = slugify(nombre).replace("-", "_").upper()
+    if not base:
+        base = "COLUMNA"
+    if base[0].isdigit():
+        base = f"COLUMNA_{base}"
+    candidato = base
+    indice = 2
+    while GarantiaColumna.objects.filter(codigo=candidato).exists():
+        candidato = f"{base}_{indice}"
+        indice += 1
+    return candidato
+
+
+def _siguiente_orden_columna() -> int:
+    ultima = GarantiaColumna.objects.order_by("-orden", "-id").first()
+    return (ultima.orden + 1) if ultima is not None else 1
+
+
+def _column_context(*, columna: GarantiaColumna, items, count: int, loaded: int):
+    return {
+        "id": columna.pk,
+        "columna_id": columna.pk,
+        "codigo": columna.codigo,
+        "estado": columna.codigo,
+        "nombre": columna.nombre,
+        "estado_texto": columna.nombre,
+        "items": items,
+        "count": count,
+        "loaded": loaded,
+        "has_more": count > loaded,
+        "remaining": max(0, count - loaded),
+        "load_url": reverse(
+            "garantias:tarjetas_columna",
+            kwargs={"codigo": columna.codigo},
+        ),
+        "paste_url": reverse(
+            "garantias:tarjeta_pegar",
+            kwargs={"columna_id": columna.pk},
+        ),
+    }
 
 
 def _nombre_corto_usuario(usuario):
@@ -81,7 +149,7 @@ def _es_ajax(request):
 
 def _garantia_queryset():
     return (
-        Garantia.objects.select_related("cliente", "creado_por")
+        Garantia.objects.select_related("cliente", "creado_por", "columna")
         .prefetch_related("asignados", "etiquetas")
         .annotate(
             comentarios_count=Count("comentarios", distinct=True),
@@ -93,13 +161,17 @@ def _garantia_queryset():
 
 
 def _board_queryset(usuario=None):
-    queryset = _garantia_queryset().filter(estado__in=ESTADOS_VISIBLES)
+    codigos_activos = [codigo for codigo, _nombre in _columnas_estado_choices()]
+    queryset = _garantia_queryset().filter(estado__in=codigos_activos).filter(
+        Q(columna__activa=True) | Q(columna__isnull=True)
+    )
     if usuario is not None:
         queryset = queryset.filter(asignados__id=usuario.id).distinct()
     return queryset.order_by(*GARANTIA_ORDERING)
 
 
 def _columnas_kanban(usuario=None):
+    columnas = _columnas_activas()
     garantias = list(
         _board_queryset(usuario)
         .annotate(
@@ -118,30 +190,21 @@ def _columnas_kanban(usuario=None):
         )
         .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
     )
-    items_por_estado = {estado: [] for estado in _estados_disponibles()}
-    totales = {estado: 0 for estado in _estados_disponibles()}
+    items_por_estado = {columna.codigo: [] for columna in columnas}
+    totales = {columna.codigo: 0 for columna in columnas}
     for garantia in garantias:
         if garantia.estado in items_por_estado:
             items_por_estado[garantia.estado].append(garantia)
             totales[garantia.estado] = garantia.total_columna
 
     return [
-        {
-            "estado": estado,
-            "estado_texto": _estado_label(estado),
-            "items": items_por_estado[estado],
-            "count": totales[estado],
-            "loaded": len(items_por_estado[estado]),
-            "has_more": totales[estado] > len(items_por_estado[estado]),
-            "remaining": max(
-                0, totales[estado] - len(items_por_estado[estado])
-            ),
-            "load_url": reverse(
-                "garantias:tarjetas_columna",
-                kwargs={"estado": estado},
-            ),
-        }
-        for estado in _estados_disponibles()
+        _column_context(
+            columna=columna,
+            items=items_por_estado[columna.codigo],
+            count=totales[columna.codigo],
+            loaded=len(items_por_estado[columna.codigo]),
+        )
+        for columna in columnas
     ]
 
 
@@ -242,13 +305,14 @@ def _contexto_modal_garantia(garantia, form=None, archivos_form=None, enlace_for
     }
 
 
-def _render_inline_create_form(request, form, estado):
+def _render_inline_create_form(request, form, columna):
     return render_to_string(
         "garantias/_inline_create_form.html",
         {
             "form": form,
-            "estado": estado,
-            "estado_texto": _estado_label(estado),
+            "estado": columna.codigo,
+            "estado_texto": columna.nombre,
+            "columna": columna,
         },
         request=request,
     )
@@ -276,14 +340,38 @@ def _guardar_enlaces_payload(garantia, enlaces_payload, usuario):
 
 
 def _estado_inicial_garantia():
-    return Garantia.Estado.SOLICITUD_NAVIERA
+    return _primer_columna_activa()
+
+
+def _columna_manual_permitida():
+    return _primer_columna_activa()
+
+
+def _column_count(columna: GarantiaColumna) -> int:
+    return Garantia.objects.filter(estado=columna.codigo).count()
+
+
+def _es_columna_base(columna: GarantiaColumna) -> bool:
+    return columna.codigo in {codigo for codigo, _nombre in COLUMNAS_INICIALES}
 
 
 def _render_card_html(request, garantia):
     return render_to_string(
         "garantias/_garantia_card.html",
-        {"g": garantia, "today": timezone.localdate()},
+        {
+            "g": garantia,
+            "today": timezone.localdate(),
+            "columnas_estado": _columnas_estado_choices(),
+        },
         request=request,
+    )
+
+
+def _get_garantia_para_copia(pk: int) -> Garantia:
+    return get_object_or_404(
+        Garantia.objects.select_related("columna", "cliente", "creado_por")
+        .prefetch_related("asignados", "etiquetas"),
+        pk=pk,
     )
 
 
@@ -363,10 +451,16 @@ def panel_garantias(request):
         "garantias/panel_garantias.html",
         {
             "columnas_kanban": _columnas_kanban(usuario),
+            "columnas_estado": _columnas_estado_choices(),
+            "columnas_activas": _columnas_activas(),
+            "columna_create_form": GarantiaColumnaCreateForm(),
             "panel_config": {
                 "estadoUpdateUrl": reverse("garantias:actualizar_estado_garantia"),
+                "boardUrl": reverse("garantias:tablero_partial"),
                 "inlineCreateUrl": reverse("garantias:crear_garantia_inline"),
                 "inlineFormUrl": reverse("garantias:formulario_garantia_inline"),
+                "columnCreateUrl": reverse("garantias:columna_crear"),
+                "columnReorderUrl": reverse("garantias:columna_reordenar"),
             },
             "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
             "today": timezone.localdate(),
@@ -377,8 +471,25 @@ def panel_garantias(request):
 @login_required
 @admin_required
 @require_GET
-def tarjetas_columna(request, estado):
-    if estado not in ESTADOS_VISIBLES:
+def tablero_partial(request):
+    usuario = _get_usuario_filter(request)
+    return render(
+        request,
+        "garantias/_tablero.html",
+        {
+            "columnas_kanban": _columnas_kanban(usuario),
+            "columnas_estado": _columnas_estado_choices(),
+            "today": timezone.localdate(),
+        },
+    )
+
+
+@login_required
+@admin_required
+@require_GET
+def tarjetas_columna(request, codigo):
+    columna_obj = _buscar_columna_activa_por_codigo(codigo)
+    if columna_obj is None:
         return JsonResponse(
             {"ok": False, "error": "Estado no encontrado."},
             status=404,
@@ -401,7 +512,7 @@ def tarjetas_columna(request, estado):
             status=400,
         )
 
-    columna = _board_queryset(usuario).filter(estado=estado)
+    columna = _board_queryset(usuario).filter(estado=columna_obj.codigo)
     total = columna.count()
     recognized_loaded_ids = set(
         columna.filter(pk__in=loaded_ids).values_list("pk", flat=True)
@@ -414,10 +525,15 @@ def tarjetas_columna(request, estado):
     )
     has_more = len(siguientes) > CARDS_PAGE_SIZE
     garantias = siguientes[:CARDS_PAGE_SIZE]
+    columnas_estado = _columnas_estado_choices()
     html = "".join(
         render_to_string(
             "garantias/_garantia_card.html",
-            {"g": garantia, "today": timezone.localdate()},
+            {
+                "g": garantia,
+                "today": timezone.localdate(),
+                "columnas_estado": columnas_estado,
+            },
             request=request,
         )
         for garantia in garantias
@@ -426,7 +542,9 @@ def tarjetas_columna(request, estado):
     return JsonResponse(
         {
             "ok": True,
-            "estado": estado,
+            "estado": columna_obj.codigo,
+            "columna_id": columna_obj.pk,
+            "columna_codigo": columna_obj.codigo,
             "html": html,
             "loaded": loaded,
             "next_offset": len(recognized_loaded_ids) + loaded,
@@ -441,14 +559,17 @@ def tarjetas_columna(request, estado):
 @admin_required
 @require_GET
 def formulario_garantia_inline(request):
-    estado = _estado_inicial_garantia()
+    columna = _estado_inicial_garantia()
+    if columna is None:
+        return JsonResponse({"ok": False, "error": "No hay columnas disponibles."}, status=400)
     return render(
         request,
         "garantias/_inline_create_form.html",
         {
             "form": GarantiaInlineCreateForm(),
-            "estado": estado,
-            "estado_texto": _estado_label(estado),
+            "estado": columna.codigo,
+            "estado_texto": columna.nombre,
+            "columna": columna,
         },
     )
 
@@ -457,6 +578,9 @@ def formulario_garantia_inline(request):
 @admin_required
 def crear_garantia(request):
     next_url = _safe_next_url(request)
+    columna_inicial = _estado_inicial_garantia()
+    if columna_inicial is None:
+        raise PermissionDenied("No hay columnas disponibles en garantias.")
     if request.method == "POST":
         form = GarantiaForm(request.POST, request.FILES)
         archivos_form = GarantiaArchivosForm(request.POST, request.FILES)
@@ -464,7 +588,8 @@ def crear_garantia(request):
         if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
             with transaction.atomic():
                 garantia = form.save(commit=False)
-                garantia.estado = _estado_inicial_garantia()
+                garantia.columna = columna_inicial
+                garantia.estado = columna_inicial.codigo
                 garantia.creado_por = request.user
                 garantia.save()
                 form.save_m2m()
@@ -495,7 +620,33 @@ def crear_garantia_inline(request):
             status=400,
         )
 
-    estado = _estado_inicial_garantia()
+    estado = (request.POST.get("estado") or "").strip()
+    columna = _buscar_columna_activa_por_codigo(estado) or _estado_inicial_garantia()
+    if columna is None:
+        return JsonResponse(
+            {"ok": False, "errors": {"estado": ["Columna invalida."]}},
+            status=400,
+        )
+    columna_permitida = _columna_manual_permitida()
+    if (
+        columna_permitida is None
+        or columna.pk != columna_permitida.pk
+    ):
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Solo se pueden crear tarjetas desde la primera columna activa.",
+                "errors": {
+                    "estado": [
+                        {
+                            "message": "Solo se pueden crear tarjetas desde la primera columna activa.",
+                            "code": "invalid",
+                        }
+                    ]
+                },
+            },
+            status=400,
+        )
     form = GarantiaInlineCreateForm(request.POST, request.FILES)
     if not form.is_valid():
         return JsonResponse(
@@ -503,14 +654,15 @@ def crear_garantia_inline(request):
                 "ok": False,
                 "message": "Revisa los campos marcados.",
                 "errors": form.errors.get_json_data(escape_html=True),
-                "html": _render_inline_create_form(request, form, estado),
+                "html": _render_inline_create_form(request, form, columna),
             },
             status=400,
         )
 
     with transaction.atomic():
         garantia = form.save(commit=False)
-        garantia.estado = estado
+        garantia.columna = columna
+        garantia.estado = columna.codigo
         garantia.creado_por = request.user
         garantia.save()
         form.save_m2m()
@@ -537,6 +689,8 @@ def crear_garantia_inline(request):
             "garantia_id": garantia.pk,
             "estado": garantia.estado,
             "column_count": Garantia.objects.filter(estado=garantia.estado).count(),
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
         },
         status=201,
     )
@@ -588,16 +742,218 @@ def actualizar_garantia_inline(request, pk):
 @login_required
 @admin_required
 @require_POST
+def columna_crear(request):
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    form = GarantiaColumnaCreateForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            status=400,
+        )
+    with transaction.atomic():
+        columna = form.save(commit=False)
+        columna.codigo = _generar_codigo_columna(columna.nombre)
+        columna.orden = _siguiente_orden_columna()
+        columna.creada_por = request.user
+        columna.save()
+    html = render_to_string(
+        "garantias/_columna.html",
+        {
+            "columna": _column_context(columna=columna, items=[], count=0, loaded=0),
+            "columnas_estado": _columnas_estado_choices(),
+            "es_primera_columna": False,
+            "today": timezone.localdate(),
+        },
+        request=request,
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
+            "nombre": columna.nombre,
+            "html": html,
+        },
+        status=201,
+    )
+
+
+@login_required
+@admin_required
+@require_POST
+def columna_editar(request, pk):
+    if not _es_ajax(request):
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    columna = get_object_or_404(GarantiaColumna, pk=pk, activa=True)
+    form = GarantiaColumnaUpdateForm(request.POST, instance=columna)
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": form.errors.get_json_data(escape_html=True)},
+            status=400,
+        )
+    form.save()
+    return JsonResponse(
+        {
+            "ok": True,
+            "columna_id": columna.pk,
+            "columna_codigo": columna.codigo,
+            "nombre": columna.nombre,
+        }
+    )
+
+
+@login_required
+@admin_required
+@require_POST
+def columna_reordenar(request):
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    raw_ids = request.POST.getlist("columnas[]") or request.POST.getlist("columnas")
+    if not raw_ids:
+        return JsonResponse({"ok": False, "error": "Debes enviar columnas."}, status=400)
+    if any(not value.isdigit() or int(value) <= 0 for value in raw_ids):
+        return JsonResponse({"ok": False, "error": "IDs invalidos."}, status=400)
+    ids = [int(value) for value in raw_ids]
+    if len(ids) != len(set(ids)):
+        return JsonResponse({"ok": False, "error": "IDs duplicados."}, status=400)
+    columnas = list(GarantiaColumna.objects.filter(pk__in=ids, activa=True))
+    if len(columnas) != len(ids):
+        return JsonResponse({"ok": False, "error": "Columna no encontrada."}, status=400)
+    with transaction.atomic():
+        for orden, columna_id in enumerate(ids, start=1):
+            GarantiaColumna.objects.filter(pk=columna_id).update(orden=orden)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@admin_required
+@require_POST
+def columna_eliminar(request, pk):
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    columna = get_object_or_404(GarantiaColumna, pk=pk, activa=True)
+    if _es_columna_base(columna):
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "Esta columna base no puede eliminarse porque tiene dependencias criticas.",
+            },
+            status=400,
+        )
+    activas = _columnas_activas()
+    if len(activas) <= 1:
+        return JsonResponse(
+            {"ok": False, "error": "No puedes eliminar la ultima columna activa."},
+            status=400,
+        )
+    destino_id = (request.POST.get("columna_destino_id") or "").strip()
+    garantias_qs = Garantia.objects.filter(
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
+    )
+    total_garantias = garantias_qs.count()
+    if total_garantias > 0:
+        if not destino_id.isdigit():
+            return JsonResponse(
+                {"ok": False, "error": "Debes seleccionar una columna destino."},
+                status=400,
+            )
+        if int(destino_id) == columna.pk:
+            return JsonResponse(
+                {"ok": False, "error": "La columna destino debe ser distinta."},
+                status=400,
+            )
+        destino = get_object_or_404(GarantiaColumna, pk=int(destino_id), activa=True)
+    else:
+        destino = None
+    with transaction.atomic():
+        if destino is not None:
+            garantias_qs.update(columna=destino, estado=destino.codigo)
+        columna.activa = False
+        columna.save(update_fields=["activa", "fecha_actualizacion"])
+        for orden, columna_id in enumerate(
+            GarantiaColumna.objects.filter(activa=True)
+            .order_by("orden", "id")
+            .values_list("pk", flat=True),
+            start=1,
+        ):
+            GarantiaColumna.objects.filter(pk=columna_id).update(orden=orden)
+    response_data = {"ok": True, "columna_id": columna.pk}
+    if destino is not None:
+        response_data.update(
+            {
+                "moved_count": total_garantias,
+                "columna_destino_id": destino.pk,
+                "columna_destino_codigo": destino.codigo,
+                "column_count": _column_count(destino),
+            }
+        )
+    return JsonResponse(response_data)
+
+
+@login_required
+@admin_required
+@require_POST
+def tarjeta_pegar(request, columna_id):
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    if not _puede_operar_garantias(request.user):
+        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
+
+    raw_tarjeta_id = (request.POST.get("tarjeta_id") or "").strip()
+    modulo = (request.POST.get("modulo") or "").strip()
+    if modulo and modulo != "garantias":
+        return JsonResponse(
+            {"ok": False, "error": "Solo se permite copiar tarjetas de garantias."},
+            status=400,
+        )
+    if not raw_tarjeta_id.isdigit() or int(raw_tarjeta_id) <= 0:
+        return JsonResponse({"ok": False, "error": "Tarjeta invalida."}, status=400)
+
+    columna_destino = get_object_or_404(GarantiaColumna, pk=columna_id, activa=True)
+    garantia_original = _get_garantia_para_copia(int(raw_tarjeta_id))
+    if not _puede_operar_garantias(request.user):
+        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
+
+    nueva = copiar_garantia_a_columna(
+        garantia_original=garantia_original,
+        columna_destino=columna_destino,
+        usuario=request.user,
+    )
+    nueva = get_object_or_404(_garantia_queryset(), pk=nueva.pk)
+    return JsonResponse(
+        {
+            "ok": True,
+            "tarjeta_id": nueva.pk,
+            "columna_id": columna_destino.pk,
+            "html": _render_card_html(request, nueva),
+            "estado": nueva.estado,
+            "column_count": _column_count(columna_destino),
+        },
+        status=201,
+    )
+
+
+@login_required
+@admin_required
+@require_POST
 def actualizar_estado_garantia(request):
     garantia_id = (request.POST.get("garantia_id") or "").strip()
     nuevo_estado = (request.POST.get("nuevo_estado") or request.POST.get("estado") or "").strip().upper()
     garantia = get_object_or_404(Garantia, pk=garantia_id)
-    estados_validos = set(_estados_disponibles())
-    if nuevo_estado not in estados_validos:
+    columna = _buscar_columna_activa_por_codigo(nuevo_estado)
+    if columna is None:
         raise PermissionDenied("Estado inválido.")
-    if garantia.estado != nuevo_estado:
-        garantia.estado = nuevo_estado
-        garantia.save(update_fields=["estado"])
+    if garantia.estado != nuevo_estado or garantia.columna_id != columna.pk:
+        garantia.columna = columna
+        garantia.estado = columna.codigo
+        garantia.save(update_fields=["columna", "estado"])
 
     if _es_ajax(request):
         return JsonResponse(
@@ -605,7 +961,9 @@ def actualizar_estado_garantia(request):
                 "status": "ok",
                 "id": garantia.pk,
                 "estado": garantia.estado,
-                "estado_label": _estado_label(garantia.estado),
+                "estado_label": columna.nombre,
+                "columna_id": columna.pk,
+                "columna_codigo": columna.codigo,
             }
         )
     return redirect("garantias:panel_garantias")
@@ -617,12 +975,13 @@ def actualizar_estado_garantia(request):
 def cambiar_estado_garantia(request, pk):
     garantia = get_object_or_404(Garantia, pk=pk)
     nuevo_estado = (request.POST.get("estado") or request.POST.get("nuevo_estado") or "").strip().upper()
-    estados_validos = set(_estados_disponibles())
-    if nuevo_estado not in estados_validos:
+    columna = _buscar_columna_activa_por_codigo(nuevo_estado)
+    if columna is None:
         raise PermissionDenied("Estado inválido.")
-    if garantia.estado != nuevo_estado:
-        garantia.estado = nuevo_estado
-        garantia.save(update_fields=["estado"])
+    if garantia.estado != nuevo_estado or garantia.columna_id != columna.pk:
+        garantia.columna = columna
+        garantia.estado = columna.codigo
+        garantia.save(update_fields=["columna", "estado"])
 
     if _es_ajax(request):
         return JsonResponse(
@@ -630,7 +989,9 @@ def cambiar_estado_garantia(request, pk):
                 "status": "ok",
                 "id": garantia.pk,
                 "estado": garantia.estado,
-                "estado_label": _estado_label(garantia.estado),
+                "estado_label": columna.nombre,
+                "columna_id": columna.pk,
+                "columna_codigo": columna.codigo,
             }
         )
     return redirect("garantias:panel_garantias")

@@ -12,6 +12,30 @@ garantias_upload_storage = FileSystemStorage(
 )
 
 
+class GarantiaColumna(models.Model):
+    nombre = models.CharField(max_length=120)
+    codigo = models.CharField(max_length=60, unique=True)
+    orden = models.PositiveIntegerField(default=0)
+    activa = models.BooleanField(default=True)
+    creada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="garantias_columnas_creadas",
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["orden", "id"]
+        verbose_name = "Columna de garantias"
+        verbose_name_plural = "Columnas de garantias"
+
+    def __str__(self):
+        return self.nombre
+
+
 class Garantia(models.Model):
     class Estado(models.TextChoices):
         SOLICITUD_NAVIERA = "SOLICITUD_NAVIERA", "Solicitud a naviera"
@@ -32,6 +56,13 @@ class Garantia(models.Model):
         max_length=20,
         choices=Estado.choices,
         default=Estado.SOLICITUD_NAVIERA,
+    )
+    columna = models.ForeignKey(
+        "GarantiaColumna",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="garantias",
     )
     prioridad = models.CharField(
         max_length=20,
@@ -59,6 +90,20 @@ class Garantia(models.Model):
 
     class Meta:
         ordering = ["-fecha_creacion", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.columna_id:
+            if self.estado != self.columna.codigo:
+                self.estado = self.columna.codigo
+        elif self.estado:
+            columna = (
+                GarantiaColumna.objects.filter(codigo=self.estado)
+                .only("id")
+                .first()
+            )
+            if columna is not None:
+                self.columna_id = columna.pk
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.titulo

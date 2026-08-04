@@ -14,7 +14,15 @@ from django.http import HttpRequest
 from django.urls import resolve, reverse
 from django.utils import timezone
 
-from .models import Operacion, OperacionArchivo, OperacionComentario, OperacionEnlace, OperacionEtiqueta, OperacionOpcion
+from .models import (
+    Operacion,
+    OperacionArchivo,
+    OperacionColumna,
+    OperacionComentario,
+    OperacionEnlace,
+    OperacionEtiqueta,
+    OperacionOpcion,
+)
 from solicitudes.models import Referencia
 from clientes.models import Cliente
 from cuenta_gastos.models import CuentaGastos
@@ -53,6 +61,8 @@ class ReferenciaAOperacionTests(TestCase):
         self.assertRedirects(response, reverse("operaciones:panel_operaciones"))
         operacion = Operacion.objects.get(referencia_origen=self.referencia)
         self.assertEqual(operacion.estado, Operacion.Estado.COORDINAR_PICKUP)
+        self.assertIsNotNone(operacion.columna)
+        self.assertEqual(operacion.columna.codigo, Operacion.Estado.COORDINAR_PICKUP)
         self.assertNotEqual(operacion.estado, Operacion.Estado.PENDIENTE)
         self.assertEqual(operacion.creado_por, self.usuario)
         self.referencia.refresh_from_db()
@@ -118,6 +128,7 @@ class OperacionACuentaGastosTests(TestCase):
         self.assertEqual(list(cuenta.asignados.all()), [self.asignado])
         self.operacion.refresh_from_db()
         self.assertEqual(self.operacion.estado, Operacion.Estado.SOLICITUD_CUENTA_GASTOS)
+        self.assertEqual(self.operacion.columna.codigo, Operacion.Estado.SOLICITUD_CUENTA_GASTOS)
 
     def test_servicio_es_idempotente_y_no_crea_fuera_del_estado_destino(self):
         cuenta, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
@@ -438,6 +449,322 @@ class OperacionesMovimientoTests(TestCase):
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
 )
+class OperacionesColumnasDinamicasTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="ops-columns", password="pass", is_superuser=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_columnas_base_se_crean_en_orden_historico(self):
+        codigos = list(
+            OperacionColumna.objects.filter(activa=True)
+            .order_by("orden", "id")
+            .values_list("codigo", flat=True)
+        )
+        self.assertEqual(
+            codigos,
+            [
+                Operacion.Estado.PENDIENTE,
+                Operacion.Estado.SEGUROS,
+                Operacion.Estado.PRUEBA_VALOR,
+                Operacion.Estado.EN_ADUANA,
+                Operacion.Estado.TRANSITO_NACIONAL,
+                Operacion.Estado.COORDINAR_PICKUP,
+                Operacion.Estado.TRANSITO_INTERNACIONAL,
+                Operacion.Estado.EXPEDIENTE_CG,
+                Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+            ],
+        )
+
+    def test_crea_y_edita_columna_personalizada(self):
+        create_response = self.client.post(
+            reverse("operaciones:columna_crear"),
+            {"nombre": "Documentos listos"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+        columna = OperacionColumna.objects.get(nombre="Documentos listos")
+        self.assertTrue(columna.codigo.startswith("DOCUMENTOS_LISTOS"))
+
+        edit_response = self.client.post(
+            reverse("operaciones:columna_editar", args=[columna.pk]),
+            {"nombre": "Documentos verificados"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(edit_response.status_code, 200)
+        columna.refresh_from_db()
+        self.assertEqual(columna.nombre, "Documentos verificados")
+        self.assertTrue(columna.activa)
+
+    def test_no_elimina_columna_base(self):
+        base = OperacionColumna.objects.get(codigo=Operacion.Estado.PENDIENTE)
+
+        response = self.client.post(
+            reverse("operaciones:columna_eliminar", args=[base.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        base.refresh_from_db()
+        self.assertTrue(base.activa)
+
+    def test_eliminar_columna_personalizada_reasigna_operaciones_y_sincroniza_estado(self):
+        origen = OperacionColumna.objects.create(
+            nombre="Temporal",
+            codigo="TEMPORAL",
+            orden=50,
+            creada_por=self.user,
+        )
+        destino = OperacionColumna.objects.get(
+            codigo=Operacion.Estado.SOLICITUD_CUENTA_GASTOS
+        )
+        cliente = Cliente.objects.create(nombre="Cliente columnas")
+        operacion = Operacion.objects.create(
+            titulo="Mover al eliminar",
+            cliente=cliente,
+            columna=origen,
+            estado=origen.codigo,
+            creado_por=self.user,
+        )
+
+        response = self.client.post(
+            reverse("operaciones:columna_eliminar", args=[origen.pk]),
+            {"columna_destino_id": destino.pk},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        operacion.refresh_from_db()
+        origen.refresh_from_db()
+        self.assertFalse(origen.activa)
+        self.assertEqual(operacion.estado, destino.codigo)
+        self.assertEqual(operacion.columna_id, destino.pk)
+        self.assertTrue(
+            CuentaGastos.objects.filter(operacion_origen=operacion).exists()
+        )
+
+
+@override_settings(
+    STORAGES={
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
+class OperacionesCopiarPegarTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin-copy-op",
+            password="pass",
+            is_superuser=True,
+            first_name="Admin",
+        )
+        self.ejecutivo = User.objects.create_user(
+            username="ejecutivo-copy-op",
+            password="pass",
+            first_name="Ejecutivo",
+        )
+        self.asignado = User.objects.create_user(
+            username="asignado-copy-op",
+            password="pass",
+            first_name="Asignado",
+        )
+        self.cliente = Cliente.objects.create(nombre="Cliente copia")
+        self.columna_pendiente = OperacionColumna.objects.get(
+            codigo=Operacion.Estado.PENDIENTE
+        )
+        self.columna_seguros = OperacionColumna.objects.get(
+            codigo=Operacion.Estado.SEGUROS
+        )
+        self.columna_cg = OperacionColumna.objects.get(
+            codigo=Operacion.Estado.SOLICITUD_CUENTA_GASTOS
+        )
+        self.referencia = Referencia.objects.create(
+            referencia="BC261099",
+            consecutivo=99,
+            ejecutivo=self.admin,
+            cliente="Cliente copia",
+            servicio="importacion",
+        )
+        self.etiqueta = OperacionEtiqueta.objects.create(
+            nombre="Urgente copia",
+            color="#FF0000",
+        )
+        self.opcion = OperacionOpcion.objects.create(nombre="Requiere seguro")
+        self.original = Operacion.objects.create(
+            titulo="Operacion original",
+            descripcion="Descripcion original",
+            cliente=self.cliente,
+            estado=self.columna_pendiente.codigo,
+            columna=self.columna_pendiente,
+            prioridad=Operacion.Prioridad.ALTA,
+            creado_por=self.admin,
+            fecha_vencimiento="2026-08-10",
+            referencia_origen=self.referencia,
+        )
+        self.original.asignados.add(self.asignado)
+        self.original.etiquetas.add(self.etiqueta)
+        self.original.opciones.add(self.opcion)
+        OperacionComentario.objects.create(
+            operacion=self.original,
+            usuario=self.admin,
+            comentario="Comentario original",
+        )
+        OperacionArchivo.objects.create(
+            operacion=self.original,
+            archivo=SimpleUploadedFile("origen.txt", b"hola"),
+            subido_por=self.admin,
+        )
+        OperacionEnlace.objects.create(
+            operacion=self.original,
+            titulo="Documento",
+            url="https://example.com/doc",
+            creado_por=self.admin,
+        )
+        self.client = Client()
+
+    def _paste_url(self, columna):
+        return reverse("operaciones:tarjeta_pegar", args=[columna.pk])
+
+    def test_administrador_puede_copiar_y_pegar_sin_modificar_original(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            self._paste_url(self.columna_seguros),
+            {"tarjeta_id": self.original.pk, "modulo": "operaciones"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertNotEqual(data["tarjeta_id"], self.original.pk)
+        copia = Operacion.objects.get(pk=data["tarjeta_id"])
+        self.original.refresh_from_db()
+        self.assertEqual(self.original.estado, self.columna_pendiente.codigo)
+        self.assertEqual(copia.columna_id, self.columna_seguros.pk)
+        self.assertEqual(copia.estado, self.columna_seguros.codigo)
+        self.assertEqual(copia.titulo, self.original.titulo)
+        self.assertEqual(copia.descripcion, self.original.descripcion)
+        self.assertEqual(copia.cliente, self.original.cliente)
+        self.assertEqual(copia.prioridad, self.original.prioridad)
+        self.assertEqual(copia.fecha_vencimiento, self.original.fecha_vencimiento)
+        self.assertEqual(copia.creado_por, self.admin)
+        self.assertEqual(list(copia.asignados.all()), [self.asignado])
+        self.assertEqual(list(copia.etiquetas.all()), [self.etiqueta])
+        self.assertEqual(list(copia.opciones.all()), [self.opcion])
+        self.assertFalse(copia.comentarios.exists())
+        self.assertFalse(copia.archivos.exists())
+        self.assertFalse(copia.enlaces.exists())
+        self.assertIsNone(copia.referencia_origen)
+        self.assertFalse(
+            CuentaGastos.objects.filter(operacion_origen=copia).exists()
+        )
+        self.assertIn('data-panel-operacion-card="1"', data["html"])
+        move_response = self.client.post(
+            reverse("operaciones:mover_operacion", args=[copia.pk]),
+            {"estado": Operacion.Estado.EN_ADUANA},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(move_response.status_code, 200)
+
+    def test_ejecutivo_puede_pegar_y_la_cuenta_gastos_se_crea_para_la_copia(self):
+        self.original.estado = self.columna_cg.codigo
+        self.original.columna = self.columna_cg
+        self.original.save()
+        cuenta_original, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
+            self.original,
+            creado_por=self.admin,
+        )
+        self.assertTrue(creada)
+        self.client.force_login(self.ejecutivo)
+
+        response = self.client.post(
+            self._paste_url(self.columna_cg),
+            {"tarjeta_id": self.original.pk, "modulo": "operaciones"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        copia = Operacion.objects.get(pk=response.json()["tarjeta_id"])
+        cuenta_copia = CuentaGastos.objects.get(operacion_origen=copia)
+        self.assertNotEqual(copia.pk, self.original.pk)
+        self.assertEqual(copia.creado_por, self.ejecutivo)
+        self.assertEqual(copia.columna_id, self.columna_cg.pk)
+        self.assertEqual(copia.estado, self.columna_cg.codigo)
+        self.assertNotEqual(cuenta_copia.pk, cuenta_original.pk)
+        self.assertEqual(cuenta_copia.operacion_origen_id, copia.pk)
+        self.assertEqual(
+            CuentaGastos.objects.filter(operacion_origen=copia).count(),
+            1,
+        )
+        again = self.client.post(
+            self._paste_url(self.columna_cg),
+            {"tarjeta_id": self.original.pk, "modulo": "operaciones"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(again.status_code, 201)
+        self.assertEqual(CuentaGastos.objects.count(), 3)
+
+    def test_columna_inexistente_o_inactiva_y_operacion_inexistente_no_crean_registros(self):
+        self.client.force_login(self.admin)
+        before = Operacion.objects.count()
+
+        missing_column = self.client.post(
+            reverse("operaciones:tarjeta_pegar", args=[999999]),
+            {"tarjeta_id": self.original.pk, "modulo": "operaciones"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(missing_column.status_code, 404)
+
+        custom = OperacionColumna.objects.create(
+            nombre="Temporal inactiva",
+            codigo="TEMP_INACTIVA",
+            orden=99,
+            activa=False,
+            creada_por=self.admin,
+        )
+        inactive = self.client.post(
+            self._paste_url(custom),
+            {"tarjeta_id": self.original.pk, "modulo": "operaciones"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(inactive.status_code, 404)
+
+        missing_card = self.client.post(
+            self._paste_url(self.columna_seguros),
+            {"tarjeta_id": 999999, "modulo": "operaciones"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(missing_card.status_code, 404)
+        self.assertEqual(Operacion.objects.count(), before)
+
+    def test_datos_invalidos_y_modulo_incorrecto_se_rechazan(self):
+        self.client.force_login(self.admin)
+        before = Operacion.objects.count()
+        for payload in (
+            {"tarjeta_id": "", "modulo": "operaciones"},
+            {"tarjeta_id": "abc", "modulo": "operaciones"},
+            {"tarjeta_id": self.original.pk, "modulo": "garantias"},
+        ):
+            with self.subTest(payload=payload):
+                response = self.client.post(
+                    self._paste_url(self.columna_seguros),
+                    payload,
+                    HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(response.json()["ok"])
+        self.assertEqual(Operacion.objects.count(), before)
+
+
+@override_settings(
+    STORAGES={
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
 class OperacionesInlineCreateTests(TestCase):
     def setUp(self):
         User = get_user_model()
@@ -446,6 +773,9 @@ class OperacionesInlineCreateTests(TestCase):
         self.client.force_login(self.user)
         self.inline_url = reverse("operaciones:crear_operacion_inline")
         self.inline_form_url = reverse("operaciones:formulario_operacion_inline")
+        self.columna_inicial = OperacionColumna.objects.filter(
+            activa=True
+        ).order_by("orden", "id").first()
 
     def test_endpoint_get_devuelve_formulario_completo_sin_crear_operaciones(self):
         response = self.client.get(self.inline_form_url)
@@ -488,7 +818,7 @@ class OperacionesInlineCreateTests(TestCase):
             {
                 "titulo": "Operacion inline",
                 "prioridad": Operacion.Prioridad.ALTA,
-                "estado": Operacion.Estado.EN_ADUANA,
+                "estado": self.columna_inicial.codigo,
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
@@ -497,7 +827,7 @@ class OperacionesInlineCreateTests(TestCase):
         data = response.json()
         self.assertTrue(data["ok"])
         self.assertEqual(data["operacion_id"], data["id"])
-        self.assertEqual(data["estado"], Operacion.Estado.EN_ADUANA)
+        self.assertEqual(data["estado"], self.columna_inicial.codigo)
         self.assertEqual(data["message"], "Operacion creada correctamente.")
         self.assertIn(f'id="panel-operacion-{data["operacion_id"]}"', data["html"])
         self.assertIn('data-panel-operacion-card="1"', data["html"])
@@ -505,25 +835,33 @@ class OperacionesInlineCreateTests(TestCase):
 
         operacion = Operacion.objects.get(pk=data["id"])
         self.assertEqual(operacion.titulo, "Operacion inline")
-        self.assertEqual(operacion.estado, Operacion.Estado.EN_ADUANA)
+        self.assertEqual(operacion.estado, self.columna_inicial.codigo)
         self.assertEqual(operacion.prioridad, Operacion.Prioridad.ALTA)
         self.assertEqual(operacion.creado_por, self.user)
 
-    def test_cada_choice_crea_inline_y_persiste_en_su_columna(self):
-        choices = list(Operacion._meta.get_field("estado").choices)
+    def test_creacion_inline_solo_permite_la_primera_columna_activa(self):
+        columnas = list(
+            OperacionColumna.objects.filter(activa=True).order_by("orden", "id")
+        )
+        permitida = columnas[0]
+        bloqueada = columnas[1]
 
-        for estado, _etiqueta in choices:
-            with self.subTest(estado=estado):
-                response = self.client.post(
-                    self.inline_url,
-                    {"titulo": f"Operacion {estado}", "estado": estado},
-                )
+        response = self.client.post(
+            self.inline_url,
+            {"titulo": "Operacion permitida", "estado": permitida.codigo},
+        )
+        self.assertEqual(response.status_code, 201)
 
-                self.assertEqual(response.status_code, 201)
-                data = response.json()
-                self.assertEqual(data["estado"], estado)
-                operacion = Operacion.objects.get(pk=data["id"])
-                self.assertEqual(operacion.estado, estado)
+        response = self.client.post(
+            self.inline_url,
+            {"titulo": "Operacion bloqueada", "estado": bloqueada.codigo},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["message"],
+            "Solo se pueden crear tarjetas desde la primera columna activa.",
+        )
+        self.assertFalse(Operacion.objects.filter(titulo="Operacion bloqueada").exists())
 
     def test_crea_operacion_con_vencimiento_asignados_y_etiquetas(self):
         User = get_user_model()
@@ -537,7 +875,7 @@ class OperacionesInlineCreateTests(TestCase):
                 "fecha_vencimiento": "2026-08-10",
                 "asignados": [asignado.pk],
                 "etiquetas": [etiqueta.pk],
-                "estado": Operacion.Estado.SEGUROS,
+                "estado": self.columna_inicial.codigo,
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
@@ -558,7 +896,7 @@ class OperacionesInlineCreateTests(TestCase):
                 "titulo": "Operacion inline completa",
                 "cliente": cliente.pk,
                 "prioridad": Operacion.Prioridad.ALTA,
-                "estado": Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+                "estado": self.columna_inicial.codigo,
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
@@ -566,7 +904,7 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertTrue(data["ok"])
-        self.assertEqual(data["estado"], Operacion.Estado.SOLICITUD_CUENTA_GASTOS)
+        self.assertEqual(data["estado"], self.columna_inicial.codigo)
         operacion = Operacion.objects.get(pk=data["id"])
         self.assertEqual(operacion.cliente, cliente)
         self.assertEqual(operacion.prioridad, Operacion.Prioridad.ALTA)
@@ -583,7 +921,7 @@ class OperacionesInlineCreateTests(TestCase):
             {
                 "titulo": "Operacion con soporte",
                 "descripcion": "Descripcion extensa",
-                "estado": Operacion.Estado.PENDIENTE,
+                "estado": self.columna_inicial.codigo,
                 "enlace_titulo": ["Factura"],
                 "enlace_url": ["https://example.com/factura"],
                 "archivos": [archivo],
@@ -602,7 +940,7 @@ class OperacionesInlineCreateTests(TestCase):
     def test_errores_de_formulario_devuelven_el_parcial_inline(self):
         response = self.client.post(
             self.inline_url,
-            {"titulo": "", "estado": Operacion.Estado.PENDIENTE},
+            {"titulo": "", "estado": self.columna_inicial.codigo},
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
 
@@ -614,7 +952,7 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertIn('data-operacion-inline-form="1"', data["html_form"])
         self.assertIn("Este campo es obligatorio", data["html_form"])
         self.assertIn(
-            f'name="estado" value="{Operacion.Estado.PENDIENTE}"',
+            f'name="estado" value="{self.columna_inicial.codigo}"',
             data["html_form"],
         )
         self.assertFalse(Operacion.objects.exists())
@@ -624,7 +962,7 @@ class OperacionesInlineCreateTests(TestCase):
             self.inline_url,
             {
                 "titulo": "Operacion con enlace invalido",
-                "estado": Operacion.Estado.PENDIENTE,
+                "estado": self.columna_inicial.codigo,
                 "enlace_titulo": ["Documento"],
                 "enlace_url": ["nota-invalida"],
             },
@@ -682,11 +1020,35 @@ class OperacionesInlineCreateTests(TestCase):
         )
         self.assertEqual(
             html.count('class="btn btn-sm operaciones-column__add-btn"'),
-            len(choices),
+            1,
         )
         self.assertEqual(html.count('class="operaciones-inline-form"'), 0)
         self.assertIn('<div data-operacion-inline-form-slot="1"></div>', html)
         self.assertNotIn('name="estado" value="Pendientes"', html)
+
+    def test_panel_mueve_alta_manual_a_la_nueva_primera_columna_tras_reordenar(self):
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        html = response.content.decode()
+        self.assertEqual(html.count('data-operacion-inline-open="1"'), 1)
+
+        columnas = list(
+            OperacionColumna.objects.filter(activa=True).order_by("orden", "id")
+        )
+        nuevo_orden = [str(columna.pk) for columna in reversed(columnas)]
+        reorder_response = self.client.post(
+            reverse("operaciones:columna_reordenar"),
+            {"columnas[]": nuevo_orden},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(reorder_response.status_code, 200)
+
+        nuevo_primero = OperacionColumna.objects.filter(
+            activa=True
+        ).order_by("orden", "id").first()
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        html = response.content.decode()
+        self.assertEqual(html.count('data-operacion-inline-open="1"'), 1)
+        self.assertIn(f'data-columna-id="{nuevo_primero.pk}"', html)
 
     def test_javascript_configura_estado_y_destino_del_formulario_compartido(self):
         response = self.client.get(reverse("operaciones:panel_operaciones"))
@@ -1908,7 +2270,7 @@ class OperacionesProgressiveLoadingTests(TestCase):
         self.assertIn("No se pudieron cargar las tarjetas.", javascript)
         self.assertIn("invalidateColumnLoads();", javascript)
         self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
-        self.assertEqual(javascript.count("Sortable.create("), 1)
+        self.assertEqual(javascript.count("Sortable.create("), 2)
         self.assertEqual(
             javascript.count("root.addEventListener('click'"), 1
         )

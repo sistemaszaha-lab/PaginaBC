@@ -18,8 +18,15 @@
 <div class="cuenta-panel-shell">
     <div class="cuenta-toolbar">
         <div class="cuenta-page-header">
-            <div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
                 <h2 class="mb-0">Cuenta de Gastos</h2>
+                <button
+                    type="button"
+                    class="btn btn-sm btn-dark"
+                    data-cuenta-column-create-open="1"
+                >
+                    + Agregar columna
+                </button>
             </div>
         </div>
         <form method="get" class="cuenta-toolbar__filter">
@@ -59,6 +66,84 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content" id="modalContent">
             <div class="modal-body p-4 text-center text-muted">Cargando...</div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cuentaColumnCreateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form data-cuenta-column-create-form="1">
+                <div class="modal-header">
+                    <h5 class="modal-title">Nueva columna</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="cuentaColumnCreateNombre" class="form-label">Nombre</label>
+                        <input id="cuentaColumnCreateNombre" name="nombre" type="text" class="form-control" maxlength="120" required>
+                    </div>
+                    <div class="small text-danger d-none" data-cuenta-column-create-error="1"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-dark">Crear columna</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cuentaColumnEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form data-cuenta-column-edit-form="1">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar columna</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="columna_id" value="">
+                    <div class="mb-3">
+                        <label for="cuentaColumnEditNombre" class="form-label">Nombre</label>
+                        <input id="cuentaColumnEditNombre" name="nombre" type="text" class="form-control" maxlength="120" required>
+                    </div>
+                    <div class="small text-danger d-none" data-cuenta-column-edit-error="1"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-dark">Guardar cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cuentaColumnDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form data-cuenta-column-delete-form="1">
+                <div class="modal-header">
+                    <h5 class="modal-title">Eliminar columna</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="columna_id" value="">
+                    <p class="mb-3" data-cuenta-column-delete-message="1">Confirma la eliminación de la columna.</p>
+                    <div class="mb-3">
+                        <label for="cuentaColumnDeleteDestino" class="form-label">Mover cuentas a</label>
+                        <select id="cuentaColumnDeleteDestino" name="columna_destino_id" class="form-select">
+                            <option value="">Selecciona una columna</option>
+                        </select>
+                        <div class="form-text">Solo es necesario si la columna tiene cuentas.</div>
+                    </div>
+                    <div class="small text-danger d-none" data-cuenta-column-delete-error="1"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger">Eliminar columna</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

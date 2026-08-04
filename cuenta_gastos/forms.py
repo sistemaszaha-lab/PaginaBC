@@ -6,7 +6,13 @@ from django.core.validators import URLValidator
 
 from clientes.models import Cliente
 
-from .models import CuentaGastos, CuentaGastosEnlace, CuentaGastosEtiqueta, CuentaGastosOpcion
+from .models import (
+    CuentaGastos,
+    CuentaGastosColumna,
+    CuentaGastosEnlace,
+    CuentaGastosEtiqueta,
+    CuentaGastosOpcion,
+)
 
 
 MAX_CUENTA_ARCHIVO_SIZE = 10 * 1024 * 1024
@@ -490,3 +496,22 @@ class CuentaGastosOpcionForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["nombre"].required = True
+
+
+class CuentaGastosColumnaCreateForm(forms.ModelForm):
+    class Meta:
+        model = CuentaGastosColumna
+        fields = ["nombre"]
+        widgets = {
+            "nombre": forms.TextInput(attrs={"class": "form-control"}),
+        }
+
+    def clean_nombre(self):
+        nombre = (self.cleaned_data.get("nombre") or "").strip()
+        if not nombre:
+            raise forms.ValidationError("Debes capturar un nombre.")
+        return nombre
+
+
+class CuentaGastosColumnaUpdateForm(CuentaGastosColumnaCreateForm):
+    pass

@@ -15,7 +15,14 @@ from datetime import date, timedelta
 
 from clientes.models import Cliente
 
-from .models import Garantia, GarantiaArchivo, GarantiaComentario, GarantiaEnlace, GarantiaEtiqueta
+from .models import (
+    Garantia,
+    GarantiaArchivo,
+    GarantiaColumna,
+    GarantiaComentario,
+    GarantiaEnlace,
+    GarantiaEtiqueta,
+)
 
 PANEL_JS_PATH = (
     Path(__file__).resolve().parent
@@ -399,7 +406,7 @@ class GarantiasCargaProgresivaTests(TestCase):
         self.assertIn("No se pudieron cargar las tarjetas.", javascript)
         self.assertIn("invalidateColumnLoads();", javascript)
         self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
-        self.assertEqual(javascript.count("Sortable.create("), 1)
+        self.assertEqual(javascript.count("Sortable.create("), 2)
         self.assertEqual(
             javascript.count("root.addEventListener('click'"), 1
         )
@@ -550,6 +557,7 @@ class GarantiasInlineCreateTests(TestCase):
         garantia = Garantia.objects.get(pk=data["id"])
         self.assertEqual(garantia.creado_por, self.admin)
         self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
+        self.assertEqual(garantia.columna.codigo, Garantia.Estado.SOLICITUD_NAVIERA)
         self.assertEqual(garantia.cliente_id, self.cliente.pk)
 
     def test_creacion_inline_invalida_devuelve_errores_y_html(self):
@@ -575,7 +583,7 @@ class GarantiasInlineCreateTests(TestCase):
         response = self.client.post(
             reverse("garantias:crear_garantia_inline"),
             {
-                "estado": Garantia.Estado.DEVOLUCION_CLIENTE,
+                "estado": Garantia.Estado.SOLICITUD_NAVIERA,
                 "titulo": "Nueva garantia completa",
                 "descripcion": "Descripcion de prueba",
                 "cliente": self.cliente.pk,
@@ -600,6 +608,8 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertEqual(data["estado"], Garantia.Estado.SOLICITUD_NAVIERA)
 
         garantia = Garantia.objects.get(pk=data["id"])
+        self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
+        self.assertEqual(garantia.columna.codigo, Garantia.Estado.SOLICITUD_NAVIERA)
         self.assertEqual(garantia.descripcion, "Descripcion de prueba")
         self.assertEqual(garantia.prioridad, Garantia.Prioridad.URGENTE)
         self.assertEqual(str(garantia.fecha_vencimiento), "2026-08-20")
@@ -607,6 +617,24 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertEqual(list(garantia.etiquetas.values_list("pk", flat=True)), [self.etiqueta.pk])
         self.assertEqual(GarantiaArchivo.objects.filter(garantia=garantia).count(), 2)
         self.assertEqual(GarantiaEnlace.objects.filter(garantia=garantia).count(), 2)
+
+    def test_creacion_inline_rechaza_columna_distinta_a_la_primera_activa(self):
+        response = self.client.post(
+            reverse("garantias:crear_garantia_inline"),
+            {
+                "estado": Garantia.Estado.DEVOLUCION_CLIENTE,
+                "titulo": "Bloqueada por columna",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["message"],
+            "Solo se pueden crear tarjetas desde la primera columna activa.",
+        )
+        self.assertFalse(
+            Garantia.objects.filter(titulo="Bloqueada por columna").exists()
+        )
 
     def test_creacion_inline_titulo_vacio_y_url_invalida_no_generan_registros_parciales(self):
         before = Garantia.objects.count()
@@ -675,13 +703,167 @@ class GarantiasEstadoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.garantia.refresh_from_db()
         self.assertEqual(self.garantia.estado, Garantia.Estado.DEVOLUCION_CLIENTE)
+        self.assertEqual(self.garantia.columna.codigo, Garantia.Estado.DEVOLUCION_CLIENTE)
         data = response.json()
         self.assertEqual(data["status"], "ok")
         self.assertEqual(data["estado"], Garantia.Estado.DEVOLUCION_CLIENTE)
 
+
+class GarantiasColumnasDinamicasTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin_columnas_garantias",
+            password="pass123",
+            is_superuser=True,
+            is_staff=True,
+            first_name="Admin",
+        )
+        self.ejecutivo = User.objects.create_user(
+            username="ejecutivo_columnas_garantias",
+            password="pass123",
+            first_name="Ejecutivo",
+        )
+        self.client.force_login(self.admin)
+        self.garantia = Garantia.objects.create(
+            titulo="Estado garantia columnas",
+            creado_por=self.admin,
+            estado=Garantia.Estado.SOLICITUD_NAVIERA,
+        )
+
+    def test_columnas_iniciales_quedan_registradas_con_codigos_base(self):
+        self.assertEqual(
+            list(
+                GarantiaColumna.objects.filter(activa=True).values_list("codigo", flat=True)
+            ),
+            [
+                Garantia.Estado.SOLICITUD_NAVIERA,
+                Garantia.Estado.EN_PROCESO,
+                Garantia.Estado.PAGO_NAVIERA_ZAHA,
+                Garantia.Estado.DEVOLUCION_CLIENTE,
+            ],
+        )
+
+    def test_crear_columna_devuelve_html_y_codigo_generado(self):
+        response = self.client.post(
+            reverse("garantias:columna_crear"),
+            {"nombre": "Revisión final"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["columna_codigo"], "REVISION_FINAL")
+        self.assertIn('data-columna-codigo="REVISION_FINAL"', data["html"])
+
+    def test_editar_columna_conserva_codigo_y_cambia_nombre(self):
+        columna = GarantiaColumna.objects.get(codigo=Garantia.Estado.EN_PROCESO)
+        response = self.client.post(
+            reverse("garantias:columna_editar", args=[columna.pk]),
+            {"nombre": "Seguimiento activo"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        columna.refresh_from_db()
+        self.assertEqual(columna.codigo, Garantia.Estado.EN_PROCESO)
+        self.assertEqual(columna.nombre, "Seguimiento activo")
+
+    def test_reordenar_columnas_actualiza_orden(self):
+        columnas = list(GarantiaColumna.objects.filter(activa=True).order_by("orden", "id"))
+        nuevo_orden = [str(columna.pk) for columna in reversed(columnas)]
+        response = self.client.post(
+            reverse("garantias:columna_reordenar"),
+            {"columnas[]": nuevo_orden},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            list(
+                GarantiaColumna.objects.filter(activa=True)
+                .order_by("orden", "id")
+                .values_list("pk", flat=True)
+            ),
+            [int(value) for value in nuevo_orden],
+        )
+
+    def test_panel_mueve_alta_manual_a_la_nueva_primera_columna_tras_reordenar(self):
+        response = self.client.get(reverse("garantias:panel_garantias"))
+        html = response.content.decode()
+        self.assertEqual(html.count('data-garantia-inline-open="1"'), 1)
+
+        columnas = list(GarantiaColumna.objects.filter(activa=True).order_by("orden", "id"))
+        nuevo_orden = [str(columna.pk) for columna in reversed(columnas)]
+        reorder_response = self.client.post(
+            reverse("garantias:columna_reordenar"),
+            {"columnas[]": nuevo_orden},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(reorder_response.status_code, 200)
+
+        nuevo_primero = GarantiaColumna.objects.filter(activa=True).order_by("orden", "id").first()
+        response = self.client.get(reverse("garantias:panel_garantias"))
+        html = response.content.decode()
+        self.assertEqual(html.count('data-garantia-inline-open="1"'), 1)
+        self.assertIn(f'data-columna-id="{nuevo_primero.pk}"', html)
+
+    def test_eliminar_columna_con_garantias_reubica_y_sincroniza_estado(self):
+        origen = GarantiaColumna.objects.create(
+            nombre="Temporal",
+            codigo="TEMPORAL",
+            orden=99,
+            creada_por=self.admin,
+        )
+        destino = GarantiaColumna.objects.get(codigo=Garantia.Estado.EN_PROCESO)
+        garantia = Garantia.objects.create(
+            titulo="Mover al eliminar",
+            creado_por=self.admin,
+            estado=origen.codigo,
+            columna=origen,
+        )
+        response = self.client.post(
+            reverse("garantias:columna_eliminar", args=[origen.pk]),
+            {"columna_destino_id": str(destino.pk)},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        garantia.refresh_from_db()
+        origen.refresh_from_db()
+        self.assertFalse(origen.activa)
+        self.assertEqual(garantia.columna_id, destino.pk)
+        self.assertEqual(garantia.estado, destino.codigo)
+
+    def test_no_permite_eliminar_columna_base(self):
+        columna = GarantiaColumna.objects.get(codigo=Garantia.Estado.SOLICITUD_NAVIERA)
+        response = self.client.post(
+            reverse("garantias:columna_eliminar", args=[columna.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("dependencias criticas", response.json()["error"])
+
+    def test_estado_update_sincroniza_estado_y_columna(self):
+        destino = GarantiaColumna.objects.get(codigo=Garantia.Estado.PAGO_NAVIERA_ZAHA)
+        garantia = Garantia.objects.create(
+            titulo="Sync estado columna",
+            creado_por=self.admin,
+            estado=Garantia.Estado.SOLICITUD_NAVIERA,
+        )
+        response = self.client.post(
+            reverse("garantias:actualizar_estado_garantia"),
+            {
+                "garantia_id": garantia.pk,
+                "nuevo_estado": destino.codigo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        garantia.refresh_from_db()
+        self.assertEqual(garantia.estado, destino.codigo)
+        self.assertEqual(garantia.columna_id, destino.pk)
+
     def test_actualizar_estado_ajax_valida_csrf(self):
         client = Client(enforce_csrf_checks=True)
-        client.login(username="admin_estado_garantias", password="pass123")
+        client.login(username="admin_columnas_garantias", password="pass123")
         client.get(reverse("garantias:panel_garantias"))
         response_sin_csrf = client.post(
             reverse("garantias:actualizar_estado_garantia"),
@@ -702,6 +884,231 @@ class GarantiasEstadoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "garantia-drawer__panel")
 
+
+class GarantiasCopiarPegarTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="garantias_copy_admin",
+            password="pass123",
+            is_superuser=True,
+            is_staff=True,
+            first_name="Admin",
+        )
+        self.ejecutivo = User.objects.create_user(
+            username="garantias_copy_exec",
+            password="pass123",
+            first_name="Ejecutivo",
+        )
+        self.cliente = Cliente.objects.create(nombre="Cliente copiado garantias")
+        self.etiqueta_a = GarantiaEtiqueta.objects.create(
+            nombre="Etiqueta copy A",
+            color="#AA0000",
+        )
+        self.etiqueta_b = GarantiaEtiqueta.objects.create(
+            nombre="Etiqueta copy B",
+            color="#00AA00",
+        )
+        self.columna_origen = GarantiaColumna.objects.get(
+            codigo=Garantia.Estado.SOLICITUD_NAVIERA
+        )
+        self.columna_destino = GarantiaColumna.objects.get(
+            codigo=Garantia.Estado.EN_PROCESO
+        )
+        self.columna_tercera = GarantiaColumna.objects.get(
+            codigo=Garantia.Estado.DEVOLUCION_CLIENTE
+        )
+        self.garantia = Garantia.objects.create(
+            titulo="Garantia original copy",
+            descripcion="Descripcion copy",
+            cliente=self.cliente,
+            prioridad=Garantia.Prioridad.ALTA,
+            estado=self.columna_origen.codigo,
+            columna=self.columna_origen,
+            fecha_vencimiento=date(2026, 8, 20),
+            creado_por=self.admin,
+        )
+        self.garantia.asignados.set([self.admin, self.ejecutivo])
+        self.garantia.etiquetas.set([self.etiqueta_a, self.etiqueta_b])
+        self.comentario = GarantiaComentario.objects.create(
+            garantia=self.garantia,
+            usuario=self.admin,
+            comentario="No copiar comentario",
+        )
+        self.archivo = GarantiaArchivo.objects.create(
+            garantia=self.garantia,
+            archivo=SimpleUploadedFile(
+                "garantia-copy-source.txt",
+                b"contenido",
+                content_type="text/plain",
+            ),
+            subido_por=self.admin,
+        )
+        self.enlace = GarantiaEnlace.objects.create(
+            garantia=self.garantia,
+            titulo="No copiar enlace",
+            url="https://example.com/original",
+            creado_por=self.admin,
+        )
+        self.client = Client()
+
+    def _paste(self, user, *, columna_id=None, tarjeta_id=None, modulo="garantias"):
+        self.client.force_login(user)
+        return self.client.post(
+            reverse(
+                "garantias:tarjeta_pegar",
+                args=[columna_id or self.columna_destino.pk],
+            ),
+            {
+                "tarjeta_id": tarjeta_id or self.garantia.pk,
+                "modulo": modulo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+    def test_admin_puede_copiar_y_pegar(self):
+        response = self._paste(self.admin)
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["columna_id"], self.columna_destino.pk)
+        self.assertIn('data-garantia-card="1"', data["html"])
+
+    def test_ejecutivo_puede_copiar_y_pegar(self):
+        response = self._paste(self.ejecutivo)
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["ok"])
+
+    def test_copia_no_modifica_original_y_genera_nuevo_id(self):
+        snapshot = {
+            "titulo": self.garantia.titulo,
+            "descripcion": self.garantia.descripcion,
+            "cliente_id": self.garantia.cliente_id,
+            "prioridad": self.garantia.prioridad,
+            "estado": self.garantia.estado,
+            "columna_id": self.garantia.columna_id,
+            "creado_por_id": self.garantia.creado_por_id,
+        }
+        response = self._paste(self.ejecutivo)
+        nueva = Garantia.objects.get(pk=response.json()["tarjeta_id"])
+        self.garantia.refresh_from_db()
+        self.assertNotEqual(nueva.pk, self.garantia.pk)
+        self.assertEqual(
+            {
+                "titulo": self.garantia.titulo,
+                "descripcion": self.garantia.descripcion,
+                "cliente_id": self.garantia.cliente_id,
+                "prioridad": self.garantia.prioridad,
+                "estado": self.garantia.estado,
+                "columna_id": self.garantia.columna_id,
+                "creado_por_id": self.garantia.creado_por_id,
+            },
+            snapshot,
+        )
+
+    def test_copia_sincroniza_estado_columna_y_campos_editables(self):
+        response = self._paste(self.ejecutivo)
+        nueva = Garantia.objects.get(pk=response.json()["tarjeta_id"])
+        self.assertEqual(nueva.columna_id, self.columna_destino.pk)
+        self.assertEqual(nueva.estado, self.columna_destino.codigo)
+        self.assertEqual(nueva.titulo, self.garantia.titulo)
+        self.assertEqual(nueva.descripcion, self.garantia.descripcion)
+        self.assertEqual(nueva.cliente_id, self.garantia.cliente_id)
+        self.assertEqual(nueva.prioridad, self.garantia.prioridad)
+        self.assertEqual(nueva.fecha_vencimiento, self.garantia.fecha_vencimiento)
+        self.assertEqual(nueva.creado_por, self.ejecutivo)
+
+    def test_copia_relaciones_validas_y_excluye_historial_archivos_enlaces(self):
+        response = self._paste(self.admin)
+        nueva = Garantia.objects.get(pk=response.json()["tarjeta_id"])
+        self.assertEqual(
+            list(nueva.asignados.order_by("pk").values_list("pk", flat=True)),
+            list(self.garantia.asignados.order_by("pk").values_list("pk", flat=True)),
+        )
+        self.assertEqual(
+            list(nueva.etiquetas.order_by("pk").values_list("pk", flat=True)),
+            list(self.garantia.etiquetas.order_by("pk").values_list("pk", flat=True)),
+        )
+        self.assertFalse(nueva.comentarios.exists())
+        self.assertFalse(nueva.archivos.exists())
+        self.assertFalse(nueva.enlaces.exists())
+
+    def test_modelo_no_tiene_one_to_one_ni_identificadores_unicos_copiables(self):
+        one_to_one_fields = [
+            field.name for field in Garantia._meta.get_fields()
+            if getattr(field, "one_to_one", False) and not getattr(field, "auto_created", False)
+        ]
+        unique_fields = [
+            field.name for field in Garantia._meta.fields
+            if getattr(field, "unique", False) and not field.primary_key
+        ]
+        self.assertEqual(one_to_one_fields, [])
+        self.assertEqual(unique_fields, [])
+        self.assertEqual(self._paste(self.admin).status_code, 201)
+
+    def test_no_puede_pegar_en_columna_inexistente_o_inactiva(self):
+        inexistente = self._paste(self.admin, columna_id=999999)
+        self.assertEqual(inexistente.status_code, 404)
+
+        self.columna_destino.activa = False
+        self.columna_destino.save(update_fields=["activa"])
+        inactiva = self._paste(self.admin)
+        self.assertEqual(inactiva.status_code, 404)
+
+    def test_no_puede_copiar_tarjeta_inexistente_peticion_invalida_o_modulo_ajeno(self):
+        total_antes = Garantia.objects.count()
+        inexistente = self._paste(self.admin, tarjeta_id=999999)
+        self.assertEqual(inexistente.status_code, 404)
+
+        invalida = self.client.post(
+            reverse("garantias:tarjeta_pegar", args=[self.columna_destino.pk]),
+            {"tarjeta_id": "abc", "modulo": "garantias"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(invalida.status_code, 400)
+
+        modulo_ajeno = self._paste(self.admin, modulo="operaciones")
+        self.assertEqual(modulo_ajeno.status_code, 400)
+        self.assertEqual(Garantia.objects.count(), total_antes)
+
+    def test_usuario_sin_permiso_recibe_403(self):
+        self.client.force_login(self.admin)
+        with patch("garantias.views._puede_operar_garantias", return_value=False):
+            response = self.client.post(
+                reverse("garantias:tarjeta_pegar", args=[self.columna_destino.pk]),
+                {"tarjeta_id": self.garantia.pk, "modulo": "garantias"},
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(
+            Garantia.objects.filter(
+                titulo=self.garantia.titulo,
+                columna=self.columna_destino,
+                creado_por=self.admin,
+            )
+            .exclude(pk=self.garantia.pk)
+            .exists()
+        )
+
+    def test_respuesta_exitosa_incluye_html_y_tarjeta_resultante_se_puede_mover(self):
+        response = self._paste(self.admin)
+        data = response.json()
+        self.assertIn("<article", data["html"])
+        nueva = Garantia.objects.get(pk=data["tarjeta_id"])
+
+        self.client.force_login(self.admin)
+        move_response = self.client.post(
+            reverse("garantias:actualizar_estado_garantia"),
+            {
+                "garantia_id": nueva.pk,
+                "nuevo_estado": self.columna_tercera.codigo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(move_response.status_code, 200)
+        nueva.refresh_from_db()
+        self.assertEqual(nueva.columna_id, self.columna_tercera.pk)
+        self.assertEqual(nueva.estado, self.columna_tercera.codigo)
 
 class GarantiasInlineUpdateTests(TestCase):
     def setUp(self):

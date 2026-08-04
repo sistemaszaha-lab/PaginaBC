@@ -7,7 +7,7 @@ from django.core.validators import URLValidator
 
 from clientes.models import Cliente
 
-from .models import Garantia, GarantiaEnlace, GarantiaEtiqueta
+from .models import Garantia, GarantiaColumna, GarantiaEnlace, GarantiaEtiqueta
 
 User = get_user_model()
 MAX_GARANTIA_ARCHIVO_SIZE = 10 * 1024 * 1024
@@ -395,3 +395,29 @@ class GarantiaEnlaceCreateForm(GarantiaEnlaceForm):
         if parsed.username or parsed.password:
             raise forms.ValidationError("La URL no puede incluir credenciales.")
         return url
+
+
+class GarantiaColumnaCreateForm(forms.ModelForm):
+    class Meta:
+        model = GarantiaColumna
+        fields = ("nombre",)
+        widgets = {
+            "nombre": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Nombre de la columna",
+                }
+            )
+        }
+
+    def clean_nombre(self):
+        nombre = (self.cleaned_data.get("nombre") or "").strip()
+        if not nombre:
+            raise forms.ValidationError("Este campo es obligatorio.")
+        if len(nombre) > 120:
+            raise forms.ValidationError("El nombre es demasiado largo.")
+        return nombre
+
+
+class GarantiaColumnaUpdateForm(GarantiaColumnaCreateForm):
+    pass

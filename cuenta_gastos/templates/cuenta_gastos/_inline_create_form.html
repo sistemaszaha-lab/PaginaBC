@@ -11,6 +11,7 @@
     data-cuenta-inline-form="1">
     {% csrf_token %}
     <input type="hidden" name="estado" value="{{ estado }}">
+    <input type="hidden" name="columna_id" value="{{ columna_id|default:'' }}">
 
     <div class="mb-2">
       <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.titulo.id_for_label }}">
