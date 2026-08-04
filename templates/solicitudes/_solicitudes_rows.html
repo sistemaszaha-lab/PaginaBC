@@ -1,6 +1,6 @@
 {% load usuario_tags %}
 {% for s in solicitudes %}
-<tr>
+<tr data-trash-remove-item="1">
     <td>{{ s.sg }}</td>
     <td>{{ s.cliente }}</td>
     <td>{{ s.fecha_recepcion }}</td>
@@ -135,7 +135,21 @@
             <a href="{% url 'enviar_solicitud_a_referencias' s.id %}" class="btn btn-sm btn-success">Enviar a Referencias</a>
         {% endif %}
         {% if request.user.is_superuser %}
-            <a href="{% url 'eliminar_solicitud' s.id %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-danger">Eliminar</a>
+            <button
+                type="button"
+                class="btn btn-sm btn-outline-danger"
+                title="Enviar a la papelera"
+                aria-label="Enviar a la papelera"
+                data-trash-send="1"
+                data-trash-module="solicitud"
+                data-trash-empty-colspan="14"
+                data-trash-empty-message="No hay solicitudes para este año."
+                data-trash-endpoint="{% url 'eliminar_solicitud' s.id %}?next={{ request.get_full_path|urlencode }}"
+            >
+                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path fill="currentColor" d="M6 1h4l1 1h3v2H2V2h3l1-1zm-2 4h8l-.6 8.2A2 2 0 0 1 9.4 15H6.6a2 2 0 0 1-1.99-1.8L4 5zm2 2v5h1V7H6zm3 0v5h1V7H9z"/>
+                </svg>
+            </button>
         {% endif %}
     </td>
 </tr>

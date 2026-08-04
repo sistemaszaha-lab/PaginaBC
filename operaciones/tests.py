@@ -194,7 +194,7 @@ class OperacionesPanelFiltroUsuariosTests(TestCase):
         self.assertContains(resp, 'data-operaciones-column="1"')
         self.assertContains(resp, 'data-panel-operacion-card="1"')
         self.assertContains(resp, 'data-estado="PENDIENTE"')
-        self.assertContains(resp, 'class="btn btn-sm operaciones-column__add-btn"', count=9)
+        self.assertContains(resp, 'class="btn btn-sm operaciones-column__add-btn"', count=1)
         self.assertNotContains(resp, 'class="operaciones-inline-form"')
         self.assertContains(resp, '<div class="px-3 pt-3 d-none" data-operacion-inline-container="1"', count=1)
         self.assertContains(resp, '<div data-operacion-inline-form-slot="1"></div>', count=1)

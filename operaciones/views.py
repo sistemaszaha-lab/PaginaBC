@@ -44,6 +44,7 @@ from .models import (
     OperacionOpcion,
 )
 from solicitudes.models import Referencia
+from solicitudes_app.trash import enviar_a_papelera
 from .services import (
     copiar_operacion_a_columna,
     obtener_initial_operacion_desde_referencia,
@@ -171,7 +172,8 @@ def _es_ajax(request):
 
 def _operacion_queryset():
     return (
-        Operacion.objects.select_related("cliente", "creado_por", "columna")
+        Operacion.objects.filter(eliminado_en__isnull=True)
+        .select_related("cliente", "creado_por", "columna")
         .prefetch_related("asignados", "etiquetas")
         .annotate(
             comentarios_count=Count("comentarios", distinct=True),
@@ -512,7 +514,7 @@ def _columna_manual_permitida():
 def _column_count(columna: OperacionColumna) -> int:
     return Operacion.objects.filter(
         Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
-    ).count()
+    ).filter(eliminado_en__isnull=True).count()
 
 
 def _es_columna_base(columna: OperacionColumna) -> bool:
@@ -521,7 +523,7 @@ def _es_columna_base(columna: OperacionColumna) -> bool:
 
 def _get_operacion_para_copia(pk: int) -> Operacion:
     return get_object_or_404(
-        Operacion.objects.select_related("columna", "cliente", "creado_por")
+        Operacion.objects.filter(eliminado_en__isnull=True).select_related("columna", "cliente", "creado_por")
         .prefetch_related("asignados", "etiquetas", "opciones"),
         pk=pk,
     )
@@ -738,7 +740,7 @@ def crear_operacion(request):
 
 @login_required
 def enviar_referencia_a_operaciones(request, pk):
-    referencia = get_object_or_404(Referencia, pk=pk)
+    referencia = get_object_or_404(Referencia.objects.filter(eliminado_en__isnull=True), pk=pk)
     # La vista ya estÃ¡ protegida por login_required. La creaciÃ³n manual de
     # Operaciones admite a cualquier usuario autenticado, por lo que la
     # conversiÃ³n mantiene la misma regla para administradores y ejecutivos.
@@ -918,7 +920,7 @@ def editar_operacion_rapida(request, operacion_id):
 
 @login_required
 def detalle_operacion(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     contexto = _contexto_modal_operacion(operacion)
     html = render_to_string("operaciones/_detalle_modal_content.html", contexto, request=request)
     return JsonResponse({"html": html})
@@ -926,7 +928,7 @@ def detalle_operacion(request, operacion_id):
 
 @login_required
 def detalle_operacion_modal(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if request.method == "POST":
         form = OperacionEditarForm(request.POST, request.FILES, instance=operacion)
         _preservar_campos_no_enviados(
@@ -966,7 +968,7 @@ def detalle_operacion_modal(request, operacion_id):
 @login_required
 @require_http_methods(["POST"])
 def editar_operacion(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar esta operaciÃ³n.")
     form = OperacionEditarForm(request.POST, request.FILES, instance=operacion)
@@ -1009,7 +1011,7 @@ def editar_operacion(request, operacion_id):
 @login_required
 @require_POST
 def agregar_comentario(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para comentar esta operaciÃ³n.")
     if not _es_ajax(request):
@@ -1045,7 +1047,7 @@ def agregar_comentario(request, operacion_id):
 @login_required
 @require_POST
 def agregar_archivo(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar esta operaciÃ³n.")
     if not _es_ajax(request):
@@ -1082,7 +1084,7 @@ def agregar_archivo(request, operacion_id):
 @login_required
 @require_POST
 def eliminar_archivo(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para eliminar archivos de esta operaciÃ³n.")
     if not _es_ajax(request):
@@ -1104,7 +1106,7 @@ def eliminar_archivo(request, operacion_id):
 @login_required
 @require_POST
 def agregar_enlace(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar esta operacion.")
     if not _es_ajax(request):
@@ -1143,7 +1145,7 @@ def agregar_enlace(request, operacion_id):
 @login_required
 @require_POST
 def eliminar_enlace(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para eliminar enlaces de esta operaciÃ³n.")
     if not _es_ajax(request):
@@ -1186,7 +1188,7 @@ def _etiquetas_response(request, operacion, *, etiquetas_form=None, etiqueta_cre
 @login_required
 @require_POST
 def agregar_etiqueta_operacion(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar las etiquetas de esta operacion.")
     if not _es_ajax(request):
@@ -1203,7 +1205,7 @@ def agregar_etiqueta_operacion(request, operacion_id):
 @login_required
 @require_POST
 def crear_etiqueta_operacion(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar las etiquetas de esta operacion.")
     if not _es_ajax(request):
@@ -1224,7 +1226,7 @@ def crear_etiqueta_operacion(request, operacion_id):
 @login_required
 @require_POST
 def quitar_etiqueta_operacion(request, operacion_id, etiqueta_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar las etiquetas de esta operacion.")
     if not _es_ajax(request):
@@ -1258,7 +1260,7 @@ def _opciones_response(request, operacion, *, opciones_form=None, opcion_create_
 @login_required
 @require_POST
 def actualizar_opciones_operacion(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar las opciones de esta operacion.")
     if not _es_ajax(request):
@@ -1275,7 +1277,7 @@ def actualizar_opciones_operacion(request, operacion_id):
 @login_required
 @require_POST
 def crear_opcion_operacion(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar las opciones de esta operacion.")
     if not _es_ajax(request):
@@ -1293,7 +1295,7 @@ def crear_opcion_operacion(request, operacion_id):
 @login_required
 @require_POST
 def quitar_opcion_operacion(request, operacion_id, opcion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
         raise PermissionDenied("No tienes permisos para modificar las opciones de esta operacion.")
     if not _es_ajax(request):
@@ -1415,7 +1417,8 @@ def columna_eliminar(request, pk):
             status=400,
         )
     operaciones_qs = Operacion.objects.filter(
-        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo),
+        eliminado_en__isnull=True,
     )
     total_operaciones = operaciones_qs.count()
     destino_id = (request.POST.get("columna_destino_id") or "").strip()
@@ -1568,7 +1571,7 @@ def eliminar_etiqueta(request, etiqueta_id):
     obj_id = request.POST.get("obj_id")
     if _es_ajax(request) and obj_id:
         try:
-            operacion = get_object_or_404(Operacion, id=int(obj_id))
+            operacion = get_object_or_404(_operacion_queryset(), id=int(obj_id))
             html = render_to_string("operaciones/_detalle_modal_content.html", _contexto_modal_operacion(operacion), request=request)
             card_html = _render_card_html(request, operacion)
             return JsonResponse({"success": True, "html": html, "card_html": card_html, "id": operacion.id})
@@ -1580,7 +1583,7 @@ def eliminar_etiqueta(request, etiqueta_id):
 @login_required
 @require_POST
 def mover_operacion(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_mover_operacion(request.user):
         logger.warning(
             "Movimiento rechazado. Usuario=%s operacion=%s",
@@ -1621,13 +1624,20 @@ def mover_operacion(request, operacion_id):
 @login_required
 @require_POST
 def eliminar_operacion(request, operacion_id):
-    operacion = get_object_or_404(Operacion, id=operacion_id)
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
-        raise PermissionDenied("No tienes permisos para eliminar esta operaciÃ³n.")
-    operacion.delete()
-    
+        raise PermissionDenied("No tienes permisos para eliminar esta operación.")
+    with transaction.atomic():
+        enviar_a_papelera(operacion, request.user)
+
     if _es_ajax(request):
-        return JsonResponse({"success": True, "redirect": True, "id": operacion_id})
-    
-    messages.success(request, "OperaciÃ³n eliminada exitosamente.")
+        return JsonResponse({
+            "success": True,
+            "ok": True,
+            "redirect": True,
+            "id": operacion_id,
+            "message": "La tarjeta se envió a la papelera correctamente.",
+        })
+
+    messages.success(request, "La tarjeta se envió a la papelera correctamente.")
     return redirect("operaciones:panel_operaciones")

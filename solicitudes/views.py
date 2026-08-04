@@ -22,7 +22,10 @@ from django.views.decorators.http import require_POST
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from urllib.parse import urlencode
+
 from clientes.models import Cliente
+from solicitudes_app.trash import enviar_a_papelera
+
 from .forms import (
     CLIENTE_NUEVO_LABEL,
     CLIENTE_NUEVO_VALUE,
@@ -83,6 +86,30 @@ def _puede_convertir_solicitud(user, solicitud):
     return puede_crear(user)
 
 
+def _solicitudes_activas():
+    return Solicitud.objects.filter(eliminado_en__isnull=True)
+
+
+def _cotizaciones_activas():
+    return Cotizacion.objects.filter(eliminado_en__isnull=True)
+
+
+def _referencias_activas():
+    return Referencia.objects.filter(eliminado_en__isnull=True)
+
+
+def _puede_restaurar_solicitud(user, solicitud):
+    return bool(user.is_authenticated and (_es_admin(user) or solicitud.ejecutivo_id == user.id))
+
+
+def _puede_restaurar_cotizacion(user, cotizacion):
+    return bool(user.is_authenticated and (_es_admin(user) or cotizacion.ejecutivo_id == user.id))
+
+
+def _puede_restaurar_referencia(user, referencia):
+    return bool(user.is_authenticated and (_es_admin(user) or referencia.ejecutivo_id == user.id or puede_crear(user)))
+
+
 def _asignar_estados_por_transporte(solicitud):
     solicitud.estado_aereo = "Pendiente" if solicitud.aerea else None
     solicitud.estado_maritimo = "Pendiente" if solicitud.maritima else None
@@ -93,7 +120,7 @@ def _solicitud_duplicada_reciente(solicitud):
     if solicitud.pk:
         return False
     limite = timezone.now() - timedelta(seconds=RECENT_DUPLICATE_WINDOW_SECONDS)
-    return Solicitud.objects.filter(
+    return _solicitudes_activas().filter(
         anio=solicitud.anio,
         cliente=solicitud.cliente,
         fecha_recepcion=solicitud.fecha_recepcion,
@@ -111,7 +138,7 @@ def _cotizacion_duplicada_reciente(cotizacion):
     if cotizacion.pk:
         return False
     limite = timezone.now() - timedelta(seconds=RECENT_DUPLICATE_WINDOW_SECONDS)
-    return Cotizacion.objects.filter(
+    return _cotizaciones_activas().filter(
         anio=cotizacion.anio,
         cliente=cotizacion.cliente,
         fecha_solicitud=cotizacion.fecha_solicitud,
@@ -592,49 +619,49 @@ def inicio(request):
         | Q(estado_terrestre="Cumplido")
     )
 
-    pendientes = Solicitud.objects.filter(pendientes_q).distinct().count()
-    cumplidas = Solicitud.objects.filter(cumplidas_q).distinct().count()
+    pendientes = _solicitudes_activas().filter(pendientes_q).distinct().count()
+    cumplidas = _solicitudes_activas().filter(cumplidas_q).distinct().count()
 
     hoy = timezone.localdate()
     fuera_de_plazo = (
-        Solicitud.objects.filter(fecha_entrega__lt=hoy)
+        _solicitudes_activas().filter(fecha_entrega__lt=hoy)
         .filter(pendientes_q)
         .distinct()
         .count()
     )
 
-    total_solicitudes = Solicitud.objects.count()
+    total_solicitudes = _solicitudes_activas().count()
     
     # Auto-update de cotizaciones fuera de plazo
-    Cotizacion.objects.filter(estado="Pendiente", fecha_envio__lt=hoy).update(estado="Fuera de plazo")
+    _cotizaciones_activas().filter(estado="Pendiente", fecha_envio__lt=hoy).update(estado="Fuera de plazo")
     
-    cot_pendientes = Cotizacion.objects.filter(estado="Pendiente").count()
-    cot_cumplidas = Cotizacion.objects.filter(estado="Cumplido").count()
-    cot_fuera = Cotizacion.objects.filter(estado="Fuera de plazo").count()
-    cot_total = Cotizacion.objects.count()
+    cot_pendientes = _cotizaciones_activas().filter(estado="Pendiente").count()
+    cot_cumplidas = _cotizaciones_activas().filter(estado="Cumplido").count()
+    cot_fuera = _cotizaciones_activas().filter(estado="Fuera de plazo").count()
+    cot_total = _cotizaciones_activas().count()
     
     total_cotizaciones = cot_total
-    total_referencias = Referencia.objects.count()
+    total_referencias = _referencias_activas().count()
 
     ultimo_solicitud = (
-        Solicitud.objects.order_by("-id")
+        _solicitudes_activas().order_by("-id")
         .values(codigo=F("sg"))
         .first()
     )
     ultimo_consecutivo_cotizacion = (
-        Cotizacion.objects.order_by("-id")
+        _cotizaciones_activas().order_by("-id")
         .values_list("consecutivo", flat=True)
         .first()
     )
     ultimo_consecutivo_referencia = (
-        Referencia.objects.order_by("-consecutivo", "-id")
+        _referencias_activas().order_by("-consecutivo", "-id")
         .values_list("referencia", flat=True)
         .first()
     )
 
     # TOP 5 clientes por número de referencias (solo Referencia, sin Cliente ni solicitudes)
     top_clientes = (
-        Referencia.objects
+        _referencias_activas()
         .exclude(cliente__isnull=True)
         .exclude(cliente__exact='')
         .values('cliente')
@@ -671,7 +698,7 @@ def inicio(request):
 @login_required
 def lista_solicitudes(request):
     anios = list(
-        Solicitud.objects.values_list("anio", flat=True).distinct().order_by("anio")
+        _solicitudes_activas().values_list("anio", flat=True).distinct().order_by("anio")
     )
     anio_param = request.GET.get("anio")
     anio = (
@@ -680,7 +707,7 @@ def lista_solicitudes(request):
         else (anios[-1] if anios else None)
     )
     solicitudes_qs = (
-        Solicitud.objects.filter(anio=anio).select_related(
+        _solicitudes_activas().filter(anio=anio).select_related(
             "ejecutivo",
             "referencia_generada",
         )
@@ -776,7 +803,7 @@ def importar_solicitudes_csv(request):
 @login_required
 def exportar_solicitudes_excel(request):
     anios = list(
-        Solicitud.objects.values_list("anio", flat=True).distinct().order_by("anio")
+        _solicitudes_activas().values_list("anio", flat=True).distinct().order_by("anio")
     )
     anio_param = request.GET.get("anio")
     anio = (
@@ -785,7 +812,7 @@ def exportar_solicitudes_excel(request):
         else (anios[-1] if anios else None)
     )
     solicitudes = (
-        Solicitud.objects.filter(anio=anio).order_by("-fecha_recepcion")
+        _solicitudes_activas().filter(anio=anio).order_by("-fecha_recepcion")
         if anio
         else Solicitud.objects.none()
     )
@@ -841,7 +868,7 @@ def crear_solicitud(request):
                 try:
                     with transaction.atomic():
                         if idempotency_key:
-                            existente = Solicitud.objects.filter(
+                            existente = _solicitudes_activas().filter(
                                 idempotency_key=idempotency_key
                             ).first()
                             if existente:
@@ -865,7 +892,7 @@ def crear_solicitud(request):
                     return redirect(next_url)
                 except IntegrityError:
                     if idempotency_key:
-                        existente = Solicitud.objects.filter(
+                        existente = _solicitudes_activas().filter(
                             idempotency_key=idempotency_key
                         ).first()
                         if existente:
@@ -893,7 +920,7 @@ def crear_solicitud(request):
 @login_required
 def editar_solicitud(request, pk):
     next_url = _safe_next_url(request, "lista_solicitudes")
-    solicitud = get_object_or_404(Solicitud, pk=pk)
+    solicitud = get_object_or_404(_solicitudes_activas(), pk=pk)
     form = SolicitudForm(request.POST or None, instance=solicitud)
 
     if request.method == "POST":
@@ -915,11 +942,23 @@ def editar_solicitud(request, pk):
 @login_required
 def eliminar_solicitud(request, pk):
     next_url = _safe_next_url(request, "lista_solicitudes")
-    solicitud = get_object_or_404(Solicitud, pk=pk)
+    solicitud = get_object_or_404(_solicitudes_activas(), pk=pk)
     _requiere_admin(request.user)
 
     if request.method == "POST":
-        solicitud.delete()
+        with transaction.atomic():
+            enviar_a_papelera(solicitud, request.user)
+        message = "La solicitud se envió a la papelera correctamente."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "status": "ok",
+                    "id": solicitud.pk,
+                    "message": message,
+                }
+            )
+        messages.success(request, message)
         return redirect(next_url)
 
     return render(
@@ -936,7 +975,7 @@ def cambiar_estado(request, pk, tipo):
     if tipo not in TIPOS_TRANSPORTE:
         raise PermissionDenied("Tipo de transporte no permitido.")
 
-    solicitud = get_object_or_404(Solicitud, pk=pk)
+    solicitud = get_object_or_404(_solicitudes_activas(), pk=pk)
     if not (_es_admin(request.user) or solicitud.ejecutivo_id == request.user.id):
         raise PermissionDenied("No tienes permisos para cambiar este estado.")
 
@@ -965,7 +1004,7 @@ def marcar_cumplido(request, pk, tipo):
     if tipo not in TIPOS_TRANSPORTE:
         raise PermissionDenied("Tipo de transporte no permitido.")
 
-    solicitud = get_object_or_404(Solicitud, pk=pk)
+    solicitud = get_object_or_404(_solicitudes_activas(), pk=pk)
     if not (_es_admin(request.user) or solicitud.ejecutivo_id == request.user.id):
         raise PermissionDenied("No tienes permisos para cambiar este estado.")
 
@@ -992,7 +1031,7 @@ def marcar_cumplido(request, pk, tipo):
 def cambiar_ejecutivo(request, pk):
     next_url = _safe_next_url(request, "lista_solicitudes")
     _requiere_admin(request.user)
-    solicitud = get_object_or_404(Solicitud, pk=pk)
+    solicitud = get_object_or_404(_solicitudes_activas(), pk=pk)
 
     user_id = request.POST.get("ejecutivo")
     solicitud.ejecutivo = get_object_or_404(User, id=user_id) if user_id else None
@@ -1118,7 +1157,7 @@ def eliminar_usuario(request, pk):
 @login_required
 @require_POST
 def cambiar_estado_cotizacion(request, id):
-    cot = get_object_or_404(Cotizacion, id=id)
+    cot = get_object_or_404(_cotizaciones_activas(), id=id)
     cot.estado = "Cumplido"
     cot.save()
     return JsonResponse({"status": "ok"})
@@ -1129,7 +1168,7 @@ def lista_cotizaciones(request):
     hoy = timezone.localdate()
 
     anios = list(
-        Cotizacion.objects.values_list("anio", flat=True).distinct().order_by("anio")
+        _cotizaciones_activas().values_list("anio", flat=True).distinct().order_by("anio")
     )
     anio_param = request.GET.get("anio")
     anio = (
@@ -1138,7 +1177,7 @@ def lista_cotizaciones(request):
         else (anios[-1] if anios else None)
     )
     cotizaciones_qs = (
-        Cotizacion.objects.filter(anio=anio).select_related("ejecutivo")
+        _cotizaciones_activas().filter(anio=anio).select_related("ejecutivo")
         if anio
         else Cotizacion.objects.none()
     )
@@ -1227,7 +1266,7 @@ def importar_cotizaciones_csv(request):
 @login_required
 def exportar_cotizaciones_excel(request):
     anios = list(
-        Cotizacion.objects.values_list("anio", flat=True).distinct().order_by("anio")
+        _cotizaciones_activas().values_list("anio", flat=True).distinct().order_by("anio")
     )
     anio_param = request.GET.get("anio")
     anio = (
@@ -1236,7 +1275,7 @@ def exportar_cotizaciones_excel(request):
         else (anios[-1] if anios else None)
     )
     cotizaciones = (
-        Cotizacion.objects.filter(anio=anio).order_by("-fecha_solicitud")
+        _cotizaciones_activas().filter(anio=anio).order_by("-fecha_solicitud")
         if anio
         else Cotizacion.objects.none()
     )
@@ -1340,7 +1379,7 @@ def crear_cotizacion(request):
 @login_required
 def editar_cotizacion(request, pk):
     next_url = _safe_next_url(request, "lista_cotizaciones")
-    cotizacion = get_object_or_404(Cotizacion, pk=pk)
+    cotizacion = get_object_or_404(_cotizaciones_activas(), pk=pk)
     form = CotizacionForm(request.POST or None, instance=cotizacion)
 
     if request.method == "POST":
@@ -1362,8 +1401,20 @@ def editar_cotizacion(request, pk):
 def eliminar_cotizacion(request, pk):
     next_url = _safe_next_url(request, "lista_cotizaciones")
     _requiere_admin(request.user)
-    cotizacion = get_object_or_404(Cotizacion, pk=pk)
-    cotizacion.delete()
+    cotizacion = get_object_or_404(_cotizaciones_activas(), pk=pk)
+    with transaction.atomic():
+        enviar_a_papelera(cotizacion, request.user)
+    message = "La cotización se envió a la papelera correctamente."
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse(
+            {
+                "ok": True,
+                "status": "ok",
+                "id": cotizacion.pk,
+                "message": message,
+            }
+        )
+    messages.success(request, message)
     return redirect(next_url)
 
 
@@ -1372,7 +1423,7 @@ def eliminar_cotizacion(request, pk):
 def cambiar_ejecutivo_cotizacion(request, pk):
     next_url = _safe_next_url(request, "lista_cotizaciones")
     _requiere_admin(request.user)
-    cotizacion = get_object_or_404(Cotizacion, pk=pk)
+    cotizacion = get_object_or_404(_cotizaciones_activas(), pk=pk)
     user_id = request.POST.get("ejecutivo")
     cotizacion.ejecutivo = get_object_or_404(User, id=user_id) if user_id else None
     cotizacion.save()
@@ -1382,7 +1433,7 @@ def cambiar_ejecutivo_cotizacion(request, pk):
 
 @login_required
 def lista_referencias(request):
-    referencias_qs = Referencia.objects.select_related(
+    referencias_qs = _referencias_activas().select_related(
         "ejecutivo",
         "operacion_generada",
     )
@@ -1463,7 +1514,7 @@ def importar_referencias_csv(request):
 
 @login_required
 def exportar_referencias_excel(request):
-    referencias = Referencia.objects.select_related("ejecutivo").order_by("consecutivo", "id")
+    referencias = _referencias_activas().select_related("ejecutivo").order_by("consecutivo", "id")
     headers = [
         "Referencia",
         "Ejecutivo",
@@ -1510,7 +1561,7 @@ def crear_referencia(request):
 
 @login_required
 def enviar_solicitud_a_referencias(request, pk):
-    solicitud = get_object_or_404(Solicitud, pk=pk)
+    solicitud = get_object_or_404(_solicitudes_activas(), pk=pk)
     if not _puede_convertir_solicitud(request.user, solicitud):
         raise PermissionDenied("No tienes permisos para enviar esta solicitud a Referencias.")
     if getattr(solicitud, "referencia_generada", None):
@@ -1542,7 +1593,7 @@ def editar_referencia(request, pk):
     next_url = _safe_next_url(request, "lista_referencias")
     if not puede_crear(request.user):
         raise PermissionDenied("No tienes permisos para editar referencias.")
-    referencia = get_object_or_404(Referencia, pk=pk)
+    referencia = get_object_or_404(_referencias_activas(), pk=pk)
     form = ReferenciaForm(request.POST or None, instance=referencia)
 
     if request.method == "POST":
@@ -1564,8 +1615,20 @@ def editar_referencia(request, pk):
 def eliminar_referencia(request, pk):
     next_url = _safe_next_url(request, "lista_referencias")
     _requiere_admin(request.user)
-    referencia = get_object_or_404(Referencia, pk=pk)
-    referencia.delete()
+    referencia = get_object_or_404(_referencias_activas(), pk=pk)
+    with transaction.atomic():
+        enviar_a_papelera(referencia, request.user)
+    message = "La referencia se envió a la papelera correctamente."
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse(
+            {
+                "ok": True,
+                "status": "ok",
+                "id": referencia.pk,
+                "message": message,
+            }
+        )
+    messages.success(request, message)
     return redirect(next_url)
 
 
@@ -1574,7 +1637,7 @@ def eliminar_referencia(request, pk):
 def cambiar_ejecutivo_referencia(request, pk):
     next_url = _safe_next_url(request, "lista_referencias")
     _requiere_admin(request.user)
-    referencia = get_object_or_404(Referencia, pk=pk)
+    referencia = get_object_or_404(_referencias_activas(), pk=pk)
     user_id = request.POST.get("ejecutivo")
     referencia.ejecutivo = get_object_or_404(User, id=user_id) if user_id else None
     referencia.save()

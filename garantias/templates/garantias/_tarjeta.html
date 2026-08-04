@@ -3,6 +3,7 @@
   id="garantia-{{ g.id }}"
   class="garantia-card card border-0 shadow-sm mb-3"
   data-garantia-card="1"
+  data-trash-remove-item="1"
   data-garantia-id="{{ g.id }}"
   data-garantia-column-id="{{ g.columna_id|default:'' }}"
   data-garantia-state="{{ g.estado }}">
@@ -85,6 +86,18 @@
           </li>
         </ul>
       </div>
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-danger"
+        title="Enviar a la papelera"
+        aria-label="Enviar a la papelera"
+        data-trash-send="1"
+        data-trash-module="garantia"
+        data-trash-endpoint="{% url 'garantias:eliminar_garantia' g.id %}">
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M6 1h4l1 1h3v2H2V2h3l1-1zm-2 4h8l-.6 8.2A2 2 0 0 1 9.4 15H6.6a2 2 0 0 1-1.99-1.8L4 5zm2 2v5h1V7H6zm3 0v5h1V7H9z"/>
+        </svg>
+      </button>
       {% include "components/_kanban_status_control.html" with obj=g select_attr="data-garantia-state-select" choices=columnas_estado only %}
 
       <a

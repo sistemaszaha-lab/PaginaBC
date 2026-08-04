@@ -78,6 +78,14 @@ class PanelCotizacion(models.Model):
         blank=True,
         related_name="cotizaciones",
     )
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
+    eliminado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="panel_cotizaciones_panelcotizacion_eliminadas",
+    )
 
     class Meta:
         ordering = ["-fecha_creacion"]
@@ -99,6 +107,10 @@ class PanelCotizacion(models.Model):
 
     def __str__(self) -> str:
         return f"{self.titulo} ({self.cliente})"
+
+    @property
+    def esta_eliminada(self) -> bool:
+        return self.eliminado_en is not None
 
     @property
     def columna_codigo(self) -> str:

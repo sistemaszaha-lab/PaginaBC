@@ -15,6 +15,7 @@ from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET, require_POST
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
+from solicitudes_app.trash import enviar_a_papelera
 
 
 from .models import (
@@ -161,7 +162,7 @@ def _column_context(*, columna: CuentaGastosColumna, items, count: int, loaded: 
 
 
 def _cuenta_queryset():
-    return CuentaGastos.objects\
+    return CuentaGastos.objects.filter(eliminado_en__isnull=True)\
         .select_related(
             "cliente",
             "creado_por",
@@ -289,7 +290,10 @@ def _column_count(columna_o_estado, usuario_id=None):
         if isinstance(columna_o_estado, CuentaGastosColumna)
         else columna_o_estado
     )
-    queryset = CuentaGastos.objects.filter(estado=estado)
+    queryset = CuentaGastos.objects.filter(
+        estado=estado,
+        eliminado_en__isnull=True,
+    )
     if usuario_id is not None:
         queryset = queryset.filter(asignados__pk=usuario_id)
     return queryset.count()
@@ -357,7 +361,7 @@ def _render_card_html(request, cuenta):
 
 def _get_cuenta_para_copia(pk: int) -> CuentaGastos:
     return get_object_or_404(
-        CuentaGastos.objects.select_related("cliente", "creado_por", "columna")
+        CuentaGastos.objects.filter(eliminado_en__isnull=True).select_related("cliente", "creado_por", "columna")
         .prefetch_related("asignados", "etiquetas", "opciones"),
         pk=pk,
     )
@@ -855,7 +859,7 @@ def editor_cuenta_inline(request, pk):
         )
 
     cuenta = get_object_or_404(
-        CuentaGastos.objects.select_related("creado_por").prefetch_related(
+        CuentaGastos.objects.filter(eliminado_en__isnull=True).select_related("creado_por").prefetch_related(
             "asignados"
         ),
         pk=pk,
@@ -1377,7 +1381,7 @@ def quitar_opcion_cuenta(request, pk, opcion_id):
 
 @login_required
 def agregar_comentario(request, pk):
-    cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
     if not _puede_modificar_cuenta(request.user, cuenta):
         raise PermissionDenied("No tienes permisos para comentar esta cuenta de gastos.")
     if request.method == "POST":
@@ -1414,7 +1418,7 @@ def agregar_comentario(request, pk):
 @login_required
 @require_POST
 def agregar_archivo(request, pk):
-    cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
     if not _puede_modificar_cuenta(request.user, cuenta):
         raise PermissionDenied("No tienes permisos para modificar esta cuenta de gastos.")
     layout = (request.POST.get("layout") or "modal").strip()
@@ -1449,7 +1453,7 @@ def agregar_archivo(request, pk):
 @login_required
 @require_POST
 def eliminar_archivo(request, pk):
-    cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
     if not _puede_modificar_cuenta(request.user, cuenta):
         raise PermissionDenied("No tienes permisos para eliminar archivos de esta cuenta de gastos.")
     archivo_id = request.POST.get("archivo_id")
@@ -1470,7 +1474,7 @@ def eliminar_archivo(request, pk):
 @login_required
 @require_POST
 def agregar_enlace(request, pk):
-    cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
     if not _puede_modificar_cuenta(request.user, cuenta):
         raise PermissionDenied("No tienes permisos para modificar esta cuenta de gastos.")
     layout = (request.POST.get("layout") or "modal").strip()
@@ -1503,7 +1507,7 @@ def agregar_enlace(request, pk):
 @login_required
 @require_POST
 def eliminar_enlace(request, pk):
-    cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
     if not _puede_modificar_cuenta(request.user, cuenta):
         raise PermissionDenied("No tienes permisos para eliminar enlaces de esta cuenta de gastos.")
     enlace_id = request.POST.get("enlace_id")
@@ -1639,7 +1643,8 @@ def columna_eliminar(request, pk):
         )
     destino_id = (request.POST.get("columna_destino_id") or "").strip()
     cuentas_qs = CuentaGastos.objects.filter(
-        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo),
+        eliminado_en__isnull=True,
     )
     total_cuentas = cuentas_qs.count()
     if total_cuentas > 0:
@@ -1732,13 +1737,22 @@ def tarjeta_pegar(request, columna_id):
 
 @login_required
 def eliminar_cuenta(request, pk):
-    cuenta = get_object_or_404(CuentaGastos, pk=pk)
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
     if not _puede_modificar_cuenta(request.user, cuenta):
         raise PermissionDenied("No tienes permisos para eliminar esta cuenta de gastos.")
     if request.method == "POST":
-        cuenta.delete()
+        with transaction.atomic():
+            enviar_a_papelera(cuenta, request.user)
         if request.headers.get("x-requested-with") == "XMLHttpRequest":
-            return JsonResponse({"success": True, "redirect": True, "id": pk})
+            return JsonResponse(
+                {
+                    "success": True,
+                    "ok": True,
+                    "redirect": True,
+                    "id": pk,
+                    "message": "La tarjeta se envió a la papelera correctamente.",
+                }
+            )
         return redirect("cuenta_gastos:panel_cuenta_gastos")
     return JsonResponse({"success": False, "error": "Método no permitido."})
 
@@ -1751,7 +1765,7 @@ def mover_cuenta_gastos(
 ):
 
     cuenta=get_object_or_404(
-        CuentaGastos,
+        _cuenta_queryset(),
         pk=pk
     )
     if not _puede_modificar_cuenta(request.user, cuenta):

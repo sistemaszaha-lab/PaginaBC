@@ -3,6 +3,7 @@
     class="cuenta-card"
     data-id="{{ cuenta.id }}"
     data-cuenta-card="1"
+    data-trash-remove-item="1"
     data-cuenta-state="{{ cuenta.estado }}"
     data-cuenta-column-id="{{ cuenta.columna_id|default:'' }}"
     data-cuenta-editor-url="{% url 'cuenta_gastos:editor_cuenta_inline' cuenta.id %}"
@@ -94,6 +95,19 @@
                 <span class="cuenta-card__stat" data-cuenta-card-files-count="1">{{ cuenta.archivos_count|default:cuenta.archivos.count }} archivos</span>
                 <span class="cuenta-card__stat" data-cuenta-card-comments-count="1">{{ cuenta.comentarios_count|default:cuenta.comentarios.count }} comentarios</span>
             </div>
+            <button
+                type="button"
+                class="btn btn-sm btn-outline-danger"
+                title="Enviar a la papelera"
+                aria-label="Enviar a la papelera"
+                data-trash-send="1"
+                data-trash-module="cuenta_gastos"
+                data-trash-endpoint="{% url 'cuenta_gastos:eliminar_cuenta' cuenta.id %}"
+            >
+                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path fill="currentColor" d="M6 1h4l1 1h3v2H2V2h3l1-1zm-2 4h8l-.6 8.2A2 2 0 0 1 9.4 15H6.6a2 2 0 0 1-1.99-1.8L4 5zm2 2v5h1V7H6zm3 0v5h1V7H9z"/>
+                </svg>
+            </button>
         </div>
 
         <div class="cuenta-card__state-control">

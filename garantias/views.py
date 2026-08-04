@@ -16,6 +16,7 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from .decorators import admin_required
+from solicitudes_app.trash import enviar_a_papelera
 from .forms import (
     GarantiaArchivosForm,
     GarantiaArchivoUploadForm,
@@ -149,7 +150,8 @@ def _es_ajax(request):
 
 def _garantia_queryset():
     return (
-        Garantia.objects.select_related("cliente", "creado_por", "columna")
+        Garantia.objects.filter(eliminado_en__isnull=True)
+        .select_related("cliente", "creado_por", "columna")
         .prefetch_related("asignados", "etiquetas")
         .annotate(
             comentarios_count=Count("comentarios", distinct=True),
@@ -348,7 +350,7 @@ def _columna_manual_permitida():
 
 
 def _column_count(columna: GarantiaColumna) -> int:
-    return Garantia.objects.filter(estado=columna.codigo).count()
+    return Garantia.objects.filter(estado=columna.codigo, eliminado_en__isnull=True).count()
 
 
 def _es_columna_base(columna: GarantiaColumna) -> bool:
@@ -369,7 +371,7 @@ def _render_card_html(request, garantia):
 
 def _get_garantia_para_copia(pk: int) -> Garantia:
     return get_object_or_404(
-        Garantia.objects.select_related("columna", "cliente", "creado_por")
+        Garantia.objects.filter(eliminado_en__isnull=True).select_related("columna", "cliente", "creado_por")
         .prefetch_related("asignados", "etiquetas"),
         pk=pk,
     )
@@ -688,7 +690,7 @@ def crear_garantia_inline(request):
             "id": garantia.pk,
             "garantia_id": garantia.pk,
             "estado": garantia.estado,
-            "column_count": Garantia.objects.filter(estado=garantia.estado).count(),
+            "column_count": _column_count(columna),
             "columna_id": columna.pk,
             "columna_codigo": columna.codigo,
         },
@@ -855,7 +857,8 @@ def columna_eliminar(request, pk):
         )
     destino_id = (request.POST.get("columna_destino_id") or "").strip()
     garantias_qs = Garantia.objects.filter(
-        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo),
+        eliminado_en__isnull=True,
     )
     total_garantias = garantias_qs.count()
     if total_garantias > 0:
@@ -946,7 +949,7 @@ def tarjeta_pegar(request, columna_id):
 def actualizar_estado_garantia(request):
     garantia_id = (request.POST.get("garantia_id") or "").strip()
     nuevo_estado = (request.POST.get("nuevo_estado") or request.POST.get("estado") or "").strip().upper()
-    garantia = get_object_or_404(Garantia, pk=garantia_id)
+    garantia = get_object_or_404(_garantia_queryset(), pk=garantia_id)
     columna = _buscar_columna_activa_por_codigo(nuevo_estado)
     if columna is None:
         raise PermissionDenied("Estado inválido.")
@@ -973,7 +976,7 @@ def actualizar_estado_garantia(request):
 @admin_required
 @require_POST
 def cambiar_estado_garantia(request, pk):
-    garantia = get_object_or_404(Garantia, pk=pk)
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     nuevo_estado = (request.POST.get("estado") or request.POST.get("nuevo_estado") or "").strip().upper()
     columna = _buscar_columna_activa_por_codigo(nuevo_estado)
     if columna is None:
@@ -1001,7 +1004,7 @@ def cambiar_estado_garantia(request, pk):
 @admin_required
 @require_POST
 def agregar_comentario(request, pk):
-    garantia = get_object_or_404(Garantia, pk=pk)
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     form = GarantiaComentarioForm(request.POST)
     layout = (request.POST.get("layout") or "modal").strip()
     if form.is_valid():
@@ -1136,9 +1139,10 @@ def editar_garantia(request, pk):
 @admin_required
 @require_POST
 def eliminar_garantia(request, pk):
-    garantia = get_object_or_404(Garantia, pk=pk)
-    garantia.delete()
-    messages.success(request, "Garantía eliminada.")
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    with transaction.atomic():
+        enviar_a_papelera(garantia, request.user)
+    messages.success(request, "La tarjeta se envió a la papelera correctamente.")
     if _es_ajax(request):
         return JsonResponse(
             {
@@ -1147,6 +1151,7 @@ def eliminar_garantia(request, pk):
                 "deleted": True,
                 "id": pk,
                 "garantia_id": pk,
+                "message": "La tarjeta se envió a la papelera correctamente.",
             }
         )
     return redirect("garantias:panel_garantias")
@@ -1157,7 +1162,7 @@ def eliminar_garantia(request, pk):
 @login_required
 @admin_required
 def descargar_archivo(request, pk, archivo_id):
-    garantia = get_object_or_404(Garantia, pk=pk)
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     archivo = get_object_or_404(GarantiaArchivo, pk=archivo_id, garantia=garantia)
     fh = archivo.archivo.open("rb")
     return FileResponse(fh, as_attachment=True, filename=archivo.archivo.name.split("/")[-1])
@@ -1167,7 +1172,7 @@ def descargar_archivo(request, pk, archivo_id):
 @admin_required
 @require_POST
 def agregar_archivos(request, pk):
-    garantia = get_object_or_404(Garantia, pk=pk)
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     if not _es_ajax(request):
         return JsonResponse(
             {"success": False, "error": "Solicitud AJAX requerida."}, status=400
@@ -1207,7 +1212,7 @@ def agregar_archivos(request, pk):
 @admin_required
 @require_POST
 def eliminar_archivo(request, pk, archivo_id):
-    garantia = get_object_or_404(Garantia, pk=pk)
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     archivo = get_object_or_404(GarantiaArchivo, pk=archivo_id, garantia=garantia)
     if _es_ajax(request):
         archivo.delete()
@@ -1230,7 +1235,7 @@ def eliminar_archivo(request, pk, archivo_id):
 @admin_required
 @require_POST
 def agregar_enlace(request, pk):
-    garantia = get_object_or_404(Garantia, pk=pk)
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     if not _es_ajax(request):
         return JsonResponse(
             {"success": False, "error": "Solicitud AJAX requerida."}, status=400
@@ -1268,7 +1273,7 @@ def agregar_enlace(request, pk):
 @admin_required
 @require_POST
 def eliminar_enlace(request, pk, enlace_id):
-    garantia = get_object_or_404(Garantia, pk=pk)
+    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     enlace = get_object_or_404(GarantiaEnlace, pk=enlace_id, garantia=garantia)
     if _es_ajax(request):
         enlace.delete()

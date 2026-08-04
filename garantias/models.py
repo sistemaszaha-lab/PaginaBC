@@ -87,6 +87,14 @@ class Garantia(models.Model):
         blank=True,
         related_name="garantias",
     )
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
+    eliminado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="garantias_garantia_eliminadas",
+    )
 
     class Meta:
         ordering = ["-fecha_creacion", "-id"]
@@ -107,6 +115,10 @@ class Garantia(models.Model):
 
     def __str__(self):
         return self.titulo
+
+    @property
+    def esta_eliminada(self):
+        return self.eliminado_en is not None
 
 
 class GarantiaEtiqueta(models.Model):

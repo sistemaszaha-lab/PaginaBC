@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import IntegrityError, models, transaction
 from django.contrib.auth.models import User
 from datetime import date
@@ -55,6 +56,14 @@ class Solicitud(models.Model):
 
     creado = models.DateTimeField(auto_now_add=True)
     fecha_cumplido = models.DateTimeField(null=True, blank=True)
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
+    eliminado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="solicitudes_solicitud_eliminadas",
+    )
 
     def save(self, *args, **kwargs):
         self.cliente = normalizar_texto_cliente(self.cliente)
@@ -62,6 +71,10 @@ class Solicitud(models.Model):
 
     def __str__(self):
         return f"{self.sg} - {self.cliente}"
+
+    @property
+    def esta_eliminada(self):
+        return self.eliminado_en is not None
 
     # ===============================
     # ESTADO ACTIVO
@@ -164,6 +177,14 @@ class Cotizacion(models.Model):
     terrestre = models.CharField(max_length=100, blank=True)
 
     creado = models.DateTimeField(auto_now_add=True)
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
+    eliminado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="solicitudes_cotizacion_eliminadas",
+    )
 
     estado = models.CharField(
         max_length=50,
@@ -212,6 +233,10 @@ class Cotizacion(models.Model):
                         self.cliente = existente.nombre
         return super().save(*args, **kwargs)
 
+    @property
+    def esta_eliminada(self):
+        return self.eliminado_en is not None
+
 
 #===================================
 # MODELO REFERENCIAS
@@ -242,6 +267,14 @@ class Referencia(models.Model):
     )
     agencia_aduanal = models.CharField(max_length=200, blank=True, null=True)
     fecha = models.DateField(blank=True, null=True)
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
+    eliminado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="solicitudes_referencia_eliminadas",
+    )
     solicitud_origen = models.OneToOneField(
         Solicitud,
         null=True,
@@ -273,6 +306,10 @@ class Referencia(models.Model):
     def save(self, *args, **kwargs):
         self.cliente = normalizar_texto_cliente(self.cliente)
         return super().save(*args, **kwargs)
+
+    @property
+    def esta_eliminada(self):
+        return self.eliminado_en is not None
 
 
 class UserProfile(models.Model):

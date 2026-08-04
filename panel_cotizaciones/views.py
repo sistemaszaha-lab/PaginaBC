@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
+from solicitudes_app.trash import enviar_a_papelera
 
 from .forms import (
     PanelCotizacionArchivosForm,
@@ -191,7 +192,10 @@ def _column_context(
 def _board_queryset(usuarios):
     codigos_activos = [codigo for codigo, _nombre in _columnas_estado_choices()]
     qs = (
-        PanelCotizacion.objects.filter(estado__in=codigos_activos).filter(
+        PanelCotizacion.objects.filter(
+            estado__in=codigos_activos,
+            eliminado_en__isnull=True,
+        ).filter(
             Q(columna__activa=True) | Q(columna__isnull=True)
         )
         .select_related("columna", "creado_por")
@@ -278,7 +282,10 @@ def _guardar_adjuntos_enlaces(
 
 
 def _column_count(columna: PanelCotizacionColumna) -> int:
-    return PanelCotizacion.objects.filter(estado=columna.codigo).count()
+    return PanelCotizacion.objects.filter(
+        estado=columna.codigo,
+        eliminado_en__isnull=True,
+    ).count()
 
 
 def _crear_panel_desde_form(*, form, creado_por, columna: PanelCotizacionColumna):
@@ -301,7 +308,7 @@ def _render_card_html(request: HttpRequest, obj: PanelCotizacion) -> str:
 
 def _get_cotizacion_para_copia(pk: int) -> PanelCotizacion:
     return get_object_or_404(
-        PanelCotizacion.objects.select_related("columna", "creado_por")
+        PanelCotizacion.objects.filter(eliminado_en__isnull=True).select_related("columna", "creado_por")
         .prefetch_related("asignados", "etiquetas"),
         pk=pk,
     )
@@ -357,7 +364,7 @@ def _render_inline_editor(
 
 def _get_cotizacion_detalle(pk: int) -> PanelCotizacion:
     return get_object_or_404(
-        PanelCotizacion.objects.prefetch_related(
+        PanelCotizacion.objects.filter(eliminado_en__isnull=True).prefetch_related(
             "asignados",
             "etiquetas",
             "comentarios__creado_por",
@@ -593,7 +600,7 @@ def inline_editor(request: HttpRequest, pk: int) -> JsonResponse:
         )
 
     obj = get_object_or_404(
-        PanelCotizacion.objects.prefetch_related("asignados"),
+        PanelCotizacion.objects.filter(eliminado_en__isnull=True).prefetch_related("asignados"),
         pk=pk,
     )
     return JsonResponse(
@@ -661,7 +668,7 @@ def crear_inline(request: HttpRequest) -> JsonResponse:
         )
 
     obj = (
-        PanelCotizacion.objects.filter(pk=obj.pk)
+        PanelCotizacion.objects.filter(pk=obj.pk, eliminado_en__isnull=True)
         .select_related("creado_por")
         .prefetch_related("asignados", "etiquetas")
         .annotate(comentarios_count=Count("comentarios"))
@@ -701,7 +708,7 @@ def inline_update(request: HttpRequest, pk: int) -> JsonResponse:
         )
 
     obj = get_object_or_404(
-        PanelCotizacion.objects.prefetch_related("asignados"), pk=pk
+        PanelCotizacion.objects.filter(eliminado_en__isnull=True).prefetch_related("asignados"), pk=pk
     )
     form = form_class(request.POST, instance=obj)
     if not form.is_valid():
@@ -727,7 +734,7 @@ def inline_update(request: HttpRequest, pk: int) -> JsonResponse:
         obj = form.save()
 
     obj = (
-        PanelCotizacion.objects.filter(pk=obj.pk)
+        PanelCotizacion.objects.filter(pk=obj.pk, eliminado_en__isnull=True)
         .select_related("creado_por")
         .prefetch_related("asignados", "etiquetas")
         .annotate(comentarios_count=Count("comentarios"))
@@ -841,7 +848,8 @@ def columna_eliminar(request: HttpRequest, pk: int) -> JsonResponse:
 
     destino_id = (request.POST.get("columna_destino_id") or "").strip()
     tarjetas_qs = PanelCotizacion.objects.filter(
-        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo)
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo),
+        eliminado_en__isnull=True,
     )
     total_tarjetas = tarjetas_qs.count()
     if total_tarjetas > 0:
@@ -909,7 +917,7 @@ def columna_pegar(request: HttpRequest, columna_id: int) -> JsonResponse:
         usuario=request.user,
     )
     nueva = (
-        PanelCotizacion.objects.filter(pk=nueva.pk)
+        PanelCotizacion.objects.filter(pk=nueva.pk, eliminado_en__isnull=True)
         .select_related("columna", "creado_por")
         .prefetch_related("asignados", "etiquetas")
         .annotate(comentarios_count=Count("comentarios"))
@@ -943,7 +951,7 @@ def estado_update(request: HttpRequest) -> JsonResponse:
             {"status": "error", "error": "Columna destino invalida."},
             status=400,
         )
-    obj = get_object_or_404(PanelCotizacion, pk=cotizacion_id)
+    obj = get_object_or_404(PanelCotizacion, pk=cotizacion_id, eliminado_en__isnull=True)
     obj.columna = columna
     obj.estado = columna.codigo
     obj.save(update_fields=["columna", "estado"])
@@ -986,7 +994,7 @@ def detalle_modal(request: HttpRequest, pk: int) -> HttpResponse:
 def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
     if request.headers.get("X-Requested-With") != "XMLHttpRequest":
         return JsonResponse({"status": "error"}, status=400)
-    obj = get_object_or_404(PanelCotizacion, pk=pk)
+    obj = get_object_or_404(PanelCotizacion, pk=pk, eliminado_en__isnull=True)
     layout = (request.POST.get("layout") or "modal").strip()
     template_name = (
         "panel_cotizaciones/_detalle_drawer.html"
@@ -1067,7 +1075,7 @@ def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
 def comentario_create(request: HttpRequest, pk: int) -> JsonResponse:
     if request.headers.get("X-Requested-With") != "XMLHttpRequest":
         return JsonResponse({"status": "error"}, status=400)
-    obj = get_object_or_404(PanelCotizacion, pk=pk)
+    obj = get_object_or_404(PanelCotizacion, pk=pk, eliminado_en__isnull=True)
     form = PanelCotizacionComentarioForm(request.POST)
     if not form.is_valid():
         return JsonResponse(
@@ -1202,6 +1210,14 @@ def enlace_eliminar(request: HttpRequest, pk: int, enlace_id: int) -> JsonRespon
 def eliminar_panel_cotizacion(request: HttpRequest, pk: int) -> JsonResponse:
     if request.headers.get("X-Requested-With") != "XMLHttpRequest":
         return JsonResponse({"status": "error"}, status=400)
-    obj = get_object_or_404(PanelCotizacion, pk=pk)
-    obj.delete()
-    return JsonResponse({"status": "ok", "id": pk})
+    obj = get_object_or_404(PanelCotizacion, pk=pk, eliminado_en__isnull=True)
+    with transaction.atomic():
+        enviar_a_papelera(obj, request.user)
+    return JsonResponse(
+        {
+            "status": "ok",
+            "ok": True,
+            "id": pk,
+            "message": "La tarjeta se envió a la papelera correctamente.",
+        }
+    )

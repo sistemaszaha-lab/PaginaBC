@@ -1655,9 +1655,12 @@ class GarantiaEliminarCSRFTests(TestCase):
                 "deleted": True,
                 "id": self.garantia.pk,
                 "garantia_id": self.garantia.pk,
+                "message": "La tarjeta se envió a la papelera correctamente.",
             },
         )
-        self.assertFalse(Garantia.objects.filter(pk=self.garantia.pk).exists())
+        self.garantia.refresh_from_db()
+        self.assertIsNotNone(self.garantia.eliminado_en)
+        self.assertEqual(self.garantia.eliminado_por, self.admin)
 
     def test_post_sin_csrf_devuelve_403_y_no_elimina(self):
         client = Client(enforce_csrf_checks=True)

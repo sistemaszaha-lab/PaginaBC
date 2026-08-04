@@ -58,6 +58,8 @@
                 de Gastos</a>
             <a href="{% url 'incidencias:panel_incidencias' %}"
                 class="sidebar-link {% if current == 'panel_incidencias' %}is-active{% endif %}">Incidencias</a>
+            <a href="{% url 'papelera' %}"
+                class="sidebar-link {% if current == 'papelera' or current == 'papelera_restaurar' or current == 'papelera_eliminar_definitivamente' or current == 'papelera_restaurar_seleccion' or current == 'papelera_eliminar_seleccion' %}is-active{% endif %}">Papelera</a>
         </nav>
 
         <form method="post" action="{% url 'logout' %}" class="sidebar-logout">
@@ -100,6 +102,7 @@
         {% block content %}{% endblock %}
     </div>
     <script src="{% static 'js/base.js' %}"></script>
+    <script src="{% static 'js/direct-trash.js' %}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 

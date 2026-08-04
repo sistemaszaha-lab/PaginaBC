@@ -146,6 +146,14 @@ class CuentaGastos(models.Model):
         on_delete=models.SET_NULL, related_name="cuenta_gastos_generada",
         editable=False,
     )
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
+    eliminado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="cuenta_gastos_cuentagastos_eliminadas",
+    )
 
     class Meta:
         ordering = ["-fecha_creacion", "-id"]
@@ -179,6 +187,10 @@ class CuentaGastos(models.Model):
 
     def __str__(self):
         return self.titulo
+
+    @property
+    def esta_eliminada(self):
+        return self.eliminado_en is not None
 
     def get_prioridad_color(self):
 

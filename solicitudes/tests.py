@@ -437,7 +437,8 @@ class SeguridadPermisosTests(TestCase):
         self.client.login(username="admin", password="admin123")
         response = self.client.post(reverse("eliminar_referencia", args=[referencia.pk]))
         self.assertEqual(response.status_code, 302)
-        self.assertFalse(Referencia.objects.filter(pk=referencia.pk).exists())
+        referencia.refresh_from_db()
+        self.assertIsNotNone(referencia.eliminado_en)
 
     def test_lista_referencias_ordenamiento_por_consecutivo_segun_parametro(self):
         self.client.login(username="admin", password="admin123")
