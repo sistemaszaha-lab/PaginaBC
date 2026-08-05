@@ -22,7 +22,6 @@ Thumbs.db
 railway_backup.dump
 
 # Generated local files
-/static/
 /uploads/
 .codex-runserver.err
 .codex-runserver.out
