@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Q
 from django.db.models.deletion import PROTECT, ProtectedError
 from django.db.utils import OperationalError, ProgrammingError
 from django.http import JsonResponse
@@ -149,26 +149,10 @@ def cliente_lista(request):
                 | Q(celular__icontains=query)
                 | Q(correo__icontains=query)
             )
-        clientes = clientes.annotate(
-            _orden_tipo=Case(
-                When(tipo_cliente=Cliente.TIPO_EXISTENTE, then=Value(0)),
-                default=Value(1),
-                output_field=IntegerField(),
-            )
-        ).order_by("_orden_tipo", "-fecha_alta", "nombre", "pk")
+        clientes = clientes.order_by("nombre", "pk")
         paginator = Paginator(clientes, CLIENTES_POR_PAGINA)
         page_obj = paginator.get_page(request.GET.get("page"))
         clientes_pagina = list(page_obj.object_list)
-        clientes_existentes = [
-            cliente
-            for cliente in clientes_pagina
-            if cliente.tipo_cliente == Cliente.TIPO_EXISTENTE
-        ]
-        clientes_nuevos = [
-            cliente
-            for cliente in clientes_pagina
-            if cliente.tipo_cliente == Cliente.TIPO_NUEVO
-        ]
     except (OperationalError, ProgrammingError):
         messages.error(
             request,
@@ -177,8 +161,6 @@ def cliente_lista(request):
         paginator = Paginator([], CLIENTES_POR_PAGINA)
         page_obj = paginator.get_page(1)
         clientes_pagina = []
-        clientes_existentes = []
-        clientes_nuevos = []
     incluir_pagina_retorno = (
         "page" in request.GET or page_obj.number != 1
     )
@@ -188,8 +170,6 @@ def cliente_lista(request):
     )
     context = {
         "clientes": clientes_pagina,
-        "clientes_existentes": clientes_existentes,
-        "clientes_nuevos": clientes_nuevos,
         "query": query,
         "page_obj": page_obj,
         "pagination_items": _elementos_paginacion(page_obj),

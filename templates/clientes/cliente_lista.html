@@ -15,11 +15,7 @@
     <a class="btn btn-success" href="{% url 'cliente_crear' %}?next={{ return_url|urlencode }}">+ Nuevo cliente</a>
 </div>
 
-<h3 class="mt-4">Clientes existentes</h3>
-{% include "clientes/_clientes_table.html" with clientes=clientes_existentes %}
-
-<h3 class="mt-4">Nuevos clientes</h3>
-{% include "clientes/_clientes_table.html" with clientes=clientes_nuevos %}
+{% include "clientes/_clientes_table.html" with clientes=clientes %}
 
 {% include "clientes/_pagination.html" %}
 {% endblock %}

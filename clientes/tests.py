@@ -341,10 +341,7 @@ class ClientePaginationTests(TestCase):
         Cliente.objects.bulk_create(objetos)
 
     def _clientes_renderizados(self, response):
-        return [
-            *response.context["clientes_existentes"],
-            *response.context["clientes_nuevos"],
-        ]
+        return list(response.context["clientes"])
 
     def test_volumenes_limite_renderizan_como_maximo_25(self):
         for cantidad in (0, 1, 25, 26, 50, 51, 100, 250):
@@ -368,53 +365,40 @@ class ClientePaginationTests(TestCase):
                     cantidad,
                 )
 
-    def test_arquitectura_global_conserva_las_dos_secciones(self):
+    def test_listado_principal_renderiza_una_sola_tabla(self):
         self._crear_clientes(26)
 
         primera = self.client.get(reverse("cliente_lista"))
         segunda = self.client.get(reverse("cliente_lista"), {"page": 2})
 
-        self.assertContains(primera, "Clientes existentes")
-        self.assertContains(primera, "Nuevos clientes")
+        self.assertNotContains(primera, "Clientes existentes")
+        self.assertNotContains(primera, "Nuevos clientes")
         self.assertEqual(len(self._clientes_renderizados(primera)), 25)
         self.assertEqual(len(self._clientes_renderizados(segunda)), 1)
-        self.assertTrue(primera.context["clientes_existentes"])
-        self.assertTrue(primera.context["clientes_nuevos"])
-        self.assertFalse(segunda.context["clientes_existentes"])
-        self.assertTrue(segunda.context["clientes_nuevos"])
 
-    def test_orden_es_determinista_por_categoria_fecha_nombre_y_pk(self):
-        self._crear_clientes(30)
+    def test_orden_es_alfabetico_por_nombre_y_pk(self):
+        Cliente.objects.bulk_create(
+            [
+                Cliente(nombre="MARIO", empresa="UNO", fecha_alta=date(2026, 7, 1)),
+                Cliente(nombre="ANA", empresa="DOS", fecha_alta=date(2026, 7, 1)),
+                Cliente(nombre="CARLOS", empresa="TRES", fecha_alta=date(2026, 7, 1)),
+                Cliente(nombre="ANA", empresa="CUATRO", fecha_alta=date(2026, 7, 1)),
+            ]
+        )
 
         primera = self.client.get(reverse("cliente_lista"))
-        segunda = self.client.get(reverse("cliente_lista"), {"page": 2})
-        resultados = (
-            self._clientes_renderizados(primera)
-            + self._clientes_renderizados(segunda)
-        )
+        resultados = self._clientes_renderizados(primera)
 
         esperados = list(
-            Cliente.objects.annotate(
-                # La vista agrupa existentes antes de nuevos.
-            ).order_by("tipo_cliente", "-fecha_alta", "nombre", "pk")
+            Cliente.objects.order_by("nombre", "pk")
         )
-        existentes = [
-            cliente
-            for cliente in esperados
-            if cliente.tipo_cliente == Cliente.TIPO_EXISTENTE
-        ]
-        nuevos = [
-            cliente
-            for cliente in esperados
-            if cliente.tipo_cliente == Cliente.TIPO_NUEVO
-        ]
         self.assertEqual(
             [cliente.pk for cliente in resultados],
-            [cliente.pk for cliente in existentes + nuevos],
+            [cliente.pk for cliente in esperados],
         )
         self.assertEqual(
             len({cliente.pk for cliente in resultados}),
-            30,
+            4,
         )
 
     def test_busqueda_se_aplica_antes_de_paginar_y_conserva_q(self):
