@@ -10,6 +10,7 @@ from .models import (
     PanelCotizacion,
     PanelCotizacionComentario,
     PanelCotizacionColumna,
+    PanelCotizacionElementoAccion,
     PanelCotizacionEtiqueta,
 )
 
@@ -114,8 +115,8 @@ class PanelCotizacionBaseForm(forms.ModelForm):
         required=False,
         widget=forms.SelectMultiple(
             attrs={
-                "class": "form-select rounded garantia-asignados-select",
-                "data-garantia-tags-select": "1",
+                "class": "form-select rounded",
+                "data-panel-cotizacion-tags-select": "1",
             }
         ),
     )
@@ -234,7 +235,8 @@ class PanelCotizacionInlineCreateForm(PanelCotizacionBaseForm):
         )
         self.fields["etiquetas"].widget.attrs.update(
             {
-                "class": "form-select form-select-sm rounded garantia-asignados-select",
+                "class": "form-select form-select-sm rounded",
+                "data-panel-cotizacion-tags-select": "1",
             }
         )
         self.fields["archivos"].widget.attrs.update(
@@ -440,8 +442,8 @@ class PanelCotizacionUpdateForm(forms.ModelForm):
         required=False,
         widget=forms.SelectMultiple(
             attrs={
-                "class": "form-select rounded garantia-asignados-select",
-                "data-garantia-tags-select": "1",
+                "class": "form-select rounded",
+                "data-panel-cotizacion-tags-select": "1",
             }
         ),
     )
@@ -465,6 +467,31 @@ class PanelCotizacionComentarioForm(forms.ModelForm):
                 attrs={"rows": 2, "placeholder": "Escribe un comentario..."}
             )
         }
+
+
+class PanelCotizacionElementoAccionForm(forms.ModelForm):
+    class Meta:
+        model = PanelCotizacionElementoAccion
+        fields = ("texto",)
+        widgets = {
+            "texto": forms.TextInput(
+                attrs={
+                    "class": "form-control form-control-sm",
+                    "placeholder": "Agregar elemento",
+                    "maxlength": 255,
+                }
+            )
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["texto"].required = False
+
+    def clean_texto(self):
+        texto = (self.cleaned_data.get("texto") or "").strip()
+        if not texto:
+            raise forms.ValidationError("Escribe un elemento de accion.")
+        return texto
 
 
 class PanelCotizacionUserFilterForm(forms.Form):

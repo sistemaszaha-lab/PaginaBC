@@ -4,7 +4,7 @@
 {% block title %}Panel de Cotizaciones{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{% static 'panel_cotizaciones/css/panel_cotizaciones.css' %}">
+<link rel="stylesheet" href="{% static 'panel_cotizaciones/css/panel_cotizaciones.css' %}?v=20260810-1">
 <link rel="stylesheet" href="{% static 'css/kanban_status_control.css' %}">
 {% include "garantias/_asignados_tags_assets.html" %}
 <h2 class="mb-4">Panel de Cotizaciones</h2>
@@ -159,5 +159,5 @@
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 {{ panel_config|json_script:"panel-cotizaciones-config" }}
 <script src="{% static 'js/kanban_status_control.js' %}"></script>
-<script src="{% static 'panel_cotizaciones/js/panel.js' %}"></script>
+<script src="{% static 'panel_cotizaciones/js/panel.js' %}?v=20260810-1"></script>
 {% endblock %}

@@ -182,8 +182,9 @@
 }
 
 .garantia-card__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: flex-start;
-  justify-content: space-between;
 }
 
 .garantia-card__heading {
@@ -193,10 +194,43 @@
 
 .garantia-card__header-side {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.garantia-card__copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  border: 1px solid var(--garantias-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--garantias-muted);
+  flex: 0 0 auto;
+  box-shadow: 0 2px 6px rgba(15, 61, 59, 0.08);
+}
+
+.garantia-card__copy-btn:hover,
+.garantia-card__copy-btn:focus-visible {
+  background: var(--garantias-accent-soft);
+  color: var(--garantias-accent);
+  border-color: var(--garantias-accent);
+}
+
+.garantia-card__copy-btn svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+@media (max-width: 390px) {
+  .garantia-card__header { grid-template-columns: minmax(0, 1fr) auto; }
+  .garantia-card__header-side { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; }
 }
 
 .garantia-card__title {

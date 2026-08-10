@@ -433,11 +433,32 @@
     }
 
     function initInlineCreateSelects(root) {
-      if (!root || !window.initGarantiaSelects) return;
-      root.querySelectorAll('select').forEach((select) => {
+      if (!root) return;
+      if (window.initGarantiaSelects) {
+        root.querySelectorAll('select').forEach((select) => {
+          if (select.tomselect) return;
+        });
+        window.initGarantiaSelects(root);
+      }
+      initPanelCotizacionTagSelects(root);
+    }
+
+    function initPanelCotizacionTagSelects(root) {
+      const scope = root || document;
+      if (typeof TomSelect === 'undefined') return;
+      scope.querySelectorAll('[data-panel-cotizacion-tags-select="1"]').forEach((select) => {
         if (select.tomselect) return;
+        new TomSelect(select, {
+          plugins: ['remove_button'],
+          create: true,
+          maxOptions: 200,
+          persist: false,
+          closeAfterSelect: false,
+          hidePlaceholder: true,
+          placeholder: 'Buscar o crear etiqueta...',
+          searchField: ['text'],
+        });
       });
-      window.initGarantiaSelects(root);
     }
 
     function inlineTargetFromButton(button) {
@@ -689,6 +710,7 @@
         if (!form || String(form.dataset.panelCotizacionEditorId) !== String(getCardId(card)) || form.dataset.field !== fieldName) {
           throw new Error('Editor inesperado.');
         }
+        const firstInput = form.querySelector('input:not([type="hidden"]), select, textarea');
         if (fieldName === 'cliente') {
           const currentText = card.querySelector('[data-panel-cotizacion-inline-slot="cliente"] .panel-cotizacion-card__client')?.textContent?.trim() || '';
           const select = form.querySelector('[name="cliente"]');
@@ -699,8 +721,12 @@
           const selectedIds = selectedIdsSnapshot.split(',').map((value) => value.trim()).filter(Boolean);
           if (select) Array.from(select.options).forEach((option) => { option.selected = selectedIds.includes(option.value); });
           window.initGarantiaSelects?.(form);
+        } else if (fieldName === 'titulo') {
+          const currentTitle = card.querySelector('[data-panel-cotizacion-inline-slot="titulo"] .panel-cotizacion-card__title')?.textContent?.trim() || '';
+          if (firstInput instanceof HTMLInputElement && !firstInput.value && currentTitle) {
+            firstInput.value = currentTitle;
+          }
         }
-        const firstInput = form.querySelector('input:not([type="hidden"]), select, textarea');
         firstInput?.focus();
         if (fieldName === 'titulo') firstInput?.select();
         return form;
@@ -970,6 +996,7 @@
       if (window.initGarantiaSelects) {
         window.initGarantiaSelects(container);
       }
+      initPanelCotizacionTagSelects(container);
     }
 
     function loadModal(url) {
@@ -1005,11 +1032,12 @@
     }
 
     function replaceDrawerSection(selector, html) {
-      if (!drawerContent) return;
+      const detailRoot = drawerContent || modalContent;
+      if (!detailRoot) return;
       const wrapper = document.createElement('div');
       wrapper.innerHTML = html;
       const nextSection = wrapper.firstElementChild;
-      const currentSection = drawerContent.querySelector(selector);
+      const currentSection = detailRoot.querySelector(selector);
       if (nextSection && currentSection) {
         currentSection.replaceWith(nextSection);
       }
@@ -1160,6 +1188,7 @@
       const copyCardButton = e.target.closest('[data-panel-cotizacion-copy="1"]');
       if (copyCardButton) {
         e.preventDefault();
+        e.stopPropagation();
         const card = copyCardButton.closest('[data-panel-cotizacion-card="1"]');
         const cardId = getCardId(card);
         if (!cardId) return;
@@ -1408,6 +1437,36 @@
               const errors = error?.errors?.nombre || error?.errors?.__all__ || [];
               errorNode.textContent = errors.map((item) => item.message).join(' ') || 'No se pudo crear la columna.';
             }
+          });
+        return;
+      }
+
+      const deleteChecklistButton = e.target.closest('[data-panel-cotizacion-checklist-delete="1"]');
+      if (deleteChecklistButton) {
+        e.preventDefault();
+        const url = deleteChecklistButton.dataset.deleteUrl;
+        const token = window.getCSRFToken();
+        if (!url || !token) return;
+        fetch(url, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'X-CSRFToken': token,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (data.ok && data.html) {
+              replaceDrawerSection('[data-panel-cotizacion-checklist-section="1"]', data.html);
+            }
+          })
+          .catch((error) => {
+            console.error('No se pudo eliminar el elemento de accion:', error);
           });
         return;
       }
@@ -1690,6 +1749,64 @@
         return;
       }
 
+      const checklistForm = e.target.closest('[data-panel-cotizacion-checklist-form="1"]');
+      if (checklistForm) {
+        e.preventDefault();
+        const fd = new FormData(checklistForm);
+        postForm(checklistForm.getAttribute('action'), fd, checklistForm)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (data.ok && data.html) {
+              replaceDrawerSection('[data-panel-cotizacion-checklist-section="1"]', data.html);
+            }
+          })
+          .catch((error) => {
+            if (error?.html) {
+              replaceDrawerSection('[data-panel-cotizacion-checklist-section="1"]', error.html);
+            } else {
+              console.error('No se pudo agregar el elemento de accion:', error);
+            }
+          });
+        return;
+      }
+
+      const checklistItemForm = e.target.closest('[data-panel-cotizacion-checklist-item-form="1"]');
+      if (checklistItemForm) {
+        e.preventDefault();
+        const input = checklistItemForm.querySelector('[data-panel-cotizacion-checklist-text="1"]');
+        const nextValue = (input?.value || '').trim();
+        const initialValue = (input?.dataset.initialValue || '').trim();
+        if (!input || nextValue === initialValue) return;
+        if (!nextValue) {
+          input.value = initialValue;
+          return;
+        }
+        const fd = new FormData(checklistItemForm);
+        postForm(checklistItemForm.getAttribute('action'), fd, checklistItemForm)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (data.ok && data.html) {
+              replaceDrawerSection('[data-panel-cotizacion-checklist-section="1"]', data.html);
+            }
+          })
+          .catch((error) => {
+            if (error?.html) {
+              replaceDrawerSection('[data-panel-cotizacion-checklist-section="1"]', error.html);
+            } else {
+              console.error('No se pudo actualizar el elemento de accion:', error);
+            }
+          });
+        return;
+      }
+
       const commentForm = e.target.closest('[data-panel-cotizacion-comentario-form="1"]');
       if (!commentForm) return;
       e.preventDefault();
@@ -1746,6 +1863,13 @@
     });
 
     document.addEventListener('keydown', (e) => {
+      const checklistTextInput = e.target.closest('[data-panel-cotizacion-checklist-text="1"]');
+      if (checklistTextInput && e.key === 'Enter') {
+        e.preventDefault();
+        checklistTextInput.closest('form')?.requestSubmit();
+        return;
+      }
+
       const editor = e.target.closest('[data-panel-cotizacion-inline-editor="1"]');
       if (!editor) return;
 
@@ -1759,6 +1883,39 @@
       if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && !e.shiftKey) {
         e.preventDefault();
         editor.requestSubmit();
+      }
+    });
+
+    document.addEventListener('change', (e) => {
+      const checklistToggle = e.target.closest('[data-panel-cotizacion-checklist-toggle="1"]');
+      if (!checklistToggle) return;
+      const url = checklistToggle.dataset.toggleUrl;
+      if (!url) return;
+      const fd = new FormData();
+      fd.append('completado', checklistToggle.checked ? '1' : '0');
+      postForm(url, fd, checklistToggle)
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw data;
+          return data;
+        })
+        .then((data) => {
+          if (data.ok && data.html) {
+            replaceDrawerSection('[data-panel-cotizacion-checklist-section="1"]', data.html);
+          }
+        })
+        .catch((error) => {
+          console.error('No se pudo actualizar el estado del elemento de accion:', error);
+        });
+    });
+
+    document.addEventListener('focusout', (e) => {
+      const checklistTextInput = e.target.closest('[data-panel-cotizacion-checklist-text="1"]');
+      if (!checklistTextInput) return;
+      const currentValue = (checklistTextInput.value || '').trim();
+      const initialValue = (checklistTextInput.dataset.initialValue || '').trim();
+      if (currentValue && currentValue !== initialValue) {
+        checklistTextInput.closest('form')?.requestSubmit();
       }
     });
 

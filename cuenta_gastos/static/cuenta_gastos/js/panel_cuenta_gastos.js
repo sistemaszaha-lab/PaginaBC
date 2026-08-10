@@ -1759,6 +1759,7 @@
       const copyCardButton = e.target.closest('[data-cuenta-copy-card="1"]');
       if (copyCardButton) {
         e.preventDefault();
+        e.stopPropagation();
         const cardId = Number.parseInt(copyCardButton.dataset.tarjetaId || '', 10);
         if (!Number.isInteger(cardId) || cardId <= 0) return;
         setCopiedCardPayload({ modulo: 'cuenta_gastos', tarjeta_id: cardId });

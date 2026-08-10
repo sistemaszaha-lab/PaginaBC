@@ -621,6 +621,25 @@
   padding: 1rem;
 }
 
+.cuenta-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.cuenta-card__header-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cuenta-card__header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
 .cuenta-card__title {
   font-size: 1rem;
   font-weight: 700;
@@ -649,6 +668,34 @@
 .cuenta-card__detail-btn:hover {
   background: #f8ecd7;
   color: #5a431f;
+}
+
+.cuenta-card__copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  border: 1px solid #d9c9b3;
+  border-radius: 999px;
+  background: #fffdf8;
+  color: #7f6746;
+  flex: 0 0 auto;
+  box-shadow: 0 2px 6px rgba(111, 82, 40, 0.08);
+}
+
+.cuenta-card__copy-btn:hover,
+.cuenta-card__copy-btn:focus-visible {
+  background: #f8ecd7;
+  border-color: #c8af8c;
+  color: #5a431f;
+}
+
+.cuenta-card__copy-btn svg {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .cuenta-card__meta {

@@ -206,3 +206,21 @@ class PanelCotizacionComentario(models.Model):
 
     def __str__(self) -> str:
         return f"Comentario #{self.pk} - {self.cotizacion_id}"
+
+
+class PanelCotizacionElementoAccion(models.Model):
+    cotizacion = models.ForeignKey(
+        PanelCotizacion,
+        on_delete=models.CASCADE,
+        related_name="elementos_accion",
+    )
+    texto = models.CharField(max_length=255)
+    completado = models.BooleanField(default=False)
+    orden = models.PositiveIntegerField(default=0)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["orden", "id"]
+
+    def __str__(self) -> str:
+        return self.texto

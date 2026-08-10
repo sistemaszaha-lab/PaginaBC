@@ -649,6 +649,8 @@ class CuentaGastosTests(TestCase):
         data = response.json()
         self.assertTrue(data["ok"])
         self.assertIn('data-cuenta-card="1"', data["html"])
+        self.assertIn("cuenta-card__copy-btn", data["html"])
+        self.assertNotIn("Opciones", data["html"])
         copia = CuentaGastos.objects.get(pk=data["tarjeta_id"])
         self.assertNotEqual(copia.pk, self.cuenta.pk)
         self.assertEqual(copia.columna_id, columna.pk)

@@ -4,7 +4,7 @@
 {% block title %}Garantias{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{% static 'garantias/css/panel_garantias.css' %}">
+<link rel="stylesheet" href="{% static 'garantias/css/panel_garantias.css' %}?v=20260810-1">
 <link rel="stylesheet" href="{% static 'css/kanban_status_control.css' %}">
 <h2 class="mb-4">Garantias</h2>
 <div class="visually-hidden">{% csrf_token %}</div>
@@ -152,5 +152,5 @@
 <script src="{% static 'js/kanban-quick-edit.js' %}"></script>
 {{ panel_config|json_script:"panel-garantias-config" }}
 <script src="{% static 'js/kanban_status_control.js' %}"></script>
-<script src="{% static 'garantias/js/panel_garantias.js' %}"></script>
+<script src="{% static 'garantias/js/panel_garantias.js' %}?v=20260810-1"></script>
 {% endblock %}

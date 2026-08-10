@@ -1,1 +1,1 @@
-web: gunicorn solicitudes_app.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 2 --threads 4 --timeout 60 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 50 --access-logfile - --error-logfile -
+web: python manage.py collectstatic --noinput && gunicorn solicitudes_app.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 2 --threads 4 --timeout 60 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 50 --access-logfile - --error-logfile -

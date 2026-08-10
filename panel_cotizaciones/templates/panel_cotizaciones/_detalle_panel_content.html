@@ -26,13 +26,18 @@
         {{ form.cliente }}
         {% if form.cliente.errors %}<div class="text-danger small">{{ form.cliente.errors }}</div>{% endif %}
       </div>
+    </div>
 
-      <div class="col-12">
-        <label class="form-label">Descripcion</label>
+    <div class="panel-cotizacion-detail-section mt-4">
+      <div class="fw-semibold mb-2">Acerca del proyecto</div>
+      <div>
+        <label class="form-label">Descripcion general</label>
         {{ form.descripcion }}
         {% if form.descripcion.errors %}<div class="text-danger small">{{ form.descripcion.errors }}</div>{% endif %}
       </div>
+    </div>
 
+    <div class="row g-3 mt-1">
       <div class="col-12 col-lg-6">
         <label class="form-label">Asignados</label>
         {{ form.asignados }}
@@ -55,7 +60,7 @@
         type="button"
         class="btn btn-outline-secondary"
         {% if layout == "drawer" %}
-        data-panel-cotizacion-close-drawer="1"
+        data-bs-dismiss="offcanvas"
         {% else %}
         data-bs-dismiss="modal"
         {% endif %}>
@@ -75,6 +80,8 @@
   </form>
 
   <hr class="my-4" />
+
+  {% include "panel_cotizaciones/_detalle_checklist_section.html" with c=c checklist_form=checklist_form only %}
 
   <div class="panel-cotizacion-detail-section">
     <div class="d-flex justify-content-between align-items-center mb-2">

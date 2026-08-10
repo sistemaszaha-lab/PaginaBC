@@ -145,10 +145,19 @@
   flex: 1 1 auto;
 }
 
+.panel-cotizacion-card__top-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
 .panel-cotizacion-card__title {
   font-size: 0.96rem;
   font-weight: 700;
   line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 
@@ -157,6 +166,34 @@
   color: var(--panel-card-muted);
   font-size: 0.8rem;
   font-weight: 500;
+}
+
+.panel-cotizacion-card__copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  border: 1px solid var(--panel-card-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--panel-card-muted);
+  flex: 0 0 auto;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+.panel-cotizacion-card__copy-btn:hover,
+.panel-cotizacion-card__copy-btn:focus-visible {
+  background: rgba(var(--bs-primary-rgb), 0.08);
+  border-color: rgba(var(--bs-primary-rgb), 0.28);
+  color: var(--bs-primary);
+}
+
+.panel-cotizacion-card__copy-btn svg {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .panel-cotizacion-card__section {
@@ -411,6 +448,58 @@
 .panel-cotizacion-detail-section .list-group-item {
   border-color: var(--panel-card-border);
   background: transparent;
+}
+
+.panel-cotizacion-checklist {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.panel-cotizacion-checklist__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--panel-card-border);
+  border-radius: 0.95rem;
+  background: rgba(var(--bs-body-bg-rgb), 0.72);
+}
+
+.panel-cotizacion-checklist__row.is-complete {
+  opacity: 0.82;
+}
+
+.panel-cotizacion-checklist__checkbox {
+  margin-top: 0;
+}
+
+.panel-cotizacion-checklist__text {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+}
+
+.panel-cotizacion-checklist__text:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+.panel-cotizacion-checklist__row.is-complete .panel-cotizacion-checklist__text {
+  color: var(--panel-card-muted);
+  text-decoration: line-through;
+}
+
+.panel-cotizacion-checklist__delete {
+  border: 0;
+  background: transparent;
+  color: var(--panel-card-muted);
+}
+
+.panel-cotizacion-checklist__delete:hover,
+.panel-cotizacion-checklist__delete:focus-visible {
+  color: var(--bs-danger);
 }
 
 .panel-cotizacion-drag {

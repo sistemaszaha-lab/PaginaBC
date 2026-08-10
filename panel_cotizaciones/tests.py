@@ -21,6 +21,7 @@ from .models import (
     PanelCotizacionArchivo,
     PanelCotizacionColumna,
     PanelCotizacionComentario,
+    PanelCotizacionElementoAccion,
     PanelCotizacionEnlace,
     PanelCotizacionEtiqueta,
 )
@@ -752,6 +753,25 @@ class PanelCotizacionInlineCreateTests(TestCase):
             404,
         )
 
+    def test_endpoint_editor_inline_titulo_devuelve_valor_actual(self):
+        cotizacion = PanelCotizacion.objects.create(
+            titulo="BC262281 // GUNTER // TEGUCIGA LPA, HONDURAS",
+            creado_por=self.user,
+        )
+
+        response = self.client.get(
+            reverse("panel_cotizaciones:inline_editor", args=[cotizacion.pk]),
+            {"field": "titulo"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertIn(
+            'value="BC262281 // GUNTER // TEGUCIGA LPA, HONDURAS"',
+            data["html"],
+        )
+
     def test_endpoint_editor_inline_requiere_autenticacion(self):
         cotizacion = PanelCotizacion.objects.create(
             titulo="Privada",
@@ -1028,6 +1048,10 @@ class PanelCotizacionDetalleUpdateTests(TestCase):
             creado_por=self.user,
         )
         self.panel.asignados.add(self.asignado)
+        self.etiqueta = PanelCotizacionEtiqueta.objects.create(
+            nombre="Urgente",
+            color="#FF0000",
+        )
 
     def test_detalle_update_conserva_asignados_si_no_se_envian(self):
         response = self.client.post(
@@ -1049,6 +1073,77 @@ class PanelCotizacionDetalleUpdateTests(TestCase):
             list(self.panel.asignados.values_list("pk", flat=True)),
             [self.asignado.pk],
         )
+
+    def test_detalle_update_usuario_autorizado_agrega_etiqueta_existente(self):
+        response = self.client.post(
+            reverse("panel_cotizaciones:detalle_modal_update", args=[self.panel.pk]),
+            {
+                "layout": "drawer",
+                "etiquetas": [str(self.etiqueta.pk)],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ok")
+        self.panel.refresh_from_db()
+        self.assertEqual(
+            list(self.panel.etiquetas.values_list("pk", flat=True)),
+            [self.etiqueta.pk],
+        )
+
+    def test_detalle_update_agrega_etiqueta_nueva_y_conserva_existentes(self):
+        self.panel.etiquetas.add(self.etiqueta)
+
+        response = self.client.post(
+            reverse("panel_cotizaciones:detalle_modal_update", args=[self.panel.pk]),
+            {
+                "layout": "drawer",
+                "etiquetas": [str(self.etiqueta.pk), "Nueva etiqueta"],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "ok")
+        self.panel.refresh_from_db()
+        self.assertEqual(
+            list(self.panel.etiquetas.order_by("nombre").values_list("nombre", flat=True)),
+            ["Nueva etiqueta", "Urgente"],
+        )
+        self.assertTrue(
+            PanelCotizacionEtiqueta.objects.filter(nombre="Nueva etiqueta").exists()
+        )
+        self.assertIn("Nueva etiqueta", data["card_html"])
+
+    def test_detalle_update_etiqueta_invalida_devuelve_error_controlado(self):
+        response = self.client.post(
+            reverse("panel_cotizaciones:detalle_modal_update", args=[self.panel.pk]),
+            {
+                "layout": "drawer",
+                "etiquetas": ["X" * 101],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "error")
+        self.assertIn("Cada etiqueta debe tener como maximo 100 caracteres.", data["html"])
+        self.panel.refresh_from_db()
+        self.assertFalse(self.panel.etiquetas.exists())
+
+    def test_detalle_drawer_renderiza_cierre_con_bootstrap_sin_submit(self):
+        response = self.client.get(
+            reverse("panel_cotizaciones:detalle_modal", args=[self.panel.pk]),
+            {"layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'type="button"')
+        self.assertContains(response, 'data-bs-dismiss="offcanvas"')
 
 
 class PanelCotizacionComentarioTests(TestCase):
@@ -1514,6 +1609,8 @@ class PanelCotizacionCopiarPegarTests(TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(data["columna_id"], self.columna_destino.pk)
         self.assertIn('data-panel-cotizacion-card="1"', data["html"])
+        self.assertIn("panel-cotizacion-card__copy-btn", data["html"])
+        self.assertNotIn("Acciones", data["html"])
 
     def test_ejecutivo_puede_copiar_y_pegar(self):
         response = self._paste(self.ejecutivo)
@@ -1651,3 +1748,152 @@ class PanelCotizacionCopiarPegarTests(TestCase):
         nueva.refresh_from_db()
         self.assertEqual(nueva.columna_id, self.columna_tercera.pk)
         self.assertEqual(nueva.estado, self.columna_tercera.codigo)
+
+
+class PanelCotizacionChecklistTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="panel_checklist_user",
+            password="panel123",
+            first_name="Checklist",
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.panel = PanelCotizacion.objects.create(
+            titulo="Proyecto checklist",
+            descripcion="Descripcion inicial",
+            cliente="CLIENTE UNO",
+            prioridad=PanelCotizacion.Prioridad.MEDIA,
+            estado=PanelCotizacion.Estado.REQUERIMIENTO,
+            creado_por=self.user,
+        )
+        self.otro_panel = PanelCotizacion.objects.create(
+            titulo="Proyecto ajeno",
+            descripcion="Otra descripcion",
+            cliente="CLIENTE DOS",
+            prioridad=PanelCotizacion.Prioridad.BAJA,
+            estado=PanelCotizacion.Estado.EN_PROGRESO,
+            creado_por=self.user,
+        )
+
+    def test_guardar_descripcion_desde_detalle(self):
+        response = self.client.post(
+            reverse("panel_cotizaciones:detalle_modal_update", args=[self.panel.pk]),
+            {
+                "layout": "drawer",
+                "descripcion": "Descripcion general actualizada",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ok")
+        self.panel.refresh_from_db()
+        self.assertEqual(self.panel.descripcion, "Descripcion general actualizada")
+
+    def test_agregar_elemento_persiste_y_reaparece_al_recargar(self):
+        response = self.client.post(
+            reverse("panel_cotizaciones:checklist_item_create", args=[self.panel.pk]),
+            {"texto": "Llamar al cliente"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        item = PanelCotizacionElementoAccion.objects.get(cotizacion=self.panel)
+        self.assertEqual(item.texto, "Llamar al cliente")
+
+        detail_response = self.client.get(
+            reverse("panel_cotizaciones:detalle_modal", args=[self.panel.pk]),
+            {"layout": "drawer"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertContains(detail_response, "Llamar al cliente")
+
+    def test_marcar_y_desmarcar_elemento(self):
+        item = PanelCotizacionElementoAccion.objects.create(
+            cotizacion=self.panel,
+            texto="Preparar propuesta",
+            orden=1,
+        )
+
+        marcar = self.client.post(
+            reverse("panel_cotizaciones:checklist_item_toggle", args=[self.panel.pk, item.pk]),
+            {"completado": "1"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(marcar.status_code, 200)
+        item.refresh_from_db()
+        self.assertTrue(item.completado)
+
+        desmarcar = self.client.post(
+            reverse("panel_cotizaciones:checklist_item_toggle", args=[self.panel.pk, item.pk]),
+            {"completado": "0"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(desmarcar.status_code, 200)
+        item.refresh_from_db()
+        self.assertFalse(item.completado)
+
+    def test_eliminar_elemento(self):
+        item = PanelCotizacionElementoAccion.objects.create(
+            cotizacion=self.panel,
+            texto="Eliminar luego",
+            orden=1,
+        )
+
+        response = self.client.post(
+            reverse("panel_cotizaciones:checklist_item_delete", args=[self.panel.pk, item.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        self.assertFalse(
+            PanelCotizacionElementoAccion.objects.filter(pk=item.pk).exists()
+        )
+
+    def test_proyecto_a_no_modifica_checklist_de_proyecto_b(self):
+        item_otro = PanelCotizacionElementoAccion.objects.create(
+            cotizacion=self.otro_panel,
+            texto="Privado",
+            orden=1,
+        )
+
+        response = self.client.post(
+            reverse("panel_cotizaciones:checklist_item_toggle", args=[self.panel.pk, item_otro.pk]),
+            {"completado": "1"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        item_otro.refresh_from_db()
+        self.assertFalse(item_otro.completado)
+
+    def test_checklist_requiere_login(self):
+        self.client.logout()
+        response = self.client.post(
+            reverse("panel_cotizaciones:checklist_item_create", args=[self.panel.pk]),
+            {"texto": "No autorizado"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            PanelCotizacionElementoAccion.objects.filter(
+                cotizacion=self.panel,
+                texto="No autorizado",
+            ).exists()
+        )
+
+    def test_peticion_invalida_devuelve_error_controlado(self):
+        response = self.client.post(
+            reverse("panel_cotizaciones:checklist_item_create", args=[self.panel.pk]),
+            {"texto": "   "},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("Escribe un elemento de accion.", data["html"])

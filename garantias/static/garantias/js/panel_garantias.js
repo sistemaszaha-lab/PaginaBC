@@ -1381,6 +1381,7 @@
       const copyCardButton = e.target.closest('[data-garantia-copy-card="1"]');
       if (copyCardButton) {
         e.preventDefault();
+        e.stopPropagation();
         const cardId = copyCardButton.dataset.tarjetaId || copyCardButton.closest('[data-garantia-card="1"]')?.dataset.garantiaId || '';
         if (!cardId) return;
         writeCopiedCard(cardId);

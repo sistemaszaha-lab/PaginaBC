@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, F, Q, Window
+from django.db.models import Count, F, Max, Q, Window
 from django.db.models.functions import RowNumber
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -22,6 +22,7 @@ from .forms import (
     PanelCotizacionColumnaCreateForm,
     PanelCotizacionColumnaUpdateForm,
     PanelCotizacionCreateForm,
+    PanelCotizacionElementoAccionForm,
     PanelCotizacionEnlaceForm,
     PanelCotizacionInlineAsignadosForm,
     PanelCotizacionInlineClienteForm,
@@ -37,7 +38,9 @@ from .models import (
     PanelCotizacionArchivo,
     PanelCotizacionColumna,
     PanelCotizacionComentario,
+    PanelCotizacionElementoAccion,
     PanelCotizacionEnlace,
+    PanelCotizacionEtiqueta,
 )
 from .services import copiar_cotizacion_a_columna
 
@@ -367,6 +370,7 @@ def _get_cotizacion_detalle(pk: int) -> PanelCotizacion:
         PanelCotizacion.objects.filter(eliminado_en__isnull=True).prefetch_related(
             "asignados",
             "etiquetas",
+            "elementos_accion",
             "comentarios__creado_por",
             "archivos",
             "enlaces",
@@ -401,6 +405,24 @@ def _render_enlaces_section(
     )
 
 
+def _render_checklist_section(
+    request: HttpRequest,
+    obj: PanelCotizacion,
+    *,
+    form: PanelCotizacionElementoAccionForm | None = None,
+    section_error: str = "",
+) -> str:
+    return render_to_string(
+        "panel_cotizaciones/_detalle_checklist_section.html",
+        {
+            "c": obj,
+            "checklist_form": form or PanelCotizacionElementoAccionForm(),
+            "checklist_section_error": section_error,
+        },
+        request=request,
+    )
+
+
 def _can_manage_attachment(request: HttpRequest, obj: PanelCotizacion) -> bool:
     return request.user.is_authenticated
 
@@ -418,6 +440,49 @@ def _preservar_vacios_cotizacion(form, objeto):
             actual = getattr(objeto, campo, None)
             if actual not in (None, ""):
                 setattr(form.instance, campo, actual)
+
+
+def _normalizar_post_etiquetas_panel(post_data):
+    raw_values = [
+        value.strip()
+        for value in post_data.getlist("etiquetas")
+        if (value or "").strip()
+    ]
+    if not raw_values:
+        return post_data, []
+
+    normalized_ids = []
+    errors = []
+
+    for raw_value in raw_values:
+        if raw_value.isdigit():
+            etiqueta = PanelCotizacionEtiqueta.objects.filter(pk=int(raw_value)).only("pk").first()
+            if etiqueta is None:
+                errors.append("Selecciona una etiqueta valida.")
+                continue
+        else:
+            if len(raw_value) > 100:
+                errors.append("Cada etiqueta debe tener como maximo 100 caracteres.")
+                continue
+            etiqueta = (
+                PanelCotizacionEtiqueta.objects.filter(nombre__iexact=raw_value)
+                .only("pk", "nombre")
+                .order_by("id")
+                .first()
+            )
+            if etiqueta is None:
+                etiqueta = PanelCotizacionEtiqueta.objects.create(
+                    nombre=raw_value,
+                    color="#3E9FA2",
+                )
+        normalized_ids.append(str(etiqueta.pk))
+
+    if errors:
+        return post_data, errors
+
+    normalized_data = post_data.copy()
+    normalized_data.setlist("etiquetas", list(dict.fromkeys(normalized_ids)))
+    return normalized_data, []
 
 
 @login_required
@@ -549,9 +614,12 @@ def crear_panel_cotizacion(request: HttpRequest) -> HttpResponse:
     if columna_inicial is None:
         raise PermissionDenied("No hay columnas disponibles en el panel.")
     if request.method == "POST":
-        form = PanelCotizacionCreateForm(request.POST, request.FILES)
+        form_data, etiquetas_errors = _normalizar_post_etiquetas_panel(request.POST)
+        form = PanelCotizacionCreateForm(form_data, request.FILES)
         archivos_form = PanelCotizacionArchivosForm(request.POST, request.FILES)
         enlace_form = PanelCotizacionEnlaceForm(request.POST)
+        if etiquetas_errors:
+            form.add_error("etiquetas", etiquetas_errors)
         if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
             obj = _crear_panel_desde_form(
                 form=form,
@@ -629,7 +697,10 @@ def crear_inline(request: HttpRequest) -> JsonResponse:
             {"ok": False, "errors": {"estado": ["Estado invalido."]}}, status=400
         )
 
-    form = PanelCotizacionInlineCreateForm(request.POST, request.FILES)
+    form_data, etiquetas_errors = _normalizar_post_etiquetas_panel(request.POST)
+    form = PanelCotizacionInlineCreateForm(form_data, request.FILES)
+    if etiquetas_errors:
+        form.add_error("etiquetas", etiquetas_errors)
     if not form.is_valid():
         return JsonResponse(
             {
@@ -972,6 +1043,7 @@ def detalle_modal(request: HttpRequest, pk: int) -> HttpResponse:
     obj = _get_cotizacion_detalle(pk)
     form = PanelCotizacionUpdateForm(instance=obj)
     comentario_form = PanelCotizacionComentarioForm()
+    checklist_form = PanelCotizacionElementoAccionForm()
     archivos_form = PanelCotizacionArchivosForm()
     enlace_form = PanelCotizacionEnlaceForm()
     return render(
@@ -983,6 +1055,7 @@ def detalle_modal(request: HttpRequest, pk: int) -> HttpResponse:
             "c": obj,
             "form": form,
             "comentario_form": comentario_form,
+            "checklist_form": checklist_form,
             "archivos_form": archivos_form,
             "enlace_form": enlace_form,
         },
@@ -1001,10 +1074,14 @@ def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
         if layout == "drawer"
         else "panel_cotizaciones/_detalle_modal.html"
     )
-    form = PanelCotizacionUpdateForm(request.POST, request.FILES, instance=obj)
+    form_data, etiquetas_errors = _normalizar_post_etiquetas_panel(request.POST)
+    form = PanelCotizacionUpdateForm(form_data, request.FILES, instance=obj)
     comentario_form = PanelCotizacionComentarioForm()
+    checklist_form = PanelCotizacionElementoAccionForm()
     archivos_form = PanelCotizacionArchivosForm(request.POST, request.FILES)
     enlace_form = PanelCotizacionEnlaceForm(request.POST)
+    if etiquetas_errors:
+        form.add_error("etiquetas", etiquetas_errors)
     if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
         _preservar_vacios_cotizacion(form, obj)
 
@@ -1041,6 +1118,7 @@ def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
                 "c": saved_obj,
                 "form": PanelCotizacionUpdateForm(instance=saved_obj),
                 "comentario_form": comentario_form,
+                "checklist_form": PanelCotizacionElementoAccionForm(),
                 "archivos_form": PanelCotizacionArchivosForm(),
                 "enlace_form": PanelCotizacionEnlaceForm(),
                 "layout": layout,
@@ -1061,6 +1139,7 @@ def detalle_modal_update(request: HttpRequest, pk: int) -> JsonResponse:
             "c": obj,
             "form": form,
             "comentario_form": comentario_form,
+            "checklist_form": checklist_form,
             "archivos_form": archivos_form,
             "enlace_form": enlace_form,
             "layout": layout,
@@ -1103,6 +1182,101 @@ def comentario_create(request: HttpRequest, pk: int) -> JsonResponse:
             ).count(),
         }
     )
+
+
+@login_required
+@require_POST
+def checklist_item_create(request: HttpRequest, pk: int) -> JsonResponse:
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    obj = _get_cotizacion_detalle(pk)
+    form = PanelCotizacionElementoAccionForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {
+                "ok": False,
+                "errors": form.errors.get_json_data(escape_html=True),
+                "html": _render_checklist_section(request, obj, form=form),
+            },
+            status=400,
+        )
+
+    max_orden = obj.elementos_accion.aggregate(max_orden=Max("orden")).get("max_orden")
+    PanelCotizacionElementoAccion.objects.create(
+        cotizacion=obj,
+        texto=form.cleaned_data["texto"],
+        orden=(max_orden or 0) + 1,
+    )
+    obj = _get_cotizacion_detalle(pk)
+    return JsonResponse({"ok": True, "html": _render_checklist_section(request, obj)})
+
+
+@login_required
+@require_POST
+def checklist_item_update(request: HttpRequest, pk: int, item_id: int) -> JsonResponse:
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    obj = _get_cotizacion_detalle(pk)
+    item = get_object_or_404(PanelCotizacionElementoAccion, pk=item_id, cotizacion=obj)
+    form = PanelCotizacionElementoAccionForm(request.POST, instance=item)
+    if not form.is_valid():
+        return JsonResponse(
+            {
+                "ok": False,
+                "errors": form.errors.get_json_data(escape_html=True),
+                "html": _render_checklist_section(
+                    request,
+                    obj,
+                    section_error="No se pudo guardar el elemento.",
+                ),
+            },
+            status=400,
+        )
+    form.save()
+    obj = _get_cotizacion_detalle(pk)
+    return JsonResponse({"ok": True, "html": _render_checklist_section(request, obj)})
+
+
+@login_required
+@require_POST
+def checklist_item_toggle(request: HttpRequest, pk: int, item_id: int) -> JsonResponse:
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    obj = _get_cotizacion_detalle(pk)
+    item = get_object_or_404(PanelCotizacionElementoAccion, pk=item_id, cotizacion=obj)
+    item.completado = (request.POST.get("completado") or "").strip().lower() in {
+        "1",
+        "true",
+        "on",
+        "yes",
+    }
+    item.save(update_fields=["completado"])
+    obj = _get_cotizacion_detalle(pk)
+    return JsonResponse({"ok": True, "html": _render_checklist_section(request, obj)})
+
+
+@login_required
+@require_POST
+def checklist_item_delete(request: HttpRequest, pk: int, item_id: int) -> JsonResponse:
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        return JsonResponse(
+            {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
+            status=400,
+        )
+    obj = _get_cotizacion_detalle(pk)
+    item = get_object_or_404(PanelCotizacionElementoAccion, pk=item_id, cotizacion=obj)
+    item.delete()
+    obj = _get_cotizacion_detalle(pk)
+    return JsonResponse({"ok": True, "html": _render_checklist_section(request, obj)})
 
 
 @login_required

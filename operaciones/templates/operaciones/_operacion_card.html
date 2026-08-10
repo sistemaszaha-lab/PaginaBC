@@ -9,35 +9,27 @@
 >
   <div class="operaciones-card__accent operaciones-card__accent--{{ operacion.prioridad|lower }}"></div>
   <div class="operaciones-card__body">
-    <div class="d-flex justify-content-between align-items-start gap-3">
-      <div class="min-w-0 flex-grow-1">
+    <div class="operaciones-card__header">
+      <div class="operaciones-card__header-main">
         <h4 class="operaciones-card__title mb-1">{{ operacion.titulo }}</h4>
         <div class="operaciones-card__client{% if not operacion.cliente %} operaciones-card__client--muted{% endif %}">
           {{ operacion.cliente|default:"Sin cliente" }}
         </div>
       </div>
-      <div class="d-flex align-items-start gap-2">
+      <div class="operaciones-card__header-actions">
         <span class="operaciones-chip operaciones-chip--{{ operacion.prioridad|lower }}">{{ operacion.get_prioridad_display|upper }}</span>
-        <div class="dropdown">
-          <button
-            type="button"
-            class="btn btn-sm btn-light"
-            data-bs-toggle="dropdown"
-            aria-expanded="false">
-            Opciones
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end">
-            <li>
-              <button
-                type="button"
-                class="dropdown-item"
-                data-operacion-copy-card="1"
-                data-tarjeta-id="{{ operacion.id }}">
-                Copiar tarjeta
-              </button>
-            </li>
-          </ul>
-        </div>
+        <button
+          type="button"
+          class="btn btn-sm operaciones-card__copy-btn"
+          data-operacion-copy-card="1"
+          data-tarjeta-id="{{ operacion.id }}"
+          title="Copiar tarjeta"
+          aria-label="Copiar tarjeta">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M5 2.75A1.75 1.75 0 0 1 6.75 1h5.5A1.75 1.75 0 0 1 14 2.75v6.5A1.75 1.75 0 0 1 12.25 11H6.75A1.75 1.75 0 0 1 5 9.25zm1.5-.25a.25.25 0 0 0-.25.25v6.5c0 .138.112.25.25.25h5.5a.25.25 0 0 0 .25-.25v-6.5a.25.25 0 0 0-.25-.25z"/>
+            <path fill="currentColor" d="M2 5.75A1.75 1.75 0 0 1 3.75 4h.5v1.5h-.5a.25.25 0 0 0-.25.25v6.5c0 .138.112.25.25.25h5.5a.25.25 0 0 0 .25-.25v-.5h1.5v.5A1.75 1.75 0 0 1 9.25 14h-5.5A1.75 1.75 0 0 1 2 12.25z"/>
+          </svg>
+        </button>
       </div>
     </div>
 

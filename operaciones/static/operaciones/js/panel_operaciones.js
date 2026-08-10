@@ -1526,6 +1526,16 @@
       }
     }
 
+    if (drawerElement) {
+      drawerElement.addEventListener('click', (e) => {
+        const detailCloseButton = e.target.closest('[data-operacion-drawer-close="1"], [data-operacion-detail-close="1"]');
+        if (!detailCloseButton) return;
+        e.preventDefault();
+        e.stopPropagation();
+        closeDetail();
+      });
+    }
+
     function getDetailCardIdFromAction(action) {
       const match = (action || '').match(/\/(\d+)\/(?:editar|archivo|enlace|comentario|eliminar)\/?$/);
       return match ? match[1] : detailState.id;
@@ -1634,13 +1644,6 @@
         return;
       }
 
-      const detailCloseButton = e.target.closest('[data-operacion-drawer-close="1"], [data-operacion-detail-close="1"]');
-      if (detailCloseButton) {
-        e.preventDefault();
-        closeDetail();
-        return;
-      }
-
       const quickEditOpenButton = e.target.closest('[data-operacion-quick-edit-open="1"]');
       if (quickEditOpenButton) {
         e.preventDefault();
@@ -1660,6 +1663,7 @@
       const copyCardButton = e.target.closest('[data-operacion-copy-card="1"]');
       if (copyCardButton) {
         e.preventDefault();
+        e.stopPropagation();
         const cardId = Number.parseInt(copyCardButton.dataset.tarjetaId || '', 10);
         if (Number.isNaN(cardId) || cardId <= 0) {
           showInlineNotification('No se pudo copiar la tarjeta.', 'danger');

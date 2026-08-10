@@ -38,7 +38,10 @@
 .operaciones-card__accent--media { background: linear-gradient(90deg, #d97706, #facc15); }
 .operaciones-card__accent--baja { background: linear-gradient(90deg, #0f766e, #34d399); }
 .operaciones-card__body { padding: 1rem; }
-.operaciones-card__title { overflow: hidden; color: var(--operaciones-text-main); font-size: 1rem; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.operaciones-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.operaciones-card__header-main { min-width: 0; flex: 1 1 auto; }
+.operaciones-card__header-actions { display: flex; align-items: flex-start; gap: 0.5rem; flex: 0 0 auto; }
+.operaciones-card__title { color: var(--operaciones-text-main); font-size: 1rem; font-weight: 700; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .operaciones-card__client { color: #506866; font-size: 0.9rem; }
 .operaciones-card__client--muted, .operaciones-card__assignees-empty { color: #91a3a1; }
 .operaciones-chip, .operaciones-tag { display: inline-flex; align-items: center; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
@@ -58,6 +61,9 @@
 .operaciones-card__detail-btn:hover { background: #dff3ef; color: #0d5653; }
 .operaciones-card__quick-edit-btn { border: 1px solid #d6c393; border-radius: 999px; background: #fff9e9; color: #7d641d; font-weight: 700; }
 .operaciones-card__quick-edit-btn:hover { background: #f9edc9; color: #654e13; }
+.operaciones-card__copy-btn { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; min-width: 2rem; padding: 0; border: 1px solid #cfe4e1; border-radius: 999px; background: #f8fcfb; color: #4f6d6b; flex: 0 0 auto; box-shadow: 0 2px 6px rgba(21, 85, 82, 0.08); }
+.operaciones-card__copy-btn:hover, .operaciones-card__copy-btn:focus-visible { background: #dff3ef; border-color: #80bcb6; color: #0d5653; }
+.operaciones-card__copy-btn svg { width: 0.95rem; height: 0.95rem; }
 .operaciones-quick-edit-form { display: grid; gap: 0.1rem; }
 .operaciones-quick-edit-form__header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem; color: var(--operaciones-text-main); }
 .operaciones-quick-edit-form[data-pending="1"] { opacity: 0.7; pointer-events: none; }

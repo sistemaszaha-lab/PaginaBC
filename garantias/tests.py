@@ -973,6 +973,8 @@ class GarantiasCopiarPegarTests(TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(data["columna_id"], self.columna_destino.pk)
         self.assertIn('data-garantia-card="1"', data["html"])
+        self.assertIn("garantia-card__copy-btn", data["html"])
+        self.assertNotIn("Acciones", data["html"])
 
     def test_ejecutivo_puede_copiar_y_pegar(self):
         response = self._paste(self.ejecutivo)

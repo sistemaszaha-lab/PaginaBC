@@ -663,6 +663,8 @@ class OperacionesCopiarPegarTests(TestCase):
             CuentaGastos.objects.filter(operacion_origen=copia).exists()
         )
         self.assertIn('data-panel-operacion-card="1"', data["html"])
+        self.assertIn("operaciones-card__copy-btn", data["html"])
+        self.assertNotIn("Opciones", data["html"])
         move_response = self.client.post(
             reverse("operaciones:mover_operacion", args=[copia.pk]),
             {"estado": Operacion.Estado.EN_ADUANA},
@@ -2274,6 +2276,7 @@ class OperacionesProgressiveLoadingTests(TestCase):
         self.assertEqual(
             javascript.count("root.addEventListener('click'"), 1
         )
+        self.assertIn("drawerElement.addEventListener('click'", javascript)
         self.assertEqual(
             javascript.count("root.addEventListener('change'"), 1
         )
