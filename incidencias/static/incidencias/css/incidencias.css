@@ -4,6 +4,139 @@
   min-height: 520px;
 }
 
+.incident-summary {
+  margin-bottom: 1.75rem;
+}
+
+.incident-summary-heading {
+  margin-bottom: 1rem;
+}
+
+.incident-summary-eyebrow {
+  color: #5f6f85;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.incident-summary-heading-title {
+  color: #213547;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.incident-summary-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  height: 100%;
+  padding: 1.2rem 1.2rem 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 14px 30px -24px rgba(15, 23, 42, 0.45);
+  overflow: hidden;
+}
+
+.incident-summary-card::after {
+  content: "";
+  position: absolute;
+  right: 1rem;
+  bottom: 0;
+  left: 1rem;
+  height: 4px;
+  border-radius: 999px 999px 0 0;
+  background: var(--incident-accent, #0ea5e9);
+}
+
+.incident-summary-card--pending {
+  --incident-accent: #22c7d6;
+  --incident-accent-soft: rgba(34, 199, 214, 0.14);
+}
+
+.incident-summary-card--progress {
+  --incident-accent: #1aa39a;
+  --incident-accent-soft: rgba(26, 163, 154, 0.14);
+}
+
+.incident-summary-card--resolved {
+  --incident-accent: #31b26b;
+  --incident-accent-soft: rgba(49, 178, 107, 0.14);
+}
+
+.incident-summary-card--overdue {
+  --incident-accent: #e05252;
+  --incident-accent-soft: rgba(224, 82, 82, 0.14);
+}
+
+.incident-summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.incident-summary-title {
+  max-width: 12rem;
+  color: #607086;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.incident-summary-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.65rem;
+  height: 2.65rem;
+  flex: 0 0 auto;
+  border-radius: 0.9rem;
+  background: var(--incident-accent-soft, rgba(34, 199, 214, 0.14));
+  color: var(--incident-accent, #0ea5e9);
+}
+
+.incident-summary-icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: currentColor;
+}
+
+.incident-summary-body {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.incident-summary-value {
+  color: #122033;
+  font-size: clamp(2rem, 2vw + 1rem, 2.55rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.incident-summary-caption {
+  color: #7a8797;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.incident-summary-caption--danger {
+  color: #d04848;
+}
+
+@media (max-width: 575.98px) {
+  .incident-summary-card {
+    padding: 1.05rem 1rem 0.95rem;
+    border-radius: 0.9rem;
+  }
+}
+
 /* ---- Tabulator look & feel (alineado al estilo de tablas del sistema) ---- */
 /* Objetivo: aproximar a Bootstrap: .table, .table-hover, .align-middle, thead .table-light */
 .tabulator {

@@ -92,6 +92,16 @@
 
   const pagerInfo = document.getElementById("incidenciasPagerInfo");
   const pager = document.getElementById("incidenciasPager");
+  const summaryNodes = document.querySelectorAll("[data-summary-key]");
+
+  function updateSummary(summary) {
+    if (!summary) return;
+    summaryNodes.forEach((node) => {
+      const key = node.getAttribute("data-summary-key");
+      if (!key || !(key in summary)) return;
+      node.textContent = String(summary[key] ?? "0");
+    });
+  }
 
   function applyGlobalSearch(value) {
     const v = String(value || "").trim();
@@ -202,6 +212,7 @@
         const row = payload.row;
         if (isEdit) table.updateData([row]);
         else table.addRow(row, true);
+        updateSummary(payload.resumen);
         hideForm();
         renderPager();
       } catch (err) {
@@ -227,9 +238,10 @@
       if (!window.confirm("¿Eliminar esta incidencia?")) return;
       const url = String(endpoints.eliminar || "").replace("/0/eliminar/", `/${id}/eliminar/`);
       try {
-        await postUrlencoded(url, new URLSearchParams());
+        const payload = await postUrlencoded(url, new URLSearchParams());
         const row = table.getRow(id);
         if (row) row.delete();
+        updateSummary(payload.resumen);
         renderPager();
       } catch {
         // noop

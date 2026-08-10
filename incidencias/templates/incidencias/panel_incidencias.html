@@ -22,6 +22,85 @@
     </button>
   </div>
 
+  <section class="incident-summary mb-4" aria-labelledby="incident-summary-title">
+    <div class="incident-summary-heading">
+      <p class="incident-summary-eyebrow mb-1">Resumen rápido</p>
+      <h3 id="incident-summary-title" class="incident-summary-heading-title mb-0">
+        Estado general de incidencias
+      </h3>
+    </div>
+
+    <div class="row g-3 incident-summary-grid">
+      <div class="col-12 col-sm-6 col-xl-3">
+        <article class="incident-summary-card incident-summary-card--pending">
+          <div class="incident-summary-header">
+            <span class="incident-summary-title">Incidencias pendientes</span>
+            <span class="incident-summary-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 1.75A10.25 10.25 0 1 0 22.25 12 10.26 10.26 0 0 0 12 1.75Zm0 18.5A8.25 8.25 0 1 1 20.25 12 8.26 8.26 0 0 1 12 20.25Zm.75-13h-1.5v5.31l3.72 2.23.78-1.29-3-1.8Z"/>
+              </svg>
+            </span>
+          </div>
+          <div class="incident-summary-body">
+            <span class="incident-summary-value" data-summary-key="pendientes">{{ resumen.pendientes }}</span>
+            <span class="incident-summary-caption">por atender</span>
+          </div>
+        </article>
+      </div>
+
+      <div class="col-12 col-sm-6 col-xl-3">
+        <article class="incident-summary-card incident-summary-card--progress">
+          <div class="incident-summary-header">
+            <span class="incident-summary-title">En proceso</span>
+            <span class="incident-summary-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M8.5 6.5v11l9-5.5Z"/>
+              </svg>
+            </span>
+          </div>
+          <div class="incident-summary-body">
+            <span class="incident-summary-value" data-summary-key="en_proceso">{{ resumen.en_proceso }}</span>
+            <span class="incident-summary-caption">en atención</span>
+          </div>
+        </article>
+      </div>
+
+      <div class="col-12 col-sm-6 col-xl-3">
+        <article class="incident-summary-card incident-summary-card--resolved">
+          <div class="incident-summary-header">
+            <span class="incident-summary-title">Resueltas</span>
+            <span class="incident-summary-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 1.75A10.25 10.25 0 1 0 22.25 12 10.26 10.26 0 0 0 12 1.75Zm-1.07 14.2-3.4-3.39 1.06-1.06 2.34 2.33 4.47-4.46 1.06 1.06Z"/>
+              </svg>
+            </span>
+          </div>
+          <div class="incident-summary-body">
+            <span class="incident-summary-value" data-summary-key="resueltas">{{ resumen.resueltas }}</span>
+            <span class="incident-summary-caption">finalizadas</span>
+          </div>
+        </article>
+      </div>
+
+      <div class="col-12 col-sm-6 col-xl-3">
+        <article class="incident-summary-card incident-summary-card--overdue">
+          <div class="incident-summary-header">
+            <span class="incident-summary-title">Vencidas / alertas</span>
+            <span class="incident-summary-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M12 2.75a9.25 9.25 0 1 0 9.25 9.25A9.26 9.26 0 0 0 12 2.75Zm0 13.5a1.12 1.12 0 1 1 1.12-1.12A1.12 1.12 0 0 1 12 16.25Zm.75-3.62h-1.5V7.75h1.5Z"/>
+              </svg>
+            </span>
+          </div>
+          <div class="incident-summary-body">
+            <span class="incident-summary-value" data-summary-key="vencidas">{{ resumen.vencidas }}</span>
+            <span class="incident-summary-caption incident-summary-caption--danger">fuera de plazo</span>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <!-- Buscador -->
   <form class="mb-3 d-flex gap-2 flex-wrap" onsubmit="return false;">
 
