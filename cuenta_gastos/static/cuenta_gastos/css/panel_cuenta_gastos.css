@@ -1245,3 +1245,30 @@ body.cuenta-drawer-open {
     align-items: stretch;
   }
 }
+
+.cuenta-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.cuenta-section-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: var(--tag-bg, #3e9fa2);
+  color: var(--tag-color, #fff);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.cuenta-section-chip form {
+  margin: 0;
+}
+
+.cuenta-section-chip .btn {
+  color: var(--tag-color, #fff);
+  line-height: 1;
+}

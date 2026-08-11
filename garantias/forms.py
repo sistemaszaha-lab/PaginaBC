@@ -274,17 +274,6 @@ class GarantiaEditarForm(forms.ModelForm):
             }
         ),
     )
-    etiquetas = forms.ModelMultipleChoiceField(
-        queryset=GarantiaEtiqueta.objects.all().order_by("nombre", "id"),
-        required=False,
-        widget=forms.SelectMultiple(
-            attrs={
-                "class": "form-select garantia-etiquetas-select",
-                "data-garantia-tags-select": "1",
-            }
-        ),
-    )
-
     class Meta:
         model = Garantia
         fields = [
@@ -294,7 +283,6 @@ class GarantiaEditarForm(forms.ModelForm):
             "prioridad",
             "fecha_vencimiento",
             "asignados",
-            "etiquetas",
         ]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
@@ -305,10 +293,9 @@ class GarantiaEditarForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas"]:
+        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados"]:
             if name in self.fields:
                 self.fields[name].required = False
-        self.fields["etiquetas"].label_from_instance = lambda obj: obj.nombre
 
 
 class GarantiaQuickEditForm(GarantiaEditarForm):
@@ -421,3 +408,15 @@ class GarantiaColumnaCreateForm(forms.ModelForm):
 
 class GarantiaColumnaUpdateForm(GarantiaColumnaCreateForm):
     pass
+
+class GarantiaEtiquetaAssignForm(forms.Form):
+    etiquetas = forms.ModelMultipleChoiceField(
+        queryset=GarantiaEtiqueta.objects.all().order_by("nombre", "id"),
+        required=True,
+        widget=forms.SelectMultiple(attrs={"class": "form-select"}),
+    )
+
+class GarantiaEtiquetaCreateForm(forms.ModelForm):
+    class Meta:
+        model = GarantiaEtiqueta
+        fields = ["nombre", "color"]

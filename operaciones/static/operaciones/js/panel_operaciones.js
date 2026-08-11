@@ -1919,58 +1919,6 @@
         return;
       }
 
-      const tagForm = e.target.closest('[data-operacion-tag-assign-form="1"], [data-operacion-tag-create-form="1"], [data-operacion-tag-remove-form="1"]');
-      if (tagForm) {
-        e.preventDefault();
-        const isRemove = tagForm.matches('[data-operacion-tag-remove-form="1"]');
-        const isCreate = tagForm.matches('[data-operacion-tag-create-form="1"]');
-        if (isRemove && !window.confirm('Quitar esta etiqueta de la operacion?')) return;
-
-        const section = tagForm.closest('[data-operacion-tags-section="1"]');
-        const cardId = tagForm.dataset.operacionId || detailState.id;
-        if (!section || !cardId || detailState.pending || section.dataset.pending === '1' || tagForm.dataset.submitting === '1') return;
-
-        const tagSelect = tagForm.querySelector('select[name="etiqueta"]');
-        if (!isRemove && !isCreate && !tagSelect?.value) return;
-        const scrollTop = getDetailContainer()?.scrollTop || 0;
-        const fd = new FormData(tagForm);
-        tagForm.dataset.submitting = '1';
-        setTagsPending(section, true);
-        postForm(tagForm.getAttribute('action'), fd, tagForm)
-          .then(async (response) => {
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.success) throw data;
-            return data;
-          })
-          .then((data) => {
-            const isActiveDetail = Boolean(getActiveTagsSection(cardId));
-            const nextSection = replaceTagsSection(data.tags_html, cardId);
-            if (isActiveDetail && !nextSection) {
-              throw new Error('No se pudo actualizar la seccion de etiquetas.');
-            }
-            syncTagsUI(cardId, data.tags);
-            if (!nextSection) return;
-            const container = getDetailContainer();
-            if (container) container.scrollTop = scrollTop;
-            focusTagsForm(nextSection, isCreate);
-          })
-          .catch((error) => {
-            console.error('No se pudo actualizar la seccion de etiquetas:', error);
-            const nextSection = error?.tags_html && replaceTagsSection(error.tags_html, cardId);
-            if (nextSection) {
-              syncTagsUI(cardId, error.tags);
-              focusTagsForm(nextSection, isCreate);
-              return;
-            }
-            renderTagsError(section, 'No se pudo actualizar la seccion de etiquetas. Intenta nuevamente.');
-          })
-          .finally(() => {
-            delete tagForm.dataset.submitting;
-            setTagsPending(section, false);
-          });
-        return;
-      }
-
       const optionForm = e.target.closest('[data-operacion-options-form="1"], [data-operacion-option-create-form="1"], [data-operacion-option-remove-form="1"]');
       if (optionForm) {
         e.preventDefault();
@@ -2163,6 +2111,59 @@
     });
 
     document.addEventListener('submit', (e) => {
+      const tagForm = e.target.closest('[data-operacion-tag-assign-form="1"], [data-operacion-tag-create-form="1"], [data-operacion-tag-remove-form="1"]');
+      if (tagForm) {
+        e.preventDefault();
+        e.stopPropagation();
+        const isRemove = tagForm.matches('[data-operacion-tag-remove-form="1"]');
+        const isCreate = tagForm.matches('[data-operacion-tag-create-form="1"]');
+        if (isRemove && !window.confirm('Quitar esta etiqueta de la operacion?')) return;
+
+        const section = tagForm.closest('[data-operacion-tags-section="1"]');
+        const cardId = tagForm.dataset.operacionId || detailState.id;
+        if (!section || !cardId || detailState.pending || section.dataset.pending === '1' || tagForm.dataset.submitting === '1') return;
+
+        const tagSelect = tagForm.querySelector('select[name="etiqueta"]');
+        if (!isRemove && !isCreate && !tagSelect?.value) return;
+        const scrollTop = getDetailContainer()?.scrollTop || 0;
+        const fd = new FormData(tagForm);
+        tagForm.dataset.submitting = '1';
+        setTagsPending(section, true);
+        postForm(tagForm.getAttribute('action'), fd, tagForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw data;
+            return data;
+          })
+          .then((data) => {
+            const isActiveDetail = Boolean(getActiveTagsSection(cardId));
+            const nextSection = replaceTagsSection(data.tags_html, cardId);
+            if (isActiveDetail && !nextSection) {
+              throw new Error('No se pudo actualizar la seccion de etiquetas.');
+            }
+            syncTagsUI(cardId, data.tags);
+            if (!nextSection) return;
+            const container = getDetailContainer();
+            if (container) container.scrollTop = scrollTop;
+            focusTagsForm(nextSection, isCreate);
+          })
+          .catch((error) => {
+            console.error('No se pudo actualizar la seccion de etiquetas:', error);
+            const nextSection = error?.tags_html && replaceTagsSection(error.tags_html, cardId);
+            if (nextSection) {
+              syncTagsUI(cardId, error.tags);
+              focusTagsForm(nextSection, isCreate);
+              return;
+            }
+            renderTagsError(section, 'No se pudo actualizar la seccion de etiquetas. Intenta nuevamente.');
+          })
+          .finally(() => {
+            delete tagForm.dataset.submitting;
+            setTagsPending(section, false);
+          });
+        return;
+      }
+
       const commentForm = e.target.closest('[data-operacion-comentario-form="1"]');
       if (!commentForm) return;
 

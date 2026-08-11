@@ -1,0 +1,28 @@
+
+
+.garantia-tags-section__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.garantia-tags-section__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: var(--garantia-tag-bg, #3e9fa2);
+  color: var(--garantia-tag-color, #fff);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.garantia-tags-section__chip form {
+  margin: 0;
+}
+
+.garantia-tags-section__chip .btn {
+  color: var(--garantia-tag-color, #fff);
+  line-height: 1;
+}

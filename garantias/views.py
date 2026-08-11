@@ -36,6 +36,7 @@ from .models import (
     GarantiaColumna,
     GarantiaComentario,
     GarantiaEnlace,
+    GarantiaEtiqueta,
 )
 from .services import copiar_garantia_a_columna
 
@@ -1290,3 +1291,85 @@ def eliminar_enlace(request, pk, enlace_id):
     enlace.delete()
     messages.success(request, "Enlace eliminado.")
     return redirect("garantias:editar_garantia", pk=garantia.pk)
+
+
+# ETIQUETAS AJAX IMPLEMENTATION
+
+from .forms import GarantiaEtiquetaAssignForm, GarantiaEtiquetaCreateForm
+
+def _etiquetas_queryset(garantia):
+    return garantia.etiquetas.order_by('nombre', 'id')
+
+def _etiquetas_data(etiquetas):
+    return [{'id': e.id, 'nombre': e.nombre, 'color': e.color} for e in etiquetas]
+
+def _render_etiquetas_section(request, garantia, etiquetas_form=None, etiqueta_create_form=None, return_data=False):
+    etiquetas = list(_etiquetas_queryset(garantia))
+    html = render_to_string('garantias/_etiquetas_section.html', {
+        'garantia': garantia,
+        'etiquetas': etiquetas,
+        'etiquetas_count': len(etiquetas),
+        'etiquetas_form': etiquetas_form or GarantiaEtiquetaAssignForm(),
+        'etiqueta_create_form': etiqueta_create_form or GarantiaEtiquetaCreateForm()
+    }, request=request)
+    if return_data:
+        return html, _etiquetas_data(etiquetas)
+    return html
+
+def _etiquetas_response(request, garantia, *, etiquetas_form=None, etiqueta_create_form=None, success=True, status=200):
+    tags_html, tags = _render_etiquetas_section(request, garantia, etiquetas_form=etiquetas_form, etiqueta_create_form=etiqueta_create_form, return_data=True)
+    return JsonResponse({'success': success, 'id': garantia.id, 'tags_html': tags_html, 'tags': tags, 'tags_count': len(tags)}, status=status)
+
+@login_required
+@require_POST
+def agregar_etiqueta_garantia(request, garantia_id):
+    garantia = get_object_or_404(Garantia, id=garantia_id)
+    if not _puede_operar_garantias(request.user):
+        raise PermissionDenied('No tienes permisos.')
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    if not is_ajax:
+        return JsonResponse({'success': False, 'error': 'Solicitud AJAX requerida.'}, status=400)
+    
+    form = GarantiaEtiquetaAssignForm(request.POST)
+    if not form.is_valid():
+        return _etiquetas_response(request, garantia, etiquetas_form=form, success=False, status=400)
+    
+    garantia.etiquetas.add(*form.cleaned_data['etiquetas'])
+    return _etiquetas_response(request, garantia)
+
+@login_required
+@require_POST
+def crear_etiqueta_garantia(request, garantia_id):
+    garantia = get_object_or_404(Garantia, id=garantia_id)
+    if not _puede_operar_garantias(request.user):
+        raise PermissionDenied('No tienes permisos.')
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    if not is_ajax:
+        return JsonResponse({'success': False, 'error': 'Solicitud AJAX requerida.'}, status=400)
+    
+    form = GarantiaEtiquetaCreateForm(request.POST)
+    if not form.is_valid():
+        return _etiquetas_response(request, garantia, etiqueta_create_form=form, success=False, status=400)
+    
+    nombre = form.cleaned_data['nombre']
+    etiqueta = GarantiaEtiqueta.objects.filter(nombre__iexact=nombre).first()
+    if not etiqueta:
+        etiqueta = GarantiaEtiqueta.objects.create(nombre=nombre, color=form.cleaned_data['color'])
+    
+    garantia.etiquetas.add(etiqueta)
+    return _etiquetas_response(request, garantia)
+
+@login_required
+@require_POST
+def quitar_etiqueta_garantia(request, garantia_id, etiqueta_id):
+    garantia = get_object_or_404(Garantia, id=garantia_id)
+    if not _puede_operar_garantias(request.user):
+        raise PermissionDenied('No tienes permisos.')
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    if not is_ajax:
+        return JsonResponse({'success': False, 'error': 'Solicitud AJAX requerida.'}, status=400)
+    
+    etiqueta = get_object_or_404(GarantiaEtiqueta, id=etiqueta_id)
+    garantia.etiquetas.remove(etiqueta)
+    return _etiquetas_response(request, garantia)
+

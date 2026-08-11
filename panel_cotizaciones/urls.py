@@ -35,4 +35,7 @@ urlpatterns = [
     path("<int:pk>/checklist/<int:item_id>/update/", views.checklist_item_update, name="checklist_item_update"),
     path("<int:pk>/checklist/<int:item_id>/toggle/", views.checklist_item_toggle, name="checklist_item_toggle"),
     path("<int:pk>/checklist/<int:item_id>/delete/", views.checklist_item_delete, name="checklist_item_delete"),
+    path("<int:panel_id>/etiquetas/agregar/", views.agregar_etiqueta_cotizacion, name="agregar_etiqueta_cotizacion"),
+    path("<int:panel_id>/etiquetas/crear/", views.crear_etiqueta_cotizacion, name="crear_etiqueta_cotizacion"),
+    path("<int:panel_id>/etiquetas/<int:etiqueta_id>/quitar/", views.quitar_etiqueta_cotizacion, name="quitar_etiqueta_cotizacion"),
 ]

@@ -1897,3 +1897,79 @@ class PanelCotizacionChecklistTests(TestCase):
         data = response.json()
         self.assertFalse(data["ok"])
         self.assertIn("Escribe un elemento de accion.", data["html"])
+
+
+class PanelCotizacionEtiquetasAjaxTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='testpassword', is_superuser=True)
+        self.client.login(username='testuser', password='testpassword')
+        self.cotizacion_a = PanelCotizacion.objects.create(
+            titulo='Cotizacion A',
+            creado_por=self.user,
+            estado=PanelCotizacion.Estado.REQUERIMIENTO,
+            prioridad=PanelCotizacion.Prioridad.MEDIA,
+        )
+        self.cotizacion_b = PanelCotizacion.objects.create(
+            titulo='Cotizacion B',
+            creado_por=self.user,
+            estado=PanelCotizacion.Estado.REQUERIMIENTO,
+            prioridad=PanelCotizacion.Prioridad.MEDIA,
+        )
+        self.cotizacion_a.asignados.add(self.user)
+        self.cotizacion_b.asignados.add(self.user)
+        self.etiqueta1 = PanelCotizacionEtiqueta.objects.create(nombre='Etiqueta 1', color='#ff0000')
+        self.etiqueta2 = PanelCotizacionEtiqueta.objects.create(nombre='Etiqueta 2', color='#00ff00')
+
+    def test_asignar_etiqueta_existente(self):
+        url = reverse('panel_cotizaciones:agregar_etiqueta_cotizacion', args=[self.cotizacion_a.id])
+        response = self.client.post(url, {'etiquetas': [self.etiqueta1.id]}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(self.cotizacion_a.etiquetas.filter(id=self.etiqueta1.id).exists())
+
+    def test_crear_y_asignar(self):
+        url = reverse('panel_cotizaciones:crear_etiqueta_cotizacion', args=[self.cotizacion_a.id])
+        response = self.client.post(url, {'nombre': 'Nueva Etiqueta', 'color': '#0000ff'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(PanelCotizacionEtiqueta.objects.filter(nombre='Nueva Etiqueta').exists())
+        self.assertTrue(self.cotizacion_a.etiquetas.filter(nombre='Nueva Etiqueta').exists())
+
+    def test_desasignar_una(self):
+        self.cotizacion_a.etiquetas.add(self.etiqueta1)
+        url = reverse('panel_cotizaciones:quitar_etiqueta_cotizacion', args=[self.cotizacion_a.id, self.etiqueta1.id])
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(self.cotizacion_a.etiquetas.filter(id=self.etiqueta1.id).exists())
+        
+        # Test que NO se elimina de la BD global
+        self.assertTrue(PanelCotizacionEtiqueta.objects.filter(id=self.etiqueta1.id).exists())
+
+    def test_desasignar_de_tarjeta_a_no_afecta_tarjeta_b(self):
+        self.cotizacion_a.etiquetas.add(self.etiqueta1)
+        self.cotizacion_b.etiquetas.add(self.etiqueta1)
+        url = reverse('panel_cotizaciones:quitar_etiqueta_cotizacion', args=[self.cotizacion_a.id, self.etiqueta1.id])
+        self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        
+        self.assertFalse(self.cotizacion_a.etiquetas.filter(id=self.etiqueta1.id).exists())
+        self.assertTrue(self.cotizacion_b.etiquetas.filter(id=self.etiqueta1.id).exists())
+
+    def test_guardar_formulario_general_conserva_etiquetas(self):
+        self.cotizacion_a.etiquetas.add(self.etiqueta1)
+        url = reverse('panel_cotizaciones:detalle_modal_update', args=[self.cotizacion_a.id])
+        # Actualizamos titulo
+        response = self.client.post(url, {
+            'titulo': 'Nuevo Titulo',
+            'prioridad': PanelCotizacion.Prioridad.ALTA,
+            'cliente': '',
+            'layout': 'modal',
+        })
+        if response.status_code != 200 and response.status_code != 302:
+            print(response.content.decode('utf-8'))
+        self.cotizacion_a.refresh_from_db()
+        self.assertTrue(self.cotizacion_a.etiquetas.filter(id=self.etiqueta1.id).exists())
+
+    def test_rechazo_sin_ajax(self):
+        url = reverse('panel_cotizaciones:agregar_etiqueta_cotizacion', args=[self.cotizacion_a.id])
+        response = self.client.post(url, {'etiquetas': [self.etiqueta1.id]})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], 'Solicitud AJAX requerida.')
+

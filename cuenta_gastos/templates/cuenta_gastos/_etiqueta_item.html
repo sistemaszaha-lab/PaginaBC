@@ -1,4 +1,5 @@
-<div class="cuenta-section-chip" style="--tag-bg: {{ etiqueta.color }};">
+{% load kanban_tags %}
+<div class="cuenta-section-chip" style="--tag-bg: {{ etiqueta.color }}; --tag-color: {{ etiqueta.color|contrast_color }};">
   <span>{{ etiqueta.nombre }}</span>
   <form
     method="post"

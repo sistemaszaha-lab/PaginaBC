@@ -12,6 +12,10 @@
         <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
         {{ form.as_p }}
 
+        <div class="mt-4 mb-4">
+          {% include "garantias/_etiquetas_section.html" with garantia=garantia etiquetas=etiquetas etiquetas_count=etiquetas_count etiquetas_form=etiquetas_form etiqueta_create_form=etiqueta_create_form only %}
+        </div>
+
         <div class="d-flex gap-2 flex-wrap">
           <button type="submit" class="btn btn-primary">Guardar</button>
         </div>

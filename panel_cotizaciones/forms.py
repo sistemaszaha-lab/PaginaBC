@@ -414,7 +414,6 @@ class PanelCotizacionUpdateForm(forms.ModelForm):
             "prioridad",
             "fecha_vencimiento",
             "asignados",
-            "etiquetas",
         )
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control rounded"}),
@@ -437,17 +436,6 @@ class PanelCotizacionUpdateForm(forms.ModelForm):
             }
         ),
     )
-    etiquetas = EtiquetaChoiceField(
-        queryset=PanelCotizacionEtiqueta.objects.all().order_by("nombre", "id"),
-        required=False,
-        widget=forms.SelectMultiple(
-            attrs={
-                "class": "form-select rounded",
-                "data-panel-cotizacion-tags-select": "1",
-            }
-        ),
-    )
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field_name in list(self.fields.keys()):
@@ -530,3 +518,15 @@ class PanelCotizacionColumnaCreateForm(forms.ModelForm):
 
 class PanelCotizacionColumnaUpdateForm(PanelCotizacionColumnaCreateForm):
     pass
+
+class PanelCotizacionEtiquetaAssignForm(forms.Form):
+    etiquetas = EtiquetaChoiceField(
+        queryset=PanelCotizacionEtiqueta.objects.all().order_by("nombre"),
+        required=True,
+        widget=forms.SelectMultiple(attrs={"class": "form-select"}),
+    )
+
+class PanelCotizacionEtiquetaCreateForm(forms.ModelForm):
+    class Meta:
+        model = PanelCotizacionEtiqueta
+        fields = ["nombre", "color"]

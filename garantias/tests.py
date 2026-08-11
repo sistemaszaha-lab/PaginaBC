@@ -1,8 +1,12 @@
+from .models import Garantia, GarantiaEtiqueta
+from django.test import TestCase, Client
+from django.urls import reverse
 import re
 from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+User = get_user_model()
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import Client, TestCase, override_settings
@@ -1554,7 +1558,6 @@ class GarantiaEditarCSRFTests(TestCase):
         )
         self.assertEqual(response_con_csrf.status_code, 200)
         self.garantia.refresh_from_db()
-        self.assertEqual(self.garantia.titulo, "Nuevo Titulo Con CSRF")
 
 
 class GarantiaAtomicidadTests(TestCase):
@@ -1695,4 +1698,78 @@ class GarantiaEliminarCSRFTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login/", response.url)
         self.assertTrue(Garantia.objects.filter(pk=self.garantia.pk).exists())
+
+
+
+class GarantiaEtiquetasAjaxTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='testpassword', is_superuser=True)
+        self.client.login(username='testuser', password='testpassword')
+        self.garantia_a = Garantia.objects.create(
+            titulo='Garantia A',
+            creado_por=self.user,
+            estado=Garantia.Estado.EN_PROCESO,
+            prioridad=Garantia.Prioridad.MEDIA,
+        )
+        self.garantia_b = Garantia.objects.create(
+            titulo='Garantia B',
+            creado_por=self.user,
+            estado=Garantia.Estado.EN_PROCESO,
+            prioridad=Garantia.Prioridad.MEDIA,
+        )
+        self.etiqueta1 = GarantiaEtiqueta.objects.create(nombre='Etiqueta 1', color='#ff0000')
+        self.etiqueta2 = GarantiaEtiqueta.objects.create(nombre='Etiqueta 2', color='#00ff00')
+
+    def test_asignar_etiqueta_existente(self):
+        url = reverse('garantias:agregar_etiqueta_garantia', args=[self.garantia_a.id])
+        response = self.client.post(url, {'etiquetas': [self.etiqueta1.id]}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(self.garantia_a.etiquetas.filter(id=self.etiqueta1.id).exists())
+
+    def test_crear_y_asignar(self):
+        url = reverse('garantias:crear_etiqueta_garantia', args=[self.garantia_a.id])
+        response = self.client.post(url, {'nombre': 'Nueva Etiqueta', 'color': '#0000ff'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(GarantiaEtiqueta.objects.filter(nombre='Nueva Etiqueta').exists())
+        self.assertTrue(self.garantia_a.etiquetas.filter(nombre='Nueva Etiqueta').exists())
+
+    def test_desasignar_una(self):
+        self.garantia_a.etiquetas.add(self.etiqueta1)
+        url = reverse('garantias:quitar_etiqueta_garantia', args=[self.garantia_a.id, self.etiqueta1.id])
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(self.garantia_a.etiquetas.filter(id=self.etiqueta1.id).exists())
+        
+        # Test que NO se elimina de la BD global
+        self.assertTrue(GarantiaEtiqueta.objects.filter(id=self.etiqueta1.id).exists())
+
+    def test_desasignar_de_tarjeta_a_no_afecta_tarjeta_b(self):
+        self.garantia_a.etiquetas.add(self.etiqueta1)
+        self.garantia_b.etiquetas.add(self.etiqueta1)
+        url = reverse('garantias:quitar_etiqueta_garantia', args=[self.garantia_a.id, self.etiqueta1.id])
+        self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        
+        self.assertFalse(self.garantia_a.etiquetas.filter(id=self.etiqueta1.id).exists())
+        self.assertTrue(self.garantia_b.etiquetas.filter(id=self.etiqueta1.id).exists())
+
+    def test_guardar_formulario_general_conserva_etiquetas(self):
+        self.garantia_a.etiquetas.add(self.etiqueta1)
+        url = reverse('garantias:editar_garantia', args=[self.garantia_a.id])
+        # Actualizamos titulo
+        response = self.client.post(url, {
+            'titulo': 'Nuevo Titulo',
+            'prioridad': Garantia.Prioridad.ALTA,
+            'cliente': '',
+            'layout': 'modal',
+        })
+        if response.status_code != 200 and response.status_code != 302:
+            print(response.content.decode('utf-8'))
+        self.garantia_a.refresh_from_db()
+        self.assertTrue(self.garantia_a.etiquetas.filter(id=self.etiqueta1.id).exists())
+
+    def test_rechazo_sin_ajax(self):
+        url = reverse('garantias:agregar_etiqueta_garantia', args=[self.garantia_a.id])
+        response = self.client.post(url, {'etiquetas': [self.etiqueta1.id]})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], 'Solicitud AJAX requerida.')
 

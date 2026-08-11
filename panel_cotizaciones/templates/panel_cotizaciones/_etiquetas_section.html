@@ -1,17 +1,17 @@
 {% load kanban_tags %}
-<section data-operacion-tags-section="1" data-operacion-id="{{ operacion.id }}" class="operaciones-tags-section" aria-busy="false">
+<section data-panel-cotizacion-tags-section="1" data-panel-id="{{ panel.id }}" class="panel-cotizacion-tags-section" aria-busy="false">
   <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
-    <h5 class="mb-0">Etiquetas</h5>
-    <span class="badge text-bg-light" data-operacion-detail-tags-count="1" aria-live="polite">{{ etiquetas_count }}</span>
+    <h6 class="mb-0">Etiquetas</h6>
+    <span class="badge text-bg-light" data-panel-cotizacion-detail-tags-count="1" aria-live="polite">{{ etiquetas_count }}</span>
   </div>
   <div class="visually-hidden" role="status">{{ etiquetas_count }} etiquetas asignadas.</div>
 
-  <div class="operaciones-tags-section__list mb-3" data-operacion-tags-list="1">
+  <div class="panel-cotizacion-tags-section__list mb-3" data-panel-cotizacion-tags-list="1">
     {% for etiqueta in etiquetas %}
-    <div class="operaciones-tags-section__chip" style="--operacion-tag-bg: {{ etiqueta.color }}; --operacion-tag-color: {{ etiqueta.color|contrast_color }};">
+    <div class="panel-cotizacion-tags-section__chip" style="--panel-tag-bg: {{ etiqueta.color }}; --panel-tag-color: {{ etiqueta.color|contrast_color }};">
       <span>{{ etiqueta.nombre }}</span>
-      <form method="post" action="{% url 'operaciones:quitar_etiqueta_operacion' operacion.id etiqueta.id %}"
-        data-operacion-tag-remove-form="1" data-operacion-id="{{ operacion.id }}" class="d-inline">
+      <form method="post" action="{% url 'panel_cotizaciones:quitar_etiqueta_cotizacion' panel.id etiqueta.id %}"
+        data-panel-cotizacion-tag-remove-form="1" data-panel-id="{{ panel.id }}" class="d-inline">
         {% csrf_token %}
         <button type="submit" class="btn btn-sm p-0" aria-label="Quitar etiqueta {{ etiqueta.nombre }}">&times;</button>
       </form>
@@ -21,21 +21,21 @@
     {% endfor %}
   </div>
 
-  <form method="post" action="{% url 'operaciones:agregar_etiqueta_operacion' operacion.id %}"
-    data-operacion-tag-assign-form="1" data-operacion-id="{{ operacion.id }}" class="mb-3">
+  <form method="post" action="{% url 'panel_cotizaciones:agregar_etiqueta_cotizacion' panel.id %}"
+    data-panel-cotizacion-tag-assign-form="1" data-panel-id="{{ panel.id }}" class="mb-3">
     {% csrf_token %}
-    <label class="visually-hidden" for="{{ etiquetas_form.etiqueta.id_for_label }}">Asignar etiqueta existente</label>
+    <label class="visually-hidden" for="{{ etiquetas_form.etiquetas.id_for_label }}">Asignar etiqueta existente</label>
     <div class="input-group">
-      {{ etiquetas_form.etiqueta }}
+      {{ etiquetas_form.etiquetas }}
       <button type="submit" class="btn btn-outline-primary">Asignar</button>
     </div>
-    {% if etiquetas_form.etiqueta.errors %}
-      <div class="invalid-feedback d-block" role="alert">{{ etiquetas_form.etiqueta.errors }}</div>
+    {% if etiquetas_form.etiquetas.errors %}
+      <div class="invalid-feedback d-block" role="alert">{{ etiquetas_form.etiquetas.errors }}</div>
     {% endif %}
   </form>
 
-  <form method="post" action="{% url 'operaciones:crear_etiqueta_operacion' operacion.id %}"
-    data-operacion-tag-create-form="1" data-operacion-id="{{ operacion.id }}">
+  <form method="post" action="{% url 'panel_cotizaciones:crear_etiqueta_cotizacion' panel.id %}"
+    data-panel-cotizacion-tag-create-form="1" data-panel-id="{{ panel.id }}">
     {% csrf_token %}
     <label class="form-label small fw-semibold" for="{{ etiqueta_create_form.nombre.id_for_label }}">Crear y asignar etiqueta</label>
     <div class="row g-2">

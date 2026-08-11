@@ -1395,3 +1395,85 @@ def eliminar_panel_cotizacion(request: HttpRequest, pk: int) -> JsonResponse:
             "message": "La tarjeta se envió a la papelera correctamente.",
         }
     )
+
+
+# ETIQUETAS AJAX IMPLEMENTATION
+
+from .forms import PanelCotizacionEtiquetaAssignForm, PanelCotizacionEtiquetaCreateForm
+
+def _etiquetas_queryset(cotizacion):
+    return cotizacion.etiquetas.order_by('nombre', 'id')
+
+def _etiquetas_data(etiquetas):
+    return [{'id': e.id, 'nombre': e.nombre, 'color': e.color} for e in etiquetas]
+
+def _render_etiquetas_section(request, cotizacion, etiquetas_form=None, etiqueta_create_form=None, return_data=False):
+    etiquetas = list(_etiquetas_queryset(cotizacion))
+    html = render_to_string('panel_cotizaciones/_etiquetas_section.html', {
+        'panel': cotizacion,
+        'etiquetas': etiquetas,
+        'etiquetas_count': len(etiquetas),
+        'etiquetas_form': etiquetas_form or PanelCotizacionEtiquetaAssignForm(),
+        'etiqueta_create_form': etiqueta_create_form or PanelCotizacionEtiquetaCreateForm()
+    }, request=request)
+    if return_data:
+        return html, _etiquetas_data(etiquetas)
+    return html
+
+def _etiquetas_response(request, cotizacion, *, etiquetas_form=None, etiqueta_create_form=None, success=True, status=200):
+    tags_html, tags = _render_etiquetas_section(request, cotizacion, etiquetas_form=etiquetas_form, etiqueta_create_form=etiqueta_create_form, return_data=True)
+    return JsonResponse({'success': success, 'id': cotizacion.id, 'tags_html': tags_html, 'tags': tags, 'tags_count': len(tags)}, status=status)
+
+@login_required
+@require_POST
+def agregar_etiqueta_cotizacion(request, panel_id):
+    cotizacion = get_object_or_404(_board_queryset([request.user]), id=panel_id)
+    if not _puede_operar_panel(request.user):
+        raise PermissionDenied('No tienes permisos.')
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    if not is_ajax:
+        return JsonResponse({'success': False, 'error': 'Solicitud AJAX requerida.'}, status=400)
+    
+    form = PanelCotizacionEtiquetaAssignForm(request.POST)
+    if not form.is_valid():
+        return _etiquetas_response(request, cotizacion, etiquetas_form=form, success=False, status=400)
+    
+    cotizacion.etiquetas.add(*form.cleaned_data['etiquetas'])
+    return _etiquetas_response(request, cotizacion)
+
+@login_required
+@require_POST
+def crear_etiqueta_cotizacion(request, panel_id):
+    cotizacion = get_object_or_404(_board_queryset([request.user]), id=panel_id)
+    if not _puede_operar_panel(request.user):
+        raise PermissionDenied('No tienes permisos.')
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    if not is_ajax:
+        return JsonResponse({'success': False, 'error': 'Solicitud AJAX requerida.'}, status=400)
+    
+    form = PanelCotizacionEtiquetaCreateForm(request.POST)
+    if not form.is_valid():
+        return _etiquetas_response(request, cotizacion, etiqueta_create_form=form, success=False, status=400)
+    
+    nombre = form.cleaned_data['nombre']
+    etiqueta = PanelCotizacionEtiqueta.objects.filter(nombre__iexact=nombre).first()
+    if not etiqueta:
+        etiqueta = PanelCotizacionEtiqueta.objects.create(nombre=nombre, color=form.cleaned_data['color'])
+    
+    cotizacion.etiquetas.add(etiqueta)
+    return _etiquetas_response(request, cotizacion)
+
+@login_required
+@require_POST
+def quitar_etiqueta_cotizacion(request, panel_id, etiqueta_id):
+    cotizacion = get_object_or_404(_board_queryset([request.user]), id=panel_id)
+    if not _puede_operar_panel(request.user):
+        raise PermissionDenied('No tienes permisos.')
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    if not is_ajax:
+        return JsonResponse({'success': False, 'error': 'Solicitud AJAX requerida.'}, status=400)
+    
+    etiqueta = get_object_or_404(PanelCotizacionEtiqueta, id=etiqueta_id)
+    cotizacion.etiquetas.remove(etiqueta)
+    return _etiquetas_response(request, cotizacion)
+

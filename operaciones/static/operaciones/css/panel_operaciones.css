@@ -93,8 +93,8 @@
 [data-bs-theme="dark"] .operaciones-options-section__item { border-color: #4b7773; background: #183f3d; }
 [data-bs-theme="dark"] .operaciones-options-section .form-control { border-color: #4b7773; background-color: #183f3d; color: #eefaf8; }
 .operaciones-tags-section__list { display: flex; flex-wrap: wrap; gap: 0.45rem; }
-.operaciones-tags-section__chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.28rem 0.55rem; border-radius: 999px; background: var(--operacion-tag-bg, #3e9fa2); color: #fff; font-size: 0.78rem; font-weight: 700; }
-.operaciones-tags-section__chip .btn { color: #fff; line-height: 1; }
+.operaciones-tags-section__chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.28rem 0.55rem; border-radius: 999px; background: var(--operacion-tag-bg, #3e9fa2); color: var(--operacion-tag-color, #fff); font-size: 0.78rem; font-weight: 700; }
+.operaciones-tags-section__chip .btn { color: var(--operacion-tag-color, #fff); line-height: 1; }
 [data-bs-theme="dark"] .operaciones-tags-section { color: #e7f5f3; }
 [data-bs-theme="dark"] .operaciones-tags-section .form-select,
 [data-bs-theme="dark"] .operaciones-tags-section .form-control { border-color: #4b7773; background-color: #183f3d; color: #eefaf8; }

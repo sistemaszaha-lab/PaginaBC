@@ -33,4 +33,7 @@ urlpatterns = [
     path("<int:pk>/archivos/<int:archivo_id>/eliminar/", views.eliminar_archivo, name="eliminar_archivo"),
     path("<int:pk>/enlaces/", views.agregar_enlace, name="agregar_enlace"),
     path("<int:pk>/enlaces/<int:enlace_id>/eliminar/", views.eliminar_enlace, name="eliminar_enlace"),
+    path("<int:garantia_id>/etiquetas/agregar/", views.agregar_etiqueta_garantia, name="agregar_etiqueta_garantia"),
+    path("<int:garantia_id>/etiquetas/crear/", views.crear_etiqueta_garantia, name="crear_etiqueta_garantia"),
+    path("<int:garantia_id>/etiquetas/<int:etiqueta_id>/quitar/", views.quitar_etiqueta_garantia, name="quitar_etiqueta_garantia"),
 ]
