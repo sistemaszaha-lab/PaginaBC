@@ -6,6 +6,7 @@
 {% block content %}
 <link rel="stylesheet" href="{% static 'panel_cotizaciones/css/panel_cotizaciones.css' %}?v=20260810-1">
 <link rel="stylesheet" href="{% static 'css/kanban_status_control.css' %}">
+<link rel="stylesheet" href="{% static 'css/zaha_detail_modal.css' %}?v=20260814-1">
 {% include "garantias/_asignados_tags_assets.html" %}
 <h2 class="mb-4">Panel de Cotizaciones</h2>
 <div style="display:none;">{% csrf_token %}</div>
@@ -42,14 +43,14 @@
 
 
 <div class="modal fade" id="panelCotizacionDetalleModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+  <div class="modal-dialog zaha-modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content" id="panelCotizacionDetalleModalContent">
-      <div class="modal-body p-4 text-center text-muted">Cargando...</div>
+      <div class="modal-body text-center text-muted p-4">Cargando...</div>
     </div>
   </div>
 </div>
 
-<div class="offcanvas offcanvas-end panel-cotizacion-drawer" tabindex="-1" id="panelCotizacionDrawer" aria-labelledby="panelCotizacionDrawerLabel">
+<div class="offcanvas offcanvas-end panel-cotizacion-drawer zaha-drawer-shell" tabindex="-1" id="panelCotizacionDrawer" aria-labelledby="panelCotizacionDrawerLabel">
   <div id="panelCotizacionDrawerContent">
     <div class="offcanvas-body p-4 text-center text-muted">Cargando...</div>
   </div>

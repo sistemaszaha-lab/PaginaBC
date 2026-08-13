@@ -888,6 +888,16 @@ class GarantiasColumnasDinamicasTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "garantia-drawer__panel")
 
+    def test_detalle_layout_modal_renderiza_clases_compartidas(self):
+        response = self.client.get(
+            reverse("garantias:detalle_garantia_parcial", args=[self.garantia.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "zaha-detail-modal__header")
+        self.assertContains(response, "zaha-detail-modal__body")
+        self.assertContains(response, "zaha-detail-modal__footer")
+
 
 class GarantiasCopiarPegarTests(TestCase):
     def setUp(self):

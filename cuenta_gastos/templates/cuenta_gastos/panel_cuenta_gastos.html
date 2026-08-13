@@ -8,6 +8,7 @@
     rel="stylesheet"
     href="{% static 'cuenta_gastos/css/panel_cuenta_gastos.css' %}?v=20260810-1"
 >
+<link rel="stylesheet" href="{% static 'css/zaha_detail_modal.css' %}?v=20260814-1">
 {% endblock %}
 
 {% block content %}
@@ -53,7 +54,7 @@
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 {{ panel_config|json_script:"panel-cuenta-gastos-config" }}
 
-<div class="cuenta-drawer" id="cuentaDrawer" hidden aria-hidden="true">
+<div class="cuenta-drawer zaha-drawer-shell" id="cuentaDrawer" hidden aria-hidden="true">
     <div class="cuenta-drawer__backdrop" data-cuenta-drawer-close="1"></div>
     <aside class="cuenta-drawer__dialog" role="dialog" aria-modal="true" aria-labelledby="cuenta-drawer-title">
         <div class="cuenta-drawer__content-shell" id="cuentaDrawerContent">
@@ -63,9 +64,9 @@
 </div>
 
 <div class="modal fade" id="cuentaModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog zaha-modal-dialog modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content" id="modalContent">
-            <div class="modal-body p-4 text-center text-muted">Cargando...</div>
+            <div class="modal-body text-center text-muted p-4">Cargando...</div>
         </div>
     </div>
 </div>

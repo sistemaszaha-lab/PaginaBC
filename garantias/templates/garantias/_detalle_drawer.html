@@ -1,6 +1,6 @@
 {% load garantias_extras %}
-<div class="garantia-drawer__panel">
-  <header class="garantia-drawer__header">
+<div class="garantia-drawer__panel zaha-detail-modal">
+  <header class="garantia-drawer__header zaha-detail-modal__header">
     <div class="garantia-drawer__header-main">
       <h2 class="garantia-drawer__title" id="garantia-drawer-title">{{ garantia.titulo|default:"Garantia" }}</h2>
       <div class="d-flex gap-2 flex-wrap align-items-center">
@@ -17,10 +17,22 @@
         <span class="small text-muted">{{ asignados_count }} asignados</span>
       </div>
     </div>
-    <button type="button" class="btn-close" data-garantia-drawer-close="1" aria-label="Cerrar"></button>
+    <button type="button" class="btn-close zaha-detail-modal__close" data-garantia-drawer-close="1" aria-label="Cerrar"></button>
   </header>
 
-  <div class="garantia-drawer__content">
+  <div class="garantia-drawer__content zaha-detail-modal__body">
     {% include "garantias/_detalle_panel_content.html" with garantia=garantia form=form archivos_form=archivos_form enlace_form=enlace_form comentario_form=comentario_form layout="drawer" only %}
   </div>
+
+  <footer class="garantia-drawer__footer zaha-detail-modal__footer p-3 border-top d-flex justify-content-between bg-white">
+    <form method="post" action="{% url 'garantias:eliminar_garantia' garantia.id %}" data-garantia-modal-delete="1">
+      {% csrf_token %}
+      <input type="hidden" name="layout" value="drawer">
+      <button type="submit" class="btn btn-danger">Eliminar</button>
+    </form>
+    <div>
+      <button type="button" class="btn btn-outline-secondary" data-garantia-drawer-close="1">Cancelar</button>
+      <button type="submit" form="garantia-edit-form" class="btn btn-primary">Guardar</button>
+    </div>
+  </footer>
 </div>

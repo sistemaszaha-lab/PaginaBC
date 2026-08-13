@@ -1,9 +1,9 @@
 {% load garantias_extras %}
-<div class="modal-header">
+<div class="modal-header zaha-detail-modal__header">
   <div class="w-100">
     <div class="d-flex justify-content-between align-items-start gap-3">
       <div>
-        <h4 class="modal-title mb-2">{{ garantia.titulo }}</h4>
+        <h4 class="modal-title mb-2" id="garantia-drawer-title">{{ garantia.titulo }}</h4>
         <div class="d-flex gap-2 flex-wrap align-items-center">
           {% if garantia.prioridad == 'BAJA' %}
             <span class="badge bg-secondary">{{ garantia.get_prioridad_display|upper }}</span>
@@ -26,11 +26,23 @@
           <span class="small text-muted">Vence: {% if garantia.fecha_vencimiento %}{{ garantia.fecha_vencimiento|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}</span>
         </div>
       </div>
-      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <button type="button" class="btn-close zaha-detail-modal__close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
     </div>
   </div>
 </div>
 
-<div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+<div class="modal-body zaha-detail-modal__body">
   {% include "garantias/_detalle_panel_content.html" with garantia=garantia form=form archivos_form=archivos_form enlace_form=enlace_form comentario_form=comentario_form layout="modal" only %}
+</div>
+
+<div class="modal-footer zaha-detail-modal__footer d-flex justify-content-between">
+  <form method="post" action="{% url 'garantias:eliminar_garantia' garantia.id %}" data-garantia-modal-delete="1">
+    {% csrf_token %}
+    <input type="hidden" name="layout" value="modal">
+    <button type="submit" class="btn btn-danger">Eliminar</button>
+  </form>
+  <div>
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+    <button type="submit" form="garantia-edit-form" class="btn btn-primary">Guardar</button>
+  </div>
 </div>

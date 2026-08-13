@@ -93,10 +93,10 @@
       {% include "components/_kanban_status_control.html" with obj=g select_attr="data-garantia-state-select" choices=columnas_estado only %}
 
       <a
-        href="{% url 'garantias:detalle_garantia' g.id %}"
+        href="{% url 'garantias:detalle_garantia_parcial' g.id %}"
         class="btn btn-sm garantia-card__detail-btn"
         data-garantia-modal-open="1"
-        data-modal-url="{% url 'garantias:detalle_garantia' g.id %}">
+        data-modal-url="{% url 'garantias:detalle_garantia_parcial' g.id %}">
         Detalles
       </a>
     </div>

@@ -6,6 +6,7 @@
 {% block content %}
 <link rel="stylesheet" href="{% static 'garantias/css/panel_garantias.css' %}?v=20260810-1">
 <link rel="stylesheet" href="{% static 'css/kanban_status_control.css' %}">
+<link rel="stylesheet" href="{% static 'css/zaha_detail_modal.css' %}?v=20260814-1">
 <h2 class="mb-4">Garantias</h2>
 <div class="visually-hidden">{% csrf_token %}</div>
 
@@ -34,7 +35,7 @@
   <div class="px-3 pt-3 d-none" data-garantia-inline-container="1" data-garantia-inline-shared-slot="1"></div>
 </div>
 
-<div id="garantia-drawer-root" class="garantia-drawer-root" aria-hidden="true">
+<div id="garantia-drawer-root" class="garantia-drawer-root zaha-drawer-shell" aria-hidden="true">
   <div class="garantia-drawer-overlay" data-garantia-drawer-overlay="1"></div>
   <aside
     class="garantia-drawer"
@@ -139,9 +140,9 @@
 </div>
 
 <div class="modal fade" id="garantiaDetalleModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+  <div class="modal-dialog zaha-modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content" id="garantiaDetalleModalContent">
-      <div class="modal-body p-4 text-center text-muted">Cargando...</div>
+      <div class="modal-body text-center text-muted p-4">Cargando...</div>
     </div>
   </div>
 </div>

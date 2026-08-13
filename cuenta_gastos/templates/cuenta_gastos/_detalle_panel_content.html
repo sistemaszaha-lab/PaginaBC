@@ -2,6 +2,7 @@
   <div class="row g-4">
     <div class="col-12 col-lg-8">
       <form
+        id="cuenta-edit-form"
         method="post"
         enctype="multipart/form-data"
         action="{% url 'cuenta_gastos:editar_cuenta' cuenta.id %}"
@@ -39,15 +40,6 @@
           </div>
         </div>
 
-        <div class="d-flex gap-2 flex-wrap mt-3">
-          <button type="submit" class="btn btn-primary">Guardar</button>
-        </div>
-      </form>
-
-      <form method="post" action="{% url 'cuenta_gastos:eliminar_cuenta' cuenta.id %}" data-cuenta-modal-delete="1" class="mt-2">
-        {% csrf_token %}
-        <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
-        <button type="submit" class="btn btn-danger">Eliminar</button>
       </form>
 
       <hr class="my-4" />

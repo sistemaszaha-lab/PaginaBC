@@ -1,4 +1,4 @@
-  (function () {
+(function () {
     const root = document.querySelector('.garantias-board');
     const configElement = document.getElementById('panel-garantias-config');
     if (!root || !configElement || root.dataset.panelJsInitialized === '1') return;
@@ -34,10 +34,10 @@
     const copyStorageKey = 'garantias.copiedCard';
     const pendingCardIds = new Set();
     const sectionRequestVersions = new WeakMap();
-    const detailState = { version: 0, id: '', layout: drawerElement ? 'drawer' : 'modal' };
+    const detailState = { version: 0, id: '', layout: 'modal' };
     let currentDetailUrl = '';
     let currentDetailCardId = '';
-    let currentDetailLayout = drawerElement ? 'drawer' : 'modal';
+    let currentDetailLayout = 'modal';
     let drawerBusy = false;
     const inlineSharedSlot = document.querySelector('[data-garantia-inline-shared-slot="1"]');
     const inlineSlotHome = document.querySelector('[data-garantia-inline-slot-home="1"]');
@@ -46,6 +46,25 @@
     let latestInlineTarget = null;
     const columnLoadRequests = new Map();
     let boardVersion = 0;
+
+    if (drawerRoot) {
+      drawerRoot.addEventListener('click', (e) => {
+        const closeDrawerButton = e.target.closest('[data-garantia-drawer-close="1"]');
+        if (closeDrawerButton) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeDrawer(false);
+          return;
+        }
+
+        if (e.target.closest('[data-garantia-drawer-overlay="1"]')) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeDrawer(false);
+          return;
+        }
+      });
+    }
 
     async function readJsonResponse(response) {
       const contentType = response.headers.get('content-type') || '';
@@ -1219,13 +1238,18 @@
       getHtml(url)
         .then((html) => {
           if (detailState.version !== version || detailState.id !== cardId || !modalElement.classList.contains('show')) return;
+          if (!html || !html.trim()) {
+            const error = new Error('Respuesta HTML vacia.');
+            error.status = 200;
+            throw error;
+          }
           modalContent.innerHTML = html;
           if (window.initGarantiaSelects) window.initGarantiaSelects(modalContent);
         })
         .catch((error) => {
           if (detailState.version !== version || detailState.id !== cardId || !modalElement.classList.contains('show')) return;
           console.error('No se pudo cargar la garantia:', error);
-          modalContent.innerHTML = `<div class="modal-body p-4 text-center text-danger">${requestErrorMessage(error)}</div>`;
+          modalContent.innerHTML = '<div class="modal-body p-4 text-center text-danger">No fue posible cargar los detalles.</div>';
         });
     }
 
@@ -1478,7 +1502,6 @@
         addInlineLinkRow(inlineLinkAddButton.closest('[data-garantia-inline-links="1"]'));
         return;
       }
-
       const inlineLinkRemoveButton = e.target.closest('[data-garantia-link-remove="1"]');
       if (inlineLinkRemoveButton) {
         e.preventDefault();
@@ -1486,54 +1509,17 @@
         return;
       }
 
-      const inlineFieldValue = e.target.closest('[data-garantia-inline-field]');
-      if (inlineFieldValue) {
-        e.preventDefault();
-        const card = inlineFieldValue.closest('[data-garantia-card="1"]');
-        const slot = inlineFieldValue.closest('[data-garantia-inline-slot]');
-        const fieldName = inlineFieldValue.dataset.garantiaInlineField;
-        const updateUrlValue = inlineFieldValue.dataset.updateUrl || '';
-        if (!card || !slot || !fieldName || isCardPending(card)) return;
-        if (slot.querySelector('[data-garantia-inline-editor="1"]')) return;
-        openInlineEditor(slot, fieldName, card, updateUrlValue);
-        return;
-      }
-
-      const inlineFieldCancelButton = e.target.closest('[data-garantia-inline-field-cancel="1"]');
-      if (inlineFieldCancelButton) {
-        e.preventDefault();
-        const card = inlineFieldCancelButton.closest('[data-garantia-card="1"]');
-        restoreInlineCard(card);
-        return;
-      }
-
-      const closeDrawerButton = e.target.closest('[data-garantia-drawer-close="1"]');
-      if (closeDrawerButton) {
-        e.preventDefault();
-        closeDrawer(false);
-        return;
-      }
-
-      if (e.target.closest('[data-garantia-drawer-overlay="1"]')) {
-        e.preventDefault();
-        closeDrawer(false);
-        return;
-      }
-
       const link = e.target.closest('[data-garantia-modal-open="1"]');
       if (!link) return;
       e.preventDefault();
+      e.stopPropagation();
       const url = link.getAttribute('data-modal-url') || link.getAttribute('href');
       const cardId = link.closest('[data-garantia-card="1"]')?.getAttribute('data-garantia-id') || '';
       if (!url) return;
-      if (drawerElement) {
-        loadDrawer(url, cardId);
-      } else {
-        currentDetailLayout = 'modal';
-        currentDetailUrl = url;
-        currentDetailCardId = cardId;
-        loadModal(url, cardId);
-      }
+      currentDetailLayout = 'modal';
+      currentDetailUrl = url;
+      currentDetailCardId = cardId;
+      loadModal(url, cardId);
     });
 
     root.addEventListener('submit', (e) => {
@@ -1813,12 +1799,14 @@
         });
     });
 
-    document.querySelector('[data-garantia-column-create-open="1"]')?.addEventListener('click', () => {
-      const form = columnCreateModalElement?.querySelector('[data-garantia-column-create-form="1"]');
-      if (!form) return;
-      form.reset();
-      setColumnFormError(form, '');
-      columnCreateModal?.show();
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('[data-garantia-column-create-open="1"]')) {
+        const form = columnCreateModalElement?.querySelector('[data-garantia-column-create-form="1"]');
+        if (!form) return;
+        form.reset();
+        setColumnFormError(form, '');
+        columnCreateModal?.show();
+      }
     });
 
     document.addEventListener('submit', (e) => {
@@ -1830,7 +1818,7 @@
         window.csrfFetch(columnCreateUrl, {
           method: 'POST',
           body: fd,
-          headers: {'Accept': 'application/json'}
+          headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}
         })
           .then((response) => readJsonResponse(response).then((data) => ({ok: response.ok, data})))
           .then(({ok, data}) => {
@@ -1867,7 +1855,7 @@
         window.csrfFetch(url, {
           method: 'POST',
           body: fd,
-          headers: {'Accept': 'application/json'}
+          headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}
         })
           .then((response) => readJsonResponse(response).then((data) => ({ok: response.ok, data})))
           .then(({ok, data}) => {
@@ -1900,7 +1888,7 @@
         window.csrfFetch(url, {
           method: 'POST',
           body: fd,
-          headers: {'Accept': 'application/json'}
+          headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}
         })
           .then((response) => readJsonResponse(response).then((data) => ({ok: response.ok, data})))
           .then(({ok, data}) => {

@@ -1400,17 +1400,14 @@
         return;
       }
 
+
       const link = e.target.closest('[data-panel-cotizacion-modal-open="1"]');
       if (!link) return;
       e.preventDefault();
       const url = link.getAttribute('data-modal-url') || link.getAttribute('href');
       if (!url) return;
-      if (drawerInstance) {
-        loadDrawer(url);
-      } else {
-        currentDetailUrl = url;
-        loadModal(url);
-      }
+      currentDetailUrl = url;
+      loadModal(url);
     });
 
     document.addEventListener('submit', (e) => {
@@ -1856,10 +1853,82 @@
           } else {
             console.error('No se pudo agregar el comentario:', error);
           }
-        })
-        .finally(() => {
-          if (submitButton) submitButton.disabled = false;
+            if (submitButton) submitButton.disabled = false;
         });
+
+      const tagForm = e.target.closest('[data-panel-cotizacion-tag-assign-form="1"], [data-panel-cotizacion-tag-create-form="1"], [data-panel-cotizacion-tag-remove-form="1"]');
+      if (tagForm) {
+        e.preventDefault();
+        e.stopPropagation();
+        const isRemove = tagForm.matches('[data-panel-cotizacion-tag-remove-form="1"]');
+        if (isRemove && !window.confirm('¿Quitar esta etiqueta de la cotización?')) return;
+
+        const section = tagForm.closest('[data-panel-cotizacion-tags-section="1"]');
+        if (!section || tagForm.dataset.submitting === '1') return;
+
+        const fd = new FormData(tagForm);
+        tagForm.dataset.submitting = '1';
+        
+        postForm(tagForm.getAttribute('action'), fd, tagForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw data;
+            return data;
+          })
+          .then((data) => {
+            const parent = section.parentElement;
+            const temp = document.createElement('div');
+            temp.innerHTML = data.tags_html;
+            const newSection = temp.firstElementChild;
+            if (parent && newSection) {
+              parent.replaceChild(newSection, section);
+              if (window.TomSelect) {
+                newSection.querySelectorAll('select').forEach(select => {
+                  if (!select.tomselect) {
+                    new TomSelect(select, {
+                      plugins: ['remove_button'],
+                      create: true,
+                      maxOptions: 200,
+                      persist: false,
+                      closeAfterSelect: false,
+                      hidePlaceholder: true,
+                      placeholder: 'Buscar o crear etiqueta...',
+                      searchField: ['text']
+                    });
+                  }
+                });
+              }
+            }
+            
+            const card = document.querySelector(`[data-panel-cotizacion-card="1"][data-panel-cotizacion-id="${data.id}"]`);
+            if (card) {
+                const tagsContainer = card.querySelector('.panel-cotizacion-card__tags');
+                if (tagsContainer) {
+                    tagsContainer.innerHTML = data.tags.map(t => 
+                        `<div class="panel-cotizacion-tag" style="--panel-tag-bg: ${t.color};">${t.nombre}</div>`
+                    ).join('');
+                }
+            }
+          })
+          .catch((error) => {
+            console.error('Error al procesar etiqueta:', error);
+            if (error && error.tags_html) {
+                const parent = section.parentElement;
+                const temp = document.createElement('div');
+                temp.innerHTML = error.tags_html;
+                const newSection = temp.firstElementChild;
+                if (parent && newSection) {
+                  parent.replaceChild(newSection, section);
+                }
+            } else {
+                const msg = error && error.error ? error.error : 'No se pudo actualizar la etiqueta. Verifica los datos.';
+                alert(msg);
+            }
+          })
+          .finally(() => {
+            delete tagForm.dataset.submitting;
+          });
+      }
     });
 
     document.addEventListener('keydown', (e) => {
@@ -1933,84 +2002,5 @@
 
     initSortables();
     syncPasteActions();
-    
-    document.addEventListener('submit', (e) => {
-      const tagForm = e.target.closest('[data-panel-cotizacion-tag-assign-form="1"], [data-panel-cotizacion-tag-create-form="1"], [data-panel-cotizacion-tag-remove-form="1"]');
-      if (tagForm) {
-        e.preventDefault();
-        e.stopPropagation();
-        const isRemove = tagForm.matches('[data-panel-cotizacion-tag-remove-form="1"]');
-        if (isRemove && !window.confirm('¿Quitar esta etiqueta de la cotización?')) return;
-
-        const section = tagForm.closest('[data-panel-cotizacion-tags-section="1"]');
-        if (!section || tagForm.dataset.submitting === '1') return;
-
-        const fd = new FormData(tagForm);
-        tagForm.dataset.submitting = '1';
-        
-        postForm(tagForm.getAttribute('action'), fd, tagForm)
-          .then(async (response) => {
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.success) throw data;
-            return data;
-          })
-          .then((data) => {
-            // Reemplazar la sección
-            const parent = section.parentElement;
-            const temp = document.createElement('div');
-            temp.innerHTML = data.tags_html;
-            const newSection = temp.firstElementChild;
-            if (parent && newSection) {
-              parent.replaceChild(newSection, section);
-              // Re-inicializar TomSelect si es necesario
-              if (window.TomSelect) {
-                newSection.querySelectorAll('select').forEach(select => {
-                  if (!select.tomselect) {
-                    new TomSelect(select, {
-                      plugins: ['remove_button'],
-                      create: true,
-                      maxOptions: 200,
-                      persist: false,
-                      closeAfterSelect: false,
-                      hidePlaceholder: true,
-                      placeholder: 'Buscar o crear etiqueta...',
-                      searchField: ['text']
-                    });
-                  }
-                });
-              }
-            }
-            
-            // Actualizar tarjeta en el tablero
-            const card = document.querySelector(`[data-panel-cotizacion-card="1"][data-panel-cotizacion-id="${data.id}"]`);
-            if (card) {
-                const tagsContainer = card.querySelector('.panel-cotizacion-card__tags');
-                if (tagsContainer) {
-                    tagsContainer.innerHTML = data.tags.map(t => 
-                        `<div class="panel-cotizacion-tag" style="--panel-tag-bg: ${t.color};">${t.nombre}</div>`
-                    ).join('');
-                }
-            }
-          })
-          .catch((error) => {
-            console.error('Error al procesar etiqueta:', error);
-            if (error && error.tags_html) {
-                const parent = section.parentElement;
-                const temp = document.createElement('div');
-                temp.innerHTML = error.tags_html;
-                const newSection = temp.firstElementChild;
-                if (parent && newSection) {
-                  parent.replaceChild(newSection, section);
-                }
-            } else {
-                const msg = error && error.error ? error.error : 'No se pudo actualizar la etiqueta. Verifica los datos.';
-                alert(msg);
-            }
-          })
-          .finally(() => {
-            delete tagForm.dataset.submitting;
-          });
-      }
-    });
 
   })();

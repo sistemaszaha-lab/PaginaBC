@@ -124,6 +124,9 @@ class PanelCotizacionAccessAndRenderingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Carga inicial")
         self.assertContains(response, "CLIENTE UNO")
+        self.assertContains(response, "zaha-detail-modal__header")
+        self.assertContains(response, "zaha-detail-modal__body")
+        self.assertContains(response, "zaha-detail-modal__footer")
 
 
 class PanelCotizacionFiltroTests(TestCase):

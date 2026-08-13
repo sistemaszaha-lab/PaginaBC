@@ -1,9 +1,25 @@
-<div class="modal-header">
+<div class="modal-header zaha-detail-modal__header">
   <div>
     <div class="h5 mb-0">{{ c.titulo|default:"Cotizacion" }}</div>
     <div class="text-muted small">{{ c.cliente|default:"Sin cliente" }} • {{ c.get_estado_display }}</div>
   </div>
-  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+  <button type="button" class="btn-close zaha-detail-modal__close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
 </div>
 
-{% include "panel_cotizaciones/_detalle_panel_content.html" with c=c form=form comentario_form=comentario_form checklist_form=checklist_form archivos_form=archivos_form enlace_form=enlace_form layout="modal" only %}
+<div class="modal-body p-0 zaha-detail-modal__body">
+  {% include "panel_cotizaciones/_detalle_panel_content.html" with c=c form=form comentario_form=comentario_form checklist_form=checklist_form archivos_form=archivos_form enlace_form=enlace_form layout="modal" only %}
+</div>
+
+<div class="modal-footer zaha-detail-modal__footer d-flex justify-content-between">
+  <button
+    type="button"
+    class="btn btn-danger"
+    data-panel-cotizacion-delete="1"
+    data-delete-url="{% url 'panel_cotizaciones:eliminar' c.id %}">
+    Eliminar
+  </button>
+  <div>
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+    <button type="submit" form="cotizacion-edit-form" class="btn btn-primary">Guardar</button>
+  </div>
+</div>

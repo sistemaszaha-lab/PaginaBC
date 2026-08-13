@@ -26,6 +26,9 @@
     const columnEditModalInstance = columnEditModalElement && window.bootstrap ? new bootstrap.Modal(columnEditModalElement) : null;
     const columnDeleteModalElement = document.getElementById('OperacionColumnDeleteModal');
     const columnDeleteModalInstance = columnDeleteModalElement && window.bootstrap ? new bootstrap.Modal(columnDeleteModalElement) : null;
+    const columnCreateForm = columnCreateModalElement?.querySelector('form');
+    const columnEditForm = columnEditModalElement?.querySelector('form');
+    const columnDeleteForm = columnDeleteModalElement?.querySelector('form');
     const pendingCardIds = new Set();
     const quickEditingCardIds = new Set();
     const quickEditOriginalHtml = new WeakMap();
@@ -45,7 +48,7 @@
     let inlineFormLoadPromise = null;
     let inlineRequestedTarget = null;
     let toastContainer = null;
-    const detailState = {id: null, url: null, layout: drawerSupported ? 'drawer' : 'modal', pending: false};
+    const detailState = {id: null, url: null, layout: 'modal', pending: false};
     let operacionDeleteUrl = null;
     let activeColumnShell = null;
     const columnLoadRequests = new Map();
@@ -1778,9 +1781,10 @@
       const link = e.target.closest('[data-panel-operacion-modal-open="1"]');
       if (!link) return;
       e.preventDefault();
+      e.stopPropagation();
       const url = link.getAttribute('data-modal-url') || link.getAttribute('href');
       const card = link.closest('[data-panel-operacion-card="1"]');
-      if (url) loadDetail(card?.dataset.panelOperacionId, url, 'drawer');
+      if (url) loadDetail(card?.dataset.panelOperacionId, url, 'modal');
     });
 
     root.addEventListener('submit', (e) => {
@@ -2033,11 +2037,14 @@
 
     document.addEventListener('click', (e) => {
       const createButton = e.target.closest('[data-operacion-column-create-open="1"]');
-      if (!createButton || !columnCreateForm) return;
-      e.preventDefault();
-      columnCreateForm.reset();
-      showColumnFormError(columnCreateForm, '');
-      columnCreateModalInstance?.show();
+      if (createButton) {
+        e.preventDefault();
+        if (!columnCreateForm) return;
+        columnCreateForm.reset();
+        showColumnFormError(columnCreateForm, '');
+        columnCreateModalInstance?.show();
+        return;
+      }
     });
 
     document.addEventListener('submit', (e) => {
@@ -2100,8 +2107,23 @@
             if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo eliminar la columna.');
             return data;
           })
-          .then(() => {
-            reloadBoard();
+          .then((data) => {
+            const destinationBody = data.columna_destino_id
+              ? root.querySelector(`[data-operaciones-column="1"][data-columna-id="${data.columna_destino_id}"]`)?.querySelector('.panel-operaciones-col')
+              : null;
+            if (activeColumnShell && destinationBody) {
+              activeColumnShell.querySelectorAll('[data-operacion-card="1"]').forEach((card) => {
+                syncCardStateUI(card, data.columna_destino_codigo, getColumnName(destinationBody.closest('[data-operaciones-column="1"]')));
+                card.dataset.estado = data.columna_destino_codigo;
+                destinationBody.prepend(card);
+              });
+              syncColumnState(destinationBody, data.column_count);
+            }
+            activeColumnShell?.remove();
+            syncDeleteDestinationOptions(null);
+            invalidateColumnLoads();
+            columnDeleteModalInstance?.hide();
+            syncInlineCreateAccess();
           })
           .catch((error) => {
             console.error('No se pudo eliminar la columna:', error);

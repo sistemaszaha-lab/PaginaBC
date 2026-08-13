@@ -1703,6 +1703,13 @@
     }
 
     document.addEventListener('click', function (e) {
+      const drawerCloseButton = e.target.closest('[data-cuenta-drawer-close="1"]');
+      if (drawerCloseButton) {
+        e.preventDefault();
+        closeDrawer();
+        return;
+      }
+
       const repositorioUploadButton = e.target.closest('#repositorio-pdf-boton');
       if (repositorioUploadButton) {
         e.preventDefault();
@@ -1935,12 +1942,6 @@
         return;
       }
 
-      const drawerCloseButton = e.target.closest('[data-cuenta-drawer-close="1"]');
-      if (drawerCloseButton) {
-        e.preventDefault();
-        closeDrawer();
-        return;
-      }
 
       const btn = e.target.closest('[data-cuenta-modal-open="1"]');
       if (!btn) return;
@@ -1950,7 +1951,7 @@
       const url = btn.dataset.modalUrl || (cuentaId ? `/cuenta-gastos/detalle/${cuentaId}/` : null);
       if (!url) return;
 
-      cargarDetalleCuentaDrawer(cuentaId, url);
+      cargarDetalleCuenta(cuentaId, url);
     });
 
     initCardSortables();

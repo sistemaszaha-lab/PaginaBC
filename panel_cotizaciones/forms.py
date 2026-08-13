@@ -405,6 +405,27 @@ class PanelCotizacionUpdateForm(forms.ModelForm):
         widget=forms.Select(attrs={"class": "form-select rounded"}),
         label="Cliente",
     )
+    asignados = FirstNameUserMultipleChoiceField(
+        queryset=User.objects.all().order_by("first_name", "id"),
+        required=False,
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "form-select rounded garantia-asignados-select",
+                "data-garantia-tags-select": "1",
+            }
+        ),
+    )
+    etiquetas = EtiquetaChoiceField(
+        queryset=PanelCotizacionEtiqueta.objects.all().order_by("nombre", "id"),
+        required=False,
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "form-select rounded",
+                "data-panel-cotizacion-tags-select": "1",
+            }
+        ),
+    )
+
     class Meta:
         model = PanelCotizacion
         fields = (
@@ -414,6 +435,7 @@ class PanelCotizacionUpdateForm(forms.ModelForm):
             "prioridad",
             "fecha_vencimiento",
             "asignados",
+            "etiquetas",
         )
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control rounded"}),
@@ -425,17 +447,6 @@ class PanelCotizacionUpdateForm(forms.ModelForm):
                 attrs={"type": "date", "class": "form-control rounded"}
             ),
         }
-
-    asignados = FirstNameUserMultipleChoiceField(
-        queryset=User.objects.all().order_by("first_name", "id"),
-        required=False,
-        widget=forms.SelectMultiple(
-            attrs={
-                "class": "form-select rounded garantia-asignados-select",
-                "data-garantia-tags-select": "1",
-            }
-        ),
-    )
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field_name in list(self.fields.keys()):

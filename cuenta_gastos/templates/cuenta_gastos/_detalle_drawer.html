@@ -1,5 +1,5 @@
-<div class="cuenta-drawer__panel">
-  <header class="cuenta-drawer__header">
+<div class="cuenta-drawer__panel zaha-detail-modal">
+  <header class="cuenta-drawer__header zaha-detail-modal__header">
     <div class="cuenta-drawer__header-main">
       <h2 class="cuenta-drawer__title" id="cuenta-drawer-title">{{ cuenta.titulo|default:"Cuenta de gastos" }}</h2>
       <div class="d-flex gap-2 flex-wrap align-items-center">
@@ -14,10 +14,22 @@
         <span class="small text-muted">{{ cuenta.asignados.count }} asignados</span>
       </div>
     </div>
-    <button type="button" class="btn-close" data-cuenta-drawer-close="1" aria-label="Cerrar"></button>
+    <button type="button" class="btn-close zaha-detail-modal__close" data-cuenta-drawer-close="1" aria-label="Cerrar"></button>
   </header>
 
-  <div class="cuenta-drawer__content">
+  <div class="cuenta-drawer__content zaha-detail-modal__body">
     {% include "cuenta_gastos/_detalle_panel_content.html" with cuenta=cuenta form=form comentario_form=comentario_form etiquetas=etiquetas etiquetas_count=etiquetas_count etiquetas_form=etiquetas_form etiqueta_create_form=etiqueta_create_form opciones=opciones opciones_count=opciones_count opciones_form=opciones_form opcion_create_form=opcion_create_form archivos_form=archivos_form archivos=archivos files_count=files_count enlace_form=enlace_form enlaces=enlaces links_count=links_count comentarios=comentarios comentarios_count=comentarios_count layout="drawer" only %}
   </div>
+
+  <footer class="cuenta-drawer__footer zaha-detail-modal__footer p-3 border-top d-flex justify-content-between bg-white">
+    <form method="post" action="{% url 'cuenta_gastos:eliminar_cuenta' cuenta.id %}" data-cuenta-modal-delete="1">
+      {% csrf_token %}
+      <input type="hidden" name="layout" value="drawer">
+      <button type="submit" class="btn btn-danger">Eliminar</button>
+    </form>
+    <div>
+      <button type="button" class="btn btn-outline-secondary" data-cuenta-drawer-close="1">Cancelar</button>
+      <button type="submit" form="cuenta-edit-form" class="btn btn-primary">Guardar</button>
+    </div>
+  </footer>
 </div>

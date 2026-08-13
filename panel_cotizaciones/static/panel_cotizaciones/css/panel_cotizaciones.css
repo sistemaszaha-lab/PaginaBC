@@ -442,7 +442,8 @@
 }
 
 .panel-cotizacion-detail-body {
-  overflow-y: auto;
+  min-height: 0;
+  overflow: visible;
 }
 
 .panel-cotizacion-detail-section .list-group-item {

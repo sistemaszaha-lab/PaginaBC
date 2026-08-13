@@ -1,5 +1,6 @@
 <div class="panel-cotizacion-detail-body p-4">
   <form
+    id="cotizacion-edit-form"
     method="post"
     action="{% url 'panel_cotizaciones:detalle_modal_update' c.id %}"
     data-panel-cotizacion-modal-form="1">
@@ -55,28 +56,6 @@
       </div>
     </div>
 
-    <div class="mt-4 d-flex justify-content-between gap-2 flex-column flex-sm-row">
-      <button
-        type="button"
-        class="btn btn-outline-secondary"
-        {% if layout == "drawer" %}
-        data-bs-dismiss="offcanvas"
-        {% else %}
-        data-bs-dismiss="modal"
-        {% endif %}>
-        Cerrar
-      </button>
-      <div class="d-flex gap-2 justify-content-end">
-        <button
-          type="button"
-          class="btn btn-danger"
-          data-panel-cotizacion-delete="1"
-          data-delete-url="{% url 'panel_cotizaciones:eliminar' c.id %}">
-          Eliminar
-        </button>
-        <button type="submit" class="btn btn-primary">Guardar</button>
-      </div>
-    </div>
   </form>
 
   <hr class="my-4" />

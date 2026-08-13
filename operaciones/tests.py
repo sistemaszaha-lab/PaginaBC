@@ -222,7 +222,11 @@ class OperacionesDetalleModalTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(username="tester", password="pass", first_name="Tester")
-        self.operacion = Operacion.objects.create(titulo="Op 1", creado_por=self.user)
+        self.operacion = Operacion.objects.create(
+            titulo="Op 1",
+            descripcion="Operacion maritima de importacion.\nCoordinar documentacion con cliente.",
+            creado_por=self.user,
+        )
 
         self.client = Client()
         self.client.force_login(self.user)
@@ -251,6 +255,9 @@ class OperacionesDetalleModalTests(TestCase):
         self.assertIn('data-operacion-detail-close="1"', modal_html)
         self.assertIn('for="id_titulo"', detalle_html)
         self.assertIn('for="id_asignados"', modal_html)
+        self.assertIn('for="id_descripcion"', modal_html)
+        self.assertIn("Operacion maritima de importacion.", modal_html)
+        self.assertNotIn('data-operacion-options-section="1"', modal_html)
 
     def test_editar_operacion_preserva_valores(self):
         # Crear asignados y etiquetas
@@ -260,6 +267,7 @@ class OperacionesDetalleModalTests(TestCase):
         etiqueta = OperacionEtiqueta.objects.create(nombre="Urgente")
 
         self.operacion.titulo = "Laptop"
+        self.operacion.descripcion = "Texto original de descripcion"
         self.operacion.fecha_vencimiento = "2026-05-22"
         self.operacion.prioridad = "ALTA"
         self.operacion.save()
@@ -283,11 +291,46 @@ class OperacionesDetalleModalTests(TestCase):
         self.assertEqual(self.operacion.prioridad, "MEDIA")
         # Verificar que el título y fecha de vencimiento se mantuvieron intactos
         self.assertEqual(self.operacion.titulo, "Laptop")
+        self.assertEqual(self.operacion.descripcion, "Texto original de descripcion")
         self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-05-22")
         # Verificar que los asignados y etiquetas se mantuvieron
         self.assertIn(usuario_2, self.operacion.asignados.all())
         self.assertIn(etiqueta, self.operacion.etiquetas.all())
         self.assertIn('data-panel-operacion-card="1"', resp.json()["html"])
+
+    def test_editar_operacion_guarda_descripcion_y_conserva_relaciones(self):
+        User = get_user_model()
+        usuario_2 = User.objects.create_user(username="tester_desc", password="pass")
+        from operaciones.models import OperacionEtiqueta
+        etiqueta = OperacionEtiqueta.objects.create(nombre="Cliente VIP")
+
+        self.operacion.titulo = "Operacion editable"
+        self.operacion.descripcion = "Descripcion inicial"
+        self.operacion.prioridad = "ALTA"
+        self.operacion.fecha_vencimiento = "2026-05-22"
+        self.operacion.save()
+        self.operacion.asignados.add(usuario_2)
+        self.operacion.etiquetas.add(etiqueta)
+
+        resp = self.client.post(
+            reverse("operaciones:editar_operacion", args=[self.operacion.id]),
+            {
+                "titulo": "Operacion editable",
+                "descripcion": "Nueva descripcion\ncon multiples lineas.",
+                "prioridad": "ALTA",
+                "fecha_vencimiento": "2026-05-22",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest"
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.operacion.refresh_from_db()
+        self.assertEqual(self.operacion.descripcion, "Nueva descripcion\ncon multiples lineas.")
+        self.assertEqual(self.operacion.titulo, "Operacion editable")
+        self.assertEqual(self.operacion.prioridad, "ALTA")
+        self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-05-22")
+        self.assertIn(usuario_2, self.operacion.asignados.all())
+        self.assertIn(etiqueta, self.operacion.etiquetas.all())
 
     def test_usuario_sin_permiso_no_puede_eliminar_archivo(self):
         User = get_user_model()
@@ -2270,6 +2313,13 @@ class OperacionesProgressiveLoadingTests(TestCase):
         self.assertIn("staleIds.forEach", javascript)
         self.assertIn("data-operacion-load-more", javascript)
         self.assertIn("No se pudieron cargar las tarjetas.", javascript)
+
+    def test_javascript_intercepta_click_de_detalles_con_prevent_default(self):
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        self.assertIn("const link = e.target.closest('[data-panel-operacion-modal-open=\"1\"]');", javascript)
+        self.assertIn("e.preventDefault();", javascript)
+        self.assertIn("e.stopPropagation();", javascript)
+        self.assertIn("if (url) loadDetail(card?.dataset.panelOperacionId, url, 'modal');", javascript)
         self.assertIn("invalidateColumnLoads();", javascript)
         self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
         self.assertEqual(javascript.count("Sortable.create("), 2)

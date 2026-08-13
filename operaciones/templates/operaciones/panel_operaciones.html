@@ -4,6 +4,7 @@
 
 {% block content %}
 <link rel="stylesheet" href="{% static 'operaciones/css/panel_operaciones.css' %}?v=20260810-1">
+<link rel="stylesheet" href="{% static 'css/zaha_detail_modal.css' %}?v=20260814-1">
 {% include "garantias/_asignados_tags_assets.html" %}
 <div class="operaciones-page-header">
   <div>
@@ -48,7 +49,7 @@
   </div>
 </div>
 
-<div class="operaciones-drawer" id="OperacionDetalleDrawer" hidden aria-hidden="true">
+<div class="operaciones-drawer zaha-drawer-shell" id="OperacionDetalleDrawer" hidden aria-hidden="true">
   <div class="operaciones-drawer__backdrop" data-operacion-drawer-close="1"></div>
   <aside class="operaciones-drawer__dialog" role="dialog" aria-modal="true" aria-labelledby="operacion-drawer-title">
     <div class="operaciones-drawer__content-shell" id="OperacionDetalleDrawerContent">
@@ -58,9 +59,9 @@
 </div>
 
 <div class="modal fade" id="OperacionDetalleModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+  <div class="modal-dialog zaha-modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content" id="OperacionDetalleModalContent">
-      <div class="modal-body p-4 text-center text-muted">Cargando...</div>
+      <div class="modal-body text-center text-muted p-4">Cargando...</div>
     </div>
   </div>
 </div>
