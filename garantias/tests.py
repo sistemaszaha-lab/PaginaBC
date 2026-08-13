@@ -145,7 +145,7 @@ class GarantiasCargaProgresivaTests(TestCase):
             for value in re.findall(r'id="garantia-(\d+)"', html)
         ]
 
-    def test_get_limita_diez_total_real_cuatro_columnas_y_sin_formularios(self):
+    def test_get_limita_diez_total_real_tres_columnas_y_sin_formularios(self):
         self._bulk(21)
         before = Garantia.objects.count()
         response = self.client.get(reverse("garantias:panel_garantias"))
@@ -155,13 +155,13 @@ class GarantiasCargaProgresivaTests(TestCase):
         html = response.content.decode()
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context["columnas_kanban"]), 4)
+        self.assertEqual(len(response.context["columnas_kanban"]), 3)
         self.assertEqual(columna["count"], 21)
         self.assertEqual(columna["loaded"], 10)
         self.assertEqual(len(columna["items"]), 10)
         self.assertTrue(columna["has_more"])
         self.assertEqual(html.count('data-garantia-card="1"'), 10)
-        self.assertEqual(html.count('data-garantia-column="1"'), 4)
+        self.assertEqual(html.count('data-garantia-column="1"'), 3)
         self.assertIn('data-total="21"', html)
         self.assertIn("Cargar más (11)", html)
         self.assertNotIn('data-garantia-inline-form="1"', html)
@@ -188,8 +188,12 @@ class GarantiasCargaProgresivaTests(TestCase):
             self.assertEqual(columna["loaded"], visible)
             self.assertEqual(columna["has_more"], has_more)
 
-    def test_cuatro_columnas_limite_independiente_e_historicos_excluidos(self):
-        for estado in Garantia.Estado.values:
+    def test_tres_columnas_limite_independiente_e_historicos_excluidos(self):
+        for estado in (
+            Garantia.Estado.SOLICITUD_NAVIERA,
+            Garantia.Estado.PAGO_NAVIERA_ZAHA,
+            Garantia.Estado.DEVOLUCION_CLIENTE,
+        ):
             self._bulk(11, estado)
         Garantia.objects.create(
             titulo="Estado historico invisible",
@@ -203,14 +207,14 @@ class GarantiasCargaProgresivaTests(TestCase):
                 columna["loaded"]
                 for columna in response.context["columnas_kanban"]
             ],
-            [10, 10, 10, 10],
+            [10, 10, 10],
         )
         self.assertEqual(
             sum(
                 columna["has_more"]
                 for columna in response.context["columnas_kanban"]
             ),
-            4,
+            3,
         )
         self.assertNotContains(response, "Estado historico invisible")
 
@@ -251,7 +255,7 @@ class GarantiasCargaProgresivaTests(TestCase):
         )
 
     def test_endpoint_cargas_consecutivas_orden_parcial_y_acciones(self):
-        estado = Garantia.Estado.EN_PROCESO
+        estado = Garantia.Estado.PAGO_NAVIERA_ZAHA
         self._bulk(21, estado)
         panel = self.client.get(reverse("garantias:panel_garantias"))
         first_ids = [
@@ -742,11 +746,37 @@ class GarantiasColumnasDinamicasTests(TestCase):
             ),
             [
                 Garantia.Estado.SOLICITUD_NAVIERA,
-                Garantia.Estado.EN_PROCESO,
                 Garantia.Estado.PAGO_NAVIERA_ZAHA,
                 Garantia.Estado.DEVOLUCION_CLIENTE,
             ],
         )
+        primera_columna = GarantiaColumna.objects.get(
+            codigo=Garantia.Estado.SOLICITUD_NAVIERA
+        )
+        self.assertEqual(primera_columna.nombre, "En proceso")
+        self.assertFalse(
+            GarantiaColumna.objects.filter(codigo=Garantia.Estado.EN_PROCESO).exists()
+        )
+
+    def test_panel_muestra_una_sola_columna_en_proceso_y_sigue_primera(self):
+        response = self.client.get(reverse("garantias:panel_garantias"))
+        columnas = response.context["columnas_kanban"]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([columna["nombre"] for columna in columnas].count("En proceso"), 1)
+        self.assertEqual(columnas[0]["codigo"], Garantia.Estado.SOLICITUD_NAVIERA)
+        self.assertContains(response, "+ Nueva garant")
+
+    def test_estado_en_proceso_legacy_se_normaliza_a_la_columna_superviviente(self):
+        garantia = Garantia.objects.create(
+            titulo="Estado legacy",
+            creado_por=self.admin,
+            estado=Garantia.Estado.EN_PROCESO,
+        )
+
+        garantia.refresh_from_db()
+        self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
+        self.assertEqual(garantia.columna.codigo, Garantia.Estado.SOLICITUD_NAVIERA)
 
     def test_crear_columna_devuelve_html_y_codigo_generado(self):
         response = self.client.post(
@@ -761,7 +791,9 @@ class GarantiasColumnasDinamicasTests(TestCase):
         self.assertIn('data-columna-codigo="REVISION_FINAL"', data["html"])
 
     def test_editar_columna_conserva_codigo_y_cambia_nombre(self):
-        columna = GarantiaColumna.objects.get(codigo=Garantia.Estado.EN_PROCESO)
+        columna = GarantiaColumna.objects.get(
+            codigo=Garantia.Estado.PAGO_NAVIERA_ZAHA
+        )
         response = self.client.post(
             reverse("garantias:columna_editar", args=[columna.pk]),
             {"nombre": "Seguimiento activo"},
@@ -769,7 +801,7 @@ class GarantiasColumnasDinamicasTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         columna.refresh_from_db()
-        self.assertEqual(columna.codigo, Garantia.Estado.EN_PROCESO)
+        self.assertEqual(columna.codigo, Garantia.Estado.PAGO_NAVIERA_ZAHA)
         self.assertEqual(columna.nombre, "Seguimiento activo")
 
     def test_reordenar_columnas_actualiza_orden(self):
@@ -817,7 +849,9 @@ class GarantiasColumnasDinamicasTests(TestCase):
             orden=99,
             creada_por=self.admin,
         )
-        destino = GarantiaColumna.objects.get(codigo=Garantia.Estado.EN_PROCESO)
+        destino = GarantiaColumna.objects.get(
+            codigo=Garantia.Estado.PAGO_NAVIERA_ZAHA
+        )
         garantia = Garantia.objects.create(
             titulo="Mover al eliminar",
             creado_por=self.admin,
@@ -927,7 +961,7 @@ class GarantiasCopiarPegarTests(TestCase):
             codigo=Garantia.Estado.SOLICITUD_NAVIERA
         )
         self.columna_destino = GarantiaColumna.objects.get(
-            codigo=Garantia.Estado.EN_PROCESO
+            codigo=Garantia.Estado.PAGO_NAVIERA_ZAHA
         )
         self.columna_tercera = GarantiaColumna.objects.get(
             codigo=Garantia.Estado.DEVOLUCION_CLIENTE

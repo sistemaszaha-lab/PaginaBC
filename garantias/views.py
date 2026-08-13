@@ -46,8 +46,7 @@ INITIAL_CARDS_PER_COLUMN = 10
 CARDS_PAGE_SIZE = 10
 GARANTIA_ORDERING = ("-fecha_creacion", "-id")
 COLUMNAS_INICIALES = (
-    (Garantia.Estado.SOLICITUD_NAVIERA, "Solicitud a naviera"),
-    (Garantia.Estado.EN_PROCESO, "En proceso"),
+    (Garantia.Estado.SOLICITUD_NAVIERA, "En proceso"),
     (Garantia.Estado.PAGO_NAVIERA_ZAHA, "Pago naviera a zaha"),
     (Garantia.Estado.DEVOLUCION_CLIENTE, "Devolución a cliente"),
 )
@@ -70,7 +69,9 @@ def _columnas_estado_choices():
 
 
 def _buscar_columna_activa_por_codigo(codigo: str):
-    return _columnas_activas_queryset().filter(codigo=codigo).first()
+    return _columnas_activas_queryset().filter(
+        codigo=Garantia.normalizar_estado_codigo(codigo)
+    ).first()
 
 
 def _estado_label(estado):

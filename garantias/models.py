@@ -99,7 +99,17 @@ class Garantia(models.Model):
     class Meta:
         ordering = ["-fecha_creacion", "-id"]
 
+    ESTADOS_COMPATIBLES = {
+        Estado.EN_PROCESO: Estado.SOLICITUD_NAVIERA,
+    }
+
+    @classmethod
+    def normalizar_estado_codigo(cls, codigo):
+        return cls.ESTADOS_COMPATIBLES.get(codigo, codigo)
+
     def save(self, *args, **kwargs):
+        if self.estado:
+            self.estado = self.normalizar_estado_codigo(self.estado)
         if self.columna_id:
             if self.estado != self.columna.codigo:
                 self.estado = self.columna.codigo
