@@ -1367,6 +1367,113 @@
       section?.querySelector(selector)?.focus();
     }
 
+    function getActiveActionSection(cardId) {
+      if (String(detailState.id) !== String(cardId)) return null;
+      const container = getDetailContainer();
+      const currentSection = container?.querySelector('[data-operacion-action-section="1"]');
+      if (!currentSection || currentSection.dataset.operacionId !== String(cardId)) return null;
+      return currentSection;
+    }
+
+    function replaceActionSection(sectionHtml, cardId) {
+      const currentSection = getActiveActionSection(cardId);
+      if (!currentSection || !sectionHtml) return null;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = sectionHtml;
+      const nextSection = wrapper.querySelector('[data-operacion-action-section="1"]');
+      if (!nextSection) return null;
+      currentSection.replaceWith(nextSection);
+      return nextSection;
+    }
+
+    function syncActionSummary(cardId, resumen) {
+      const summaryNode = getActiveActionSection(cardId)?.querySelector('[data-operacion-action-summary="1"]');
+      if (summaryNode && resumen) {
+        summaryNode.textContent = `${resumen.completados}/${resumen.total}`;
+      }
+    }
+
+    function setActionSectionPending(section, isPending) {
+      if (!section) return;
+      if (isPending) section.dataset.pending = '1';
+      else delete section.dataset.pending;
+      section.setAttribute('aria-busy', isPending ? 'true' : 'false');
+      section.querySelectorAll('button, input').forEach((control) => {
+        control.disabled = isPending;
+      });
+    }
+
+    function setActionItemPending(item, isPending) {
+      if (!item) return;
+      if (isPending) item.dataset.pending = '1';
+      else delete item.dataset.pending;
+      item.querySelectorAll('button, input').forEach((control) => {
+        control.disabled = isPending;
+      });
+    }
+
+    function renderActionCreateError(section, message) {
+      const errorNode = section?.querySelector('[data-operacion-action-create-error="1"]');
+      if (!errorNode) return;
+      if (message) {
+        errorNode.textContent = message;
+        errorNode.classList.remove('d-none');
+      } else {
+        errorNode.textContent = '';
+        errorNode.classList.add('d-none');
+      }
+    }
+
+    function renderActionItemError(item, message) {
+      const errorNode = item?.querySelector('[data-operacion-action-error="1"]');
+      if (!errorNode) return;
+      if (message) {
+        errorNode.textContent = message;
+        errorNode.classList.remove('d-none');
+      } else {
+        errorNode.textContent = '';
+        errorNode.classList.add('d-none');
+      }
+    }
+
+    function setActionItemCompleted(item, completed) {
+      if (!item) return;
+      item.classList.toggle('is-completed', Boolean(completed));
+      const checkbox = item.querySelector('.operacion-action-item__checkbox');
+      if (checkbox) checkbox.checked = Boolean(completed);
+      const hiddenInput = item.querySelector('[data-operacion-action-toggle-form="1"] input[name="completado"]');
+      if (hiddenInput) hiddenInput.value = completed ? 'false' : 'true';
+    }
+
+    function openActionItemEditor(item) {
+      if (!item) return;
+      const textButton = item.querySelector('[data-operacion-action-edit-open="1"]');
+      const form = item.querySelector('[data-operacion-action-edit-form="1"]');
+      const input = form?.querySelector('[data-operacion-action-edit-input="1"]');
+      if (!form || !input) return;
+      item.dataset.editing = '1';
+      textButton?.classList.add('d-none');
+      form.classList.remove('d-none');
+      renderActionItemError(item, '');
+      input.dataset.originalValue = input.value;
+      input.focus();
+      input.select();
+    }
+
+    function closeActionItemEditor(item, {restore = false} = {}) {
+      if (!item) return;
+      const textButton = item.querySelector('[data-operacion-action-edit-open="1"]');
+      const form = item.querySelector('[data-operacion-action-edit-form="1"]');
+      const input = form?.querySelector('[data-operacion-action-edit-input="1"]');
+      if (restore && input?.dataset.originalValue != null) {
+        input.value = input.dataset.originalValue;
+      }
+      delete item.dataset.editing;
+      form?.classList.add('d-none');
+      textButton?.classList.remove('d-none');
+      renderActionItemError(item, '');
+    }
+
     function replaceCommentsSection(commentsHtml) {
       const container = getDetailContainer();
       const currentSection = container?.querySelector('[data-operacion-comments-section="1"]');
@@ -1787,6 +1894,110 @@
       if (url) loadDetail(card?.dataset.panelOperacionId, url, 'modal');
     });
 
+    document.addEventListener('change', (e) => {
+      const checkbox = e.target.closest('.operacion-action-item__checkbox');
+      if (!checkbox) return;
+
+      const form = checkbox.closest('[data-operacion-action-toggle-form="1"]');
+      const item = checkbox.closest('[data-operacion-action-item="1"]');
+      const section = checkbox.closest('[data-operacion-action-section="1"]');
+      const cardId = section?.dataset.operacionId || detailState.id;
+      if (!form || !item || !section || !cardId || form.dataset.submitting === '1') return;
+
+      const nextChecked = checkbox.checked;
+      const previousChecked = !nextChecked;
+      const url = form.getAttribute('action');
+      const csrfToken = window.getCSRFToken?.(form);
+      if (!url || !csrfToken) {
+        checkbox.checked = previousChecked;
+        setActionItemCompleted(item, previousChecked);
+        renderActionItemError(item, 'No se pudo actualizar el elemento.');
+        return;
+      }
+
+      const hiddenInput = form.querySelector('input[name="completado"]');
+      if (hiddenInput) hiddenInput.value = nextChecked ? 'true' : 'false';
+      setActionItemCompleted(item, nextChecked);
+      const body = new FormData();
+      body.append('completado', nextChecked ? 'true' : 'false');
+      form.dataset.submitting = '1';
+      checkbox.disabled = true;
+      renderActionItemError(item, '');
+
+      fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+        },
+        body,
+      })
+        .then(async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.success) throw data;
+          return data;
+        })
+        .then((data) => {
+          setActionItemCompleted(item, data.elemento?.completado);
+          syncActionSummary(cardId, data.resumen);
+        })
+        .catch((error) => {
+          console.error('No se pudo actualizar el elemento de accion:', error);
+          checkbox.checked = previousChecked;
+          if (hiddenInput) hiddenInput.value = previousChecked ? 'true' : 'false';
+          setActionItemCompleted(item, previousChecked);
+          renderActionItemError(item, error?.error || 'No se pudo actualizar el elemento.');
+        })
+        .finally(() => {
+          delete form.dataset.submitting;
+          checkbox.disabled = false;
+        });
+    });
+
+    document.addEventListener('focusout', (e) => {
+      const input = e.target.closest('[data-operacion-action-edit-input="1"]');
+      if (!input) return;
+      const form = input.closest('[data-operacion-action-edit-form="1"]');
+      const item = input.closest('[data-operacion-action-item="1"]');
+      if (!form || !item || form.dataset.submitting === '1') return;
+
+      window.setTimeout(() => {
+        if (!item.isConnected || item.contains(document.activeElement)) return;
+        const nextValue = (input.value || '').trim();
+        const originalValue = (input.dataset.originalValue || '').trim();
+        if (!nextValue) {
+          closeActionItemEditor(item, {restore: true});
+          return;
+        }
+        if (nextValue === originalValue) {
+          closeActionItemEditor(item);
+          return;
+        }
+        form.requestSubmit();
+      }, 0);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      const editInput = e.target.closest('[data-operacion-action-edit-input="1"]');
+      if (!editInput) return;
+      const item = editInput.closest('[data-operacion-action-item="1"]');
+      const form = editInput.closest('[data-operacion-action-edit-form="1"]');
+      if (!item || !form) return;
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeActionItemEditor(item, {restore: true});
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
     root.addEventListener('submit', (e) => {
       const quickEditForm = e.target.closest('[data-operacion-quick-edit-form="1"]');
       if (quickEditForm) {
@@ -2036,6 +2247,13 @@
     });
 
     document.addEventListener('click', (e) => {
+      const actionEditButton = e.target.closest('[data-operacion-action-edit-open="1"]');
+      if (actionEditButton) {
+        e.preventDefault();
+        openActionItemEditor(actionEditButton.closest('[data-operacion-action-item="1"]'));
+        return;
+      }
+
       const createButton = e.target.closest('[data-operacion-column-create-open="1"]');
       if (createButton) {
         e.preventDefault();
@@ -2133,6 +2351,132 @@
     });
 
     document.addEventListener('submit', (e) => {
+      const actionCreateForm = e.target.closest('[data-operacion-action-create-form="1"]');
+      if (actionCreateForm) {
+        e.preventDefault();
+        const section = actionCreateForm.closest('[data-operacion-action-section="1"]');
+        const cardId = actionCreateForm.dataset.operacionId || detailState.id;
+        const input = actionCreateForm.querySelector('input[name="texto"]');
+        if (!section || !cardId || actionCreateForm.dataset.submitting === '1') return;
+        const texto = (input?.value || '').trim();
+        if (!texto) {
+          renderActionCreateError(section, 'Este campo es obligatorio.');
+          input?.focus();
+          return;
+        }
+
+        const scrollTop = getDetailContainer()?.scrollTop || 0;
+        if (input) input.value = texto;
+        const formData = new FormData(actionCreateForm);
+        actionCreateForm.dataset.submitting = '1';
+        setActionSectionPending(section, true);
+        renderActionCreateError(section, '');
+        postForm(actionCreateForm.getAttribute('action'), formData, actionCreateForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw data;
+            return data;
+          })
+          .then((data) => {
+            const nextSection = replaceActionSection(data.section_html, cardId);
+            if (!nextSection) throw new Error('No se pudo actualizar la seccion de elementos de accion.');
+            syncActionSummary(cardId, data.resumen);
+            const container = getDetailContainer();
+            if (container) container.scrollTop = scrollTop;
+            nextSection.querySelector('[data-operacion-action-create-form="1"] input[name="texto"]')?.focus();
+          })
+          .catch((error) => {
+            console.error('No se pudo crear el elemento de accion:', error);
+            renderActionCreateError(
+              getActiveActionSection(cardId) || section,
+              error?.errors?.texto?.[0]?.message || error?.error || 'No se pudo crear el elemento.'
+            );
+            (getActiveActionSection(cardId) || section)
+              ?.querySelector('[data-operacion-action-create-form="1"] input[name="texto"]')
+              ?.focus();
+          })
+          .finally(() => {
+            delete actionCreateForm.dataset.submitting;
+            setActionSectionPending(getActiveActionSection(cardId) || section, false);
+          });
+        return;
+      }
+
+      const actionEditForm = e.target.closest('[data-operacion-action-edit-form="1"]');
+      if (actionEditForm) {
+        e.preventDefault();
+        const item = actionEditForm.closest('[data-operacion-action-item="1"]');
+        const section = actionEditForm.closest('[data-operacion-action-section="1"]');
+        const cardId = section?.dataset.operacionId || detailState.id;
+        const input = actionEditForm.querySelector('[data-operacion-action-edit-input="1"]');
+        if (!item || !section || !cardId || actionEditForm.dataset.submitting === '1') return;
+
+        const nextValue = (input?.value || '').trim();
+        if (!nextValue) {
+          renderActionItemError(item, 'Escribe un elemento de accion.');
+          input?.focus();
+          return;
+        }
+
+        actionEditForm.dataset.submitting = '1';
+        setActionItemPending(item, true);
+        renderActionItemError(item, '');
+        postForm(actionEditForm.getAttribute('action'), new FormData(actionEditForm), actionEditForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw data;
+            return data;
+          })
+          .then((data) => {
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = data.item_html || '';
+            const nextItem = wrapper.querySelector('[data-operacion-action-item="1"]');
+            if (!nextItem) throw new Error('No se pudo actualizar el elemento.');
+            item.replaceWith(nextItem);
+            syncActionSummary(cardId, data.resumen);
+          })
+          .catch((error) => {
+            console.error('No se pudo editar el elemento de accion:', error);
+            renderActionItemError(item, error?.errors?.texto?.[0]?.message || 'No se pudo guardar el cambio.');
+            input?.focus();
+          })
+          .finally(() => {
+            delete actionEditForm.dataset.submitting;
+            setActionItemPending(item, false);
+          });
+        return;
+      }
+
+      const actionDeleteForm = e.target.closest('[data-operacion-action-delete-form="1"]');
+      if (actionDeleteForm) {
+        e.preventDefault();
+        const section = actionDeleteForm.closest('[data-operacion-action-section="1"]');
+        const cardId = section?.dataset.operacionId || detailState.id;
+        if (!section || !cardId || actionDeleteForm.dataset.submitting === '1') return;
+
+        actionDeleteForm.dataset.submitting = '1';
+        setActionSectionPending(section, true);
+        postForm(actionDeleteForm.getAttribute('action'), new FormData(actionDeleteForm), actionDeleteForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw data;
+            return data;
+          })
+          .then((data) => {
+            const nextSection = replaceActionSection(data.section_html, cardId);
+            if (!nextSection) throw new Error('No se pudo actualizar la seccion de elementos de accion.');
+            syncActionSummary(cardId, data.resumen);
+          })
+          .catch((error) => {
+            console.error('No se pudo eliminar el elemento de accion:', error);
+          })
+          .finally(() => {
+            delete actionDeleteForm.dataset.submitting;
+            setActionSectionPending(getActiveActionSection(cardId) || section, false);
+          });
+        return;
+      }
+
       const tagForm = e.target.closest('[data-operacion-tag-assign-form="1"], [data-operacion-tag-create-form="1"], [data-operacion-tag-remove-form="1"]');
       if (tagForm) {
         e.preventDefault();

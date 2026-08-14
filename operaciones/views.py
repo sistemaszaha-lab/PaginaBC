@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, F, Q, Window
+from django.db.models import Count, F, Prefetch, Q, Window
 from django.db import IntegrityError, transaction
 from django.db.models.functions import RowNumber
 from django.http import JsonResponse
@@ -24,6 +24,8 @@ from .forms import (
     OperacionColumnaCreateForm,
     OperacionColumnaUpdateForm,
     OperacionEditarForm,
+    OperacionElementoAccionCreateForm,
+    OperacionElementoAccionUpdateForm,
     OperacionEnlaceCreateForm,
     OperacionEnlaceForm,
     OperacionEtiquetaAssignForm,
@@ -39,6 +41,7 @@ from .models import (
     OperacionArchivo,
     OperacionColumna,
     OperacionComentario,
+    OperacionElementoAccion,
     OperacionEnlace,
     OperacionEtiqueta,
     OperacionOpcion,
@@ -167,14 +170,24 @@ def _iniciales_usuario(usuario):
 
 
 def _es_ajax(request):
-    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in (request.headers.get("Accept") or "")
+    )
 
 
 def _operacion_queryset():
     return (
         Operacion.objects.filter(eliminado_en__isnull=True)
         .select_related("cliente", "creado_por", "columna")
-        .prefetch_related("asignados", "etiquetas")
+        .prefetch_related(
+            "asignados",
+            "etiquetas",
+            Prefetch(
+                "elementos_accion",
+                queryset=OperacionElementoAccion.objects.order_by("orden", "id"),
+            ),
+        )
         .annotate(
             comentarios_count=Count("comentarios", distinct=True),
             archivos_count=Count("archivos", distinct=True),
@@ -318,12 +331,62 @@ def _usuarios_filtro(selected_user_id=None):
     ]
 
 
+def _elementos_accion_queryset(operacion):
+    prefetched = getattr(operacion, "_prefetched_objects_cache", {}).get(
+        "elementos_accion"
+    )
+    if prefetched is not None:
+        return list(prefetched)
+    return list(operacion.elementos_accion.order_by("orden", "id"))
+
+
+def _elementos_accion_resumen(elementos):
+    total = len(elementos)
+    completados = sum(1 for elemento in elementos if elemento.completado)
+    return {
+        "completados": completados,
+        "total": total,
+    }
+
+
+def _render_elemento_accion_item(request, elemento):
+    return render_to_string(
+        "operaciones/_elemento_accion_item.html",
+        {"elemento": elemento},
+        request=request,
+    )
+
+
+def _render_elementos_accion_section(
+    request,
+    operacion,
+    *,
+    create_form=None,
+    update_form=None,
+):
+    elementos = _elementos_accion_queryset(operacion)
+    resumen = _elementos_accion_resumen(elementos)
+    return render_to_string(
+        "operaciones/_elementos_accion_section.html",
+        {
+            "operacion": operacion,
+            "elementos_accion": elementos,
+            "elementos_accion_resumen": resumen,
+            "elemento_accion_form": create_form or OperacionElementoAccionCreateForm(),
+            "elemento_accion_update_form": update_form or OperacionElementoAccionUpdateForm(),
+        },
+        request=request,
+    )
+
+
 def _contexto_modal_operacion(operacion, form=None, archivos_form=None, enlace_form=None, comentario_form=None):
     asignados = [usuario for usuario in operacion.asignados.all() if _nombre_corto_usuario(usuario)]
     comentarios = list(_comentarios_queryset(operacion))
     archivos = list(_archivos_queryset(operacion))
     enlaces = list(_enlaces_queryset(operacion))
     etiquetas = list(_etiquetas_queryset(operacion))
+    elementos_accion = _elementos_accion_queryset(operacion)
+    elementos_accion_resumen = _elementos_accion_resumen(elementos_accion)
     opciones = list(_opciones_queryset(operacion))
     return {
         "operacion": operacion,
@@ -338,6 +401,10 @@ def _contexto_modal_operacion(operacion, form=None, archivos_form=None, enlace_f
         "etiquetas_count": len(etiquetas),
         "etiquetas_form": OperacionEtiquetaAssignForm(),
         "etiqueta_create_form": OperacionEtiquetaCreateForm(),
+        "elementos_accion": elementos_accion,
+        "elementos_accion_resumen": elementos_accion_resumen,
+        "elemento_accion_form": OperacionElementoAccionCreateForm(),
+        "elemento_accion_update_form": OperacionElementoAccionUpdateForm(),
         "opciones": opciones,
         "opciones_count": len(opciones),
         "opciones_form": OperacionOpcionesSectionForm(instance=operacion),
@@ -1255,6 +1322,167 @@ def _opciones_response(request, operacion, *, opciones_form=None, opcion_create_
         },
         status=status,
     )
+
+
+def _elementos_accion_response_payload(request, operacion):
+    operacion.refresh_from_db()
+    elementos = _elementos_accion_queryset(operacion)
+    return {
+        "id": operacion.id,
+        "section_html": _render_elementos_accion_section(request, operacion),
+        "resumen": _elementos_accion_resumen(elementos),
+    }
+
+
+@login_required
+@require_POST
+def crear_elemento_accion(request, operacion_id):
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para modificar esta operacion.")
+    if not _es_ajax(request):
+        return JsonResponse({"success": False, "error": "Solicitud AJAX requerida."}, status=400)
+
+    form = OperacionElementoAccionCreateForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {
+                "success": False,
+                "id": operacion.id,
+                "errors": form.errors.get_json_data(escape_html=True),
+            },
+            status=400,
+        )
+
+    ultimo_orden = (
+        operacion.elementos_accion.order_by("-orden", "-id")
+        .values_list("orden", flat=True)
+        .first()
+    )
+    elemento = form.save(commit=False)
+    elemento.operacion = operacion
+    elemento.orden = (ultimo_orden or 0) + 1
+    elemento.save()
+
+    payload = _elementos_accion_response_payload(request, operacion)
+    payload.update(
+        {
+            "success": True,
+            "elemento": {
+                "id": elemento.id,
+                "texto": elemento.texto,
+                "completado": elemento.completado,
+                "orden": elemento.orden,
+            },
+            "item_html": _render_elemento_accion_item(request, elemento),
+        }
+    )
+    return JsonResponse(payload)
+
+
+@login_required
+@require_POST
+def toggle_elemento_accion(request, elemento_id):
+    elemento = get_object_or_404(
+        OperacionElementoAccion.objects.select_related("operacion"),
+        id=elemento_id,
+        operacion__eliminado_en__isnull=True,
+    )
+    operacion = get_object_or_404(_operacion_queryset(), id=elemento.operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para modificar esta operacion.")
+    if not _es_ajax(request):
+        return JsonResponse({"success": False, "error": "Solicitud AJAX requerida."}, status=400)
+
+    completado_raw = (request.POST.get("completado") or "").strip().lower()
+    if completado_raw not in {"true", "false", "1", "0"}:
+        return JsonResponse({"success": False, "error": "Valor de completado invalido."}, status=400)
+
+    elemento.completado = completado_raw in {"true", "1"}
+    elemento.save(update_fields=["completado", "fecha_actualizacion"])
+
+    payload = _elementos_accion_response_payload(request, operacion)
+    payload.update(
+        {
+            "success": True,
+            "elemento": {
+                "id": elemento.id,
+                "texto": elemento.texto,
+                "completado": elemento.completado,
+                "orden": elemento.orden,
+            },
+        }
+    )
+    return JsonResponse(payload)
+
+
+@login_required
+@require_POST
+def editar_elemento_accion(request, elemento_id):
+    elemento = get_object_or_404(
+        OperacionElementoAccion.objects.select_related("operacion"),
+        id=elemento_id,
+        operacion__eliminado_en__isnull=True,
+    )
+    operacion = get_object_or_404(_operacion_queryset(), id=elemento.operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para modificar esta operacion.")
+    if not _es_ajax(request):
+        return JsonResponse({"success": False, "error": "Solicitud AJAX requerida."}, status=400)
+
+    form = OperacionElementoAccionUpdateForm(request.POST, instance=elemento)
+    if not form.is_valid():
+        payload = _elementos_accion_response_payload(request, operacion)
+        payload.update(
+            {
+                "success": False,
+                "elemento_id": elemento.id,
+                "errors": form.errors.get_json_data(escape_html=True),
+            }
+        )
+        return JsonResponse(payload, status=400)
+
+    elemento = form.save()
+    payload = _elementos_accion_response_payload(request, operacion)
+    payload.update(
+        {
+            "success": True,
+            "elemento": {
+                "id": elemento.id,
+                "texto": elemento.texto,
+                "completado": elemento.completado,
+                "orden": elemento.orden,
+            },
+            "item_html": _render_elemento_accion_item(request, elemento),
+        }
+    )
+    return JsonResponse(payload)
+
+
+@login_required
+@require_POST
+def eliminar_elemento_accion(request, elemento_id):
+    elemento = get_object_or_404(
+        OperacionElementoAccion.objects.select_related("operacion"),
+        id=elemento_id,
+        operacion__eliminado_en__isnull=True,
+    )
+    operacion = get_object_or_404(_operacion_queryset(), id=elemento.operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para modificar esta operacion.")
+    if not _es_ajax(request):
+        return JsonResponse({"success": False, "error": "Solicitud AJAX requerida."}, status=400)
+
+    elemento_id = elemento.id
+    elemento.delete()
+    payload = _elementos_accion_response_payload(request, operacion)
+    payload.update(
+        {
+            "success": True,
+            "elemento_id": elemento_id,
+        }
+    )
+    return JsonResponse(payload)
 
 
 @login_required

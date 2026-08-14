@@ -1,0 +1,36 @@
+<section class="operacion-action-items" data-operacion-action-section="1" data-operacion-id="{{ operacion.id }}">
+  <div class="d-flex align-items-center justify-content-between gap-3 mb-3 operacion-action-items__header">
+    <h5 class="mb-0">Elementos de acción</h5>
+    <span class="badge text-bg-light" data-operacion-action-summary="1">{{ elementos_accion_resumen.completados }}/{{ elementos_accion_resumen.total }}</span>
+  </div>
+
+  <div class="operacion-action-items__list" data-operacion-action-list="1">
+    {% for elemento in elementos_accion %}
+      {% include "operaciones/_elemento_accion_item.html" with elemento=elemento only %}
+    {% empty %}
+      <div class="text-muted small operacion-action-items__empty" data-operacion-action-empty="1">Sin elementos de acción.</div>
+    {% endfor %}
+  </div>
+
+  <form
+    method="post"
+    action="{% url 'operaciones:crear_elemento_accion' operacion.id %}"
+    class="operacion-action-items__add-form mt-3"
+    data-operacion-action-create-form="1"
+    data-operacion-id="{{ operacion.id }}">
+    {% csrf_token %}
+    <div class="d-flex gap-2 flex-column flex-sm-row">
+      <input
+        type="text"
+        name="texto"
+        value="{{ elemento_accion_form.texto.value|default_if_none:'' }}"
+        class="form-control form-control-sm"
+        placeholder="Escribe un elemento de acción..."
+        maxlength="255"
+        required
+        id="id_texto">
+      <button type="submit" class="btn btn-outline-primary btn-sm">Agregar</button>
+    </div>
+    <div class="operacion-action-items__error text-danger small mt-2 d-none" data-operacion-action-create-error="1"></div>
+  </form>
+</section>

@@ -85,6 +85,21 @@
 .operaciones-links-section[data-pending="1"] { opacity: 0.72; }
 .operaciones-tags-section[data-pending="1"] { opacity: 0.72; }
 .operaciones-options-section[data-pending="1"] { opacity: 0.72; }
+.operacion-action-items[data-pending="1"] { opacity: 0.72; }
+.operacion-action-items__list { display: grid; gap: 0.6rem; }
+.operacion-action-items__empty { padding: 0.25rem 0; }
+.operacion-action-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; padding: 0.45rem 0; }
+.operacion-action-item__checkbox { margin-top: 0.2rem; }
+.operacion-action-item__content { min-width: 0; }
+.operacion-action-item__text { color: var(--operaciones-text-main); font-size: 0.95rem; line-height: 1.45; text-decoration: none; white-space: normal; overflow-wrap: anywhere; }
+.operacion-action-item__text:hover { color: #0d5653; text-decoration: none; }
+.operacion-action-item__edit-form { display: grid; gap: 0.35rem; }
+.operacion-action-item__actions { display: flex; align-items: center; gap: 0.4rem; }
+.operacion-action-item__actions .btn { padding: 0.2rem 0.45rem; border-color: #dbe9e7; }
+.operacion-action-item.is-completed .operacion-action-item__text { opacity: 0.6; text-decoration: line-through; }
+.operacion-action-items__add-form .form-control { min-width: 0; }
+.operacion-action-items__add-trigger { width: fit-content; color: #176a67; text-decoration: none; }
+.operacion-action-items__add-trigger:hover { color: #0d5653; text-decoration: underline; }
 .operaciones-options-section__list { display: grid; gap: 0.5rem; }
 .operaciones-options-section__item { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; padding: 0.55rem 0.7rem; border: 1px solid #cfe4e1; border-radius: 10px; background: #f8fcfb; }
 .operaciones-options-section__item > span { min-width: 0; overflow-wrap: anywhere; }
@@ -108,4 +123,6 @@ body.operaciones-drawer-open { overflow: hidden; }
   .operaciones-toolbar__filter { width: 100%; margin-left: 0; }
   .operaciones-column { width: 300px; min-width: 300px; }
   .operaciones-drawer__dialog { width: 100vw; }
+  .operacion-action-item { grid-template-columns: auto minmax(0, 1fr); }
+  .operacion-action-item__actions { grid-column: 2; }
 }

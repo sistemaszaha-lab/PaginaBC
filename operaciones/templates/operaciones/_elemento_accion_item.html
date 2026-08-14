@@ -1,0 +1,50 @@
+<div
+  class="operacion-action-item{% if elemento.completado %} is-completed{% endif %}"
+  data-operacion-action-item="1"
+  data-elemento-id="{{ elemento.id }}"
+  data-edit-url="{% url 'operaciones:editar_elemento_accion' elemento.id %}"
+  data-delete-url="{% url 'operaciones:eliminar_elemento_accion' elemento.id %}"
+  data-toggle-url="{% url 'operaciones:toggle_elemento_accion' elemento.id %}">
+  <form method="post" action="{% url 'operaciones:toggle_elemento_accion' elemento.id %}" data-operacion-action-toggle-form="1" data-elemento-id="{{ elemento.id }}">
+    {% csrf_token %}
+    <input type="hidden" name="completado" value="{% if elemento.completado %}false{% else %}true{% endif %}">
+    <input
+      type="checkbox"
+      class="form-check-input operacion-action-item__checkbox"
+      {% if elemento.completado %}checked{% endif %}
+      aria-label="Marcar elemento de accion">
+  </form>
+
+  <div class="operacion-action-item__content">
+    <button
+      type="button"
+      class="operacion-action-item__text btn btn-link p-0 text-start"
+      data-operacion-action-edit-open="1">
+      {{ elemento.texto }}
+    </button>
+    <form
+      method="post"
+      action="{% url 'operaciones:editar_elemento_accion' elemento.id %}"
+      class="operacion-action-item__edit-form d-none"
+      data-operacion-action-edit-form="1"
+      data-elemento-id="{{ elemento.id }}">
+      {% csrf_token %}
+      <input
+        type="text"
+        name="texto"
+        value="{{ elemento.texto }}"
+        class="form-control form-control-sm"
+        maxlength="255"
+        data-operacion-action-edit-input="1">
+      <div class="operacion-action-item__error text-danger small d-none" data-operacion-action-error="1"></div>
+    </form>
+  </div>
+
+  <div class="operacion-action-item__actions">
+    <button type="button" class="btn btn-sm btn-light" data-operacion-action-edit-open="1">Editar</button>
+    <form method="post" action="{% url 'operaciones:eliminar_elemento_accion' elemento.id %}" data-operacion-action-delete-form="1" data-elemento-id="{{ elemento.id }}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-light text-danger" aria-label="Eliminar elemento de accion">&times;</button>
+    </form>
+  </div>
+</div>

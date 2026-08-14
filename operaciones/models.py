@@ -186,6 +186,27 @@ class OperacionOpcion(models.Model):
         return self.nombre
 
 
+class OperacionElementoAccion(models.Model):
+    operacion = models.ForeignKey(
+        Operacion,
+        on_delete=models.CASCADE,
+        related_name="elementos_accion",
+    )
+    texto = models.CharField(max_length=255)
+    completado = models.BooleanField(default=False)
+    orden = models.PositiveIntegerField(default=0)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["orden", "id"]
+        verbose_name = "Elemento de accion"
+        verbose_name_plural = "Elementos de accion"
+
+    def __str__(self):
+        return self.texto
+
+
 class OperacionComentario(models.Model):
     operacion = models.ForeignKey(Operacion, on_delete=models.CASCADE, related_name="comentarios")
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)

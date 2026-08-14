@@ -11,6 +11,7 @@ from clientes.models import Cliente
 from .models import (
     Operacion,
     OperacionColumna,
+    OperacionElementoAccion,
     OperacionEnlace,
     OperacionEtiqueta,
     OperacionOpcion,
@@ -444,6 +445,31 @@ class OperacionOpcionCreateForm(forms.Form):
 
     def clean_nombre(self):
         return self.cleaned_data["nombre"].strip()
+
+
+class OperacionElementoAccionCreateForm(forms.ModelForm):
+    class Meta:
+        model = OperacionElementoAccion
+        fields = ["texto"]
+        widgets = {
+            "texto": forms.TextInput(
+                attrs={
+                    "class": "form-control form-control-sm",
+                    "placeholder": "Escribe un elemento de accion...",
+                    "maxlength": 255,
+                }
+            ),
+        }
+
+    def clean_texto(self):
+        texto = (self.cleaned_data.get("texto") or "").strip()
+        if not texto:
+            raise forms.ValidationError("Escribe un elemento de accion.")
+        return texto
+
+
+class OperacionElementoAccionUpdateForm(OperacionElementoAccionCreateForm):
+    pass
 
 
 class OperacionColumnaCreateForm(forms.ModelForm):

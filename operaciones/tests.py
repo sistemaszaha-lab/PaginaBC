@@ -19,6 +19,7 @@ from .models import (
     OperacionArchivo,
     OperacionColumna,
     OperacionComentario,
+    OperacionElementoAccion,
     OperacionEnlace,
     OperacionEtiqueta,
     OperacionOpcion,
@@ -666,6 +667,11 @@ class OperacionesCopiarPegarTests(TestCase):
             url="https://example.com/doc",
             creado_por=self.admin,
         )
+        OperacionElementoAccion.objects.create(
+            operacion=self.original,
+            texto="Solicitar documentos",
+            orden=1,
+        )
         self.client = Client()
 
     def _paste_url(self, columna):
@@ -698,6 +704,7 @@ class OperacionesCopiarPegarTests(TestCase):
         self.assertEqual(list(copia.asignados.all()), [self.asignado])
         self.assertEqual(list(copia.etiquetas.all()), [self.etiqueta])
         self.assertEqual(list(copia.opciones.all()), [self.opcion])
+        self.assertFalse(copia.elementos_accion.exists())
         self.assertFalse(copia.comentarios.exists())
         self.assertFalse(copia.archivos.exists())
         self.assertFalse(copia.enlaces.exists())
@@ -2006,6 +2013,311 @@ class OperacionesOpcionesAjaxTests(TestCase):
         self.assertFalse(OperacionOpcion.objects.filter(nombre="Sin AJAX").exists())
 
 
+class OperacionesElementosAccionAjaxTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="action_owner", password="pass", first_name="Owner")
+        self.other_user = User.objects.create_user(username="action_other", password="pass", first_name="Other")
+        self.operacion = Operacion.objects.create(
+            titulo="Operacion accionable",
+            descripcion="Descripcion viva",
+            creado_por=self.owner,
+        )
+        self.other_operacion = Operacion.objects.create(
+            titulo="Operacion secundaria",
+            creado_por=self.owner,
+        )
+        self.etiqueta = OperacionEtiqueta.objects.create(nombre="Tag accion")
+        self.operacion.etiquetas.add(self.etiqueta)
+        self.client = Client()
+        self.client.force_login(self.owner)
+        self.create_url = reverse("operaciones:crear_elemento_accion", args=[self.operacion.id])
+
+    def test_detalle_renderiza_seccion_estado_vacio_descripcion_y_etiquetas(self):
+        response = self.client.get(
+            reverse("operaciones:detalle_operacion", args=[self.operacion.id]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.json()["html"]
+        self.assertIn('data-operacion-action-section="1"', html)
+        self.assertIn("Sin elementos de acci", html)
+        self.assertIn("Descripcion viva", html)
+        self.assertIn("Tag accion", html)
+
+    def test_input_de_creacion_expone_name_texto_y_sin_control_duplicado(self):
+        response = self.client.get(
+            reverse("operaciones:detalle_operacion", args=[self.operacion.id]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.json()["html"]
+        self.assertIn('data-operacion-action-create-form="1"', html)
+        self.assertIn('name="texto"', html)
+        self.assertNotIn("+ Agregar elemento", html)
+
+    def test_crear_elemento_persiste_y_devuelve_resumen(self):
+        response = self.client.post(
+            self.create_url,
+            {"texto": "Enviar fotos al cliente"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["resumen"], {"completados": 0, "total": 1})
+        self.assertIn('data-operacion-action-item="1"', data["item_html"])
+        self.assertIn("0/1", data["section_html"])
+        elemento = OperacionElementoAccion.objects.get(operacion=self.operacion)
+        self.assertEqual(elemento.texto, "Enviar fotos al cliente")
+        self.assertEqual(elemento.orden, 1)
+        self.assertFalse(elemento.completado)
+        self.operacion.refresh_from_db()
+        self.assertEqual(self.operacion.descripcion, "Descripcion viva")
+        self.assertEqual(list(self.operacion.etiquetas.values_list("nombre", flat=True)), ["Tag accion"])
+
+    def test_crear_elemento_acepta_fetch_con_accept_json(self):
+        response = self.client.post(
+            self.create_url,
+            {"texto": "Tarea"},
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertTrue(
+            OperacionElementoAccion.objects.filter(
+                operacion=self.operacion,
+                texto="Tarea",
+            ).exists()
+        )
+
+    def test_crear_texto_vacio_rechazado(self):
+        response = self.client.post(
+            self.create_url,
+            {"texto": "   "},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data["success"])
+        self.assertIn("texto", data["errors"])
+        self.assertNotIn("section_html", data)
+        self.assertEqual(OperacionElementoAccion.objects.count(), 0)
+
+    def test_crear_texto_vacio_rechazado_cuando_no_se_envia_valor(self):
+        response = self.client.post(
+            self.create_url,
+            {},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data["success"])
+        self.assertIn("texto", data["errors"])
+        self.assertEqual(OperacionElementoAccion.objects.count(), 0)
+
+    def test_lista_es_aislada_y_conserva_orden_estable(self):
+        OperacionElementoAccion.objects.create(operacion=self.operacion, texto="Primero", orden=1)
+        OperacionElementoAccion.objects.create(operacion=self.operacion, texto="Segundo", orden=2)
+        OperacionElementoAccion.objects.create(operacion=self.other_operacion, texto="Ajeno", orden=1)
+
+        response = self.client.get(
+            reverse("operaciones:detalle_operacion", args=[self.operacion.id]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        html = response.json()["html"]
+        self.assertLess(html.index("Primero"), html.index("Segundo"))
+        self.assertNotIn("Ajeno", html)
+
+    def test_toggle_completado_y_reversion_a_pendiente(self):
+        elemento = OperacionElementoAccion.objects.create(
+            operacion=self.operacion,
+            texto="Solicitar documentos",
+            orden=1,
+        )
+        toggle_url = reverse("operaciones:toggle_elemento_accion", args=[elemento.id])
+
+        checked = self.client.post(
+            toggle_url,
+            {"completado": "true"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(checked.status_code, 200)
+        elemento.refresh_from_db()
+        self.assertTrue(elemento.completado)
+        self.assertEqual(checked.json()["resumen"], {"completados": 1, "total": 1})
+
+        unchecked = self.client.post(
+            toggle_url,
+            {"completado": "false"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(unchecked.status_code, 200)
+        elemento.refresh_from_db()
+        self.assertFalse(elemento.completado)
+        self.assertEqual(unchecked.json()["resumen"], {"completados": 0, "total": 1})
+
+    def test_toggle_persiste_al_reabrir_detalle(self):
+        elemento = OperacionElementoAccion.objects.create(
+            operacion=self.operacion,
+            texto="Tarea persistente",
+            orden=1,
+        )
+        toggle_url = reverse("operaciones:toggle_elemento_accion", args=[elemento.id])
+
+        checked = self.client.post(
+            toggle_url,
+            {"completado": "true"},
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(checked.status_code, 200)
+
+        detalle_marcado = self.client.get(
+            reverse("operaciones:detalle_operacion", args=[self.operacion.id]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        html_marcado = detalle_marcado.json()["html"]
+        self.assertIn("1/1", html_marcado)
+        self.assertIn("is-completed", html_marcado)
+        self.assertIn("checked", html_marcado)
+
+        unchecked = self.client.post(
+            toggle_url,
+            {"completado": "false"},
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(unchecked.status_code, 200)
+
+        detalle_pendiente = self.client.get(
+            reverse("operaciones:detalle_operacion", args=[self.operacion.id]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        html_pendiente = detalle_pendiente.json()["html"]
+        self.assertIn("0/1", html_pendiente)
+        self.assertNotIn('class="operacion-action-item is-completed"', html_pendiente)
+
+    def test_editar_texto_inline(self):
+        elemento = OperacionElementoAccion.objects.create(
+            operacion=self.operacion,
+            texto="Texto inicial",
+            orden=1,
+        )
+        response = self.client.post(
+            reverse("operaciones:editar_elemento_accion", args=[elemento.id]),
+            {"texto": "Texto actualizado"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        elemento.refresh_from_db()
+        self.assertEqual(elemento.texto, "Texto actualizado")
+        self.assertIn("Texto actualizado", response.json()["item_html"])
+
+    def test_eliminar_actualiza_resumen(self):
+        primero = OperacionElementoAccion.objects.create(
+            operacion=self.operacion,
+            texto="Uno",
+            orden=1,
+            completado=True,
+        )
+        OperacionElementoAccion.objects.create(
+            operacion=self.operacion,
+            texto="Dos",
+            orden=2,
+        )
+        response = self.client.post(
+            reverse("operaciones:eliminar_elemento_accion", args=[primero.id]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(OperacionElementoAccion.objects.filter(id=primero.id).exists())
+        self.assertEqual(response.json()["resumen"], {"completados": 0, "total": 1})
+
+    def test_guardar_operacion_no_elimina_elementos(self):
+        OperacionElementoAccion.objects.create(
+            operacion=self.operacion,
+            texto="Persistente",
+            orden=1,
+        )
+
+        response = self.client.post(
+            reverse("operaciones:editar_operacion", args=[self.operacion.id]),
+            {
+                "titulo": "Operacion accionable",
+                "descripcion": "Descripcion viva actualizada",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.operacion.refresh_from_db()
+        self.assertEqual(self.operacion.descripcion, "Descripcion viva actualizada")
+        self.assertEqual(self.operacion.elementos_accion.count(), 1)
+
+    def test_eliminacion_logica_de_operacion_no_elimina_elementos(self):
+        elemento = OperacionElementoAccion.objects.create(
+            operacion=self.operacion,
+            texto="Sobrevive papelera",
+            orden=1,
+        )
+
+        response = self.client.post(
+            reverse("operaciones:eliminar_operacion", args=[self.operacion.id]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.operacion.refresh_from_db()
+        self.assertIsNotNone(self.operacion.eliminado_en)
+        self.assertTrue(OperacionElementoAccion.objects.filter(id=elemento.id).exists())
+
+    def test_eliminacion_fisica_respeta_cascade(self):
+        elemento = OperacionElementoAccion.objects.create(
+            operacion=self.operacion,
+            texto="Se elimina con la operacion",
+            orden=1,
+        )
+        operacion_id = self.operacion.id
+
+        self.operacion.delete()
+
+        self.assertFalse(Operacion.objects.filter(id=operacion_id).exists())
+        self.assertFalse(OperacionElementoAccion.objects.filter(id=elemento.id).exists())
+
+    def test_permisos_y_ajax_se_respetan(self):
+        elemento = OperacionElementoAccion.objects.create(
+            operacion=self.operacion,
+            texto="Protegido",
+            orden=1,
+        )
+        self.client.force_login(self.other_user)
+
+        forbidden = self.client.post(
+            reverse("operaciones:editar_elemento_accion", args=[elemento.id]),
+            {"texto": "Intento ajeno"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(forbidden.status_code, 403)
+        elemento.refresh_from_db()
+        self.assertEqual(elemento.texto, "Protegido")
+
+        self.client.force_login(self.owner)
+        non_ajax = self.client.post(
+            reverse("operaciones:toggle_elemento_accion", args=[elemento.id]),
+            {"completado": "true"},
+        )
+        self.assertEqual(non_ajax.status_code, 400)
+
+
 class OperacionesProgressiveLoadingTests(TestCase):
     def setUp(self):
         User = get_user_model()
@@ -2283,9 +2595,12 @@ class OperacionesProgressiveLoadingTests(TestCase):
         tag = OperacionEtiqueta.objects.create(
             nombre="Urgente 7D", color="#FF0000"
         )
-        option = OperacionOpcion.objects.create(nombre="Revisar 7D")
         oldest.etiquetas.add(tag)
-        oldest.opciones.add(option)
+        OperacionElementoAccion.objects.create(
+            operacion=oldest,
+            texto="Revisar 7D",
+            orden=1,
+        )
         first_ids = list(
             Operacion.objects.filter(estado=estado)
             .order_by("-fecha_creacion", "-id")
@@ -2313,6 +2628,46 @@ class OperacionesProgressiveLoadingTests(TestCase):
         self.assertIn("staleIds.forEach", javascript)
         self.assertIn("data-operacion-load-more", javascript)
         self.assertIn("No se pudieron cargar las tarjetas.", javascript)
+
+    def test_javascript_toggle_serializa_antes_de_deshabilitar_checkbox(self):
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        change_start = javascript.index("document.addEventListener('change', (e) => {")
+        toggle_start = javascript.index(
+            "const checkbox = e.target.closest('.operacion-action-item__checkbox');",
+            change_start,
+        )
+        post_start = javascript.index(
+            "fetch(url, {",
+            toggle_start,
+        )
+        toggle_block = javascript[toggle_start:post_start]
+
+        self.assertIn("const nextChecked = checkbox.checked;", toggle_block)
+        self.assertIn("const body = new FormData();", toggle_block)
+        self.assertIn("body.append('completado', nextChecked ? 'true' : 'false');", toggle_block)
+        self.assertIn("checkbox.disabled = true;", javascript)
+        self.assertIn("checkbox.disabled = false;", javascript)
+        self.assertLess(
+            toggle_block.index("const nextChecked = checkbox.checked;"),
+            toggle_block.index("checkbox.disabled = true;"),
+        )
+        self.assertNotIn("e.preventDefault();", toggle_block)
+
+    def test_javascript_toggle_envia_estado_explicito_sin_formdata_del_form(self):
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        change_start = javascript.index("document.addEventListener('change', (e) => {")
+        toggle_start = javascript.index(
+            "const checkbox = e.target.closest('.operacion-action-item__checkbox');",
+            change_start,
+        )
+        toggle_end = javascript.index("const input = e.target.closest('[data-operacion-action-edit-input=\"1\"]');")
+        toggle_block = javascript[toggle_start:toggle_end]
+
+        self.assertIn("'X-CSRFToken': csrfToken", toggle_block)
+        self.assertIn("'X-Requested-With': 'XMLHttpRequest'", toggle_block)
+        self.assertIn("'Accept': 'application/json'", toggle_block)
+        self.assertNotIn("new FormData(form)", toggle_block)
+        self.assertNotIn("setActionItemPending(item, true)", toggle_block)
 
     def test_javascript_intercepta_click_de_detalles_con_prevent_default(self):
         javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
