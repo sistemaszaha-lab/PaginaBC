@@ -351,35 +351,167 @@ class SeguridadPermisosTests(TestCase):
         self.assertEqual(self.cotizacion.ejecutivo_id, self.otro.pk)
         self.assertEqual(self.referencia.ejecutivo_id, self.otro.pk)
 
-    def test_no_permite_crear_mas_de_cuatro_administradores(self):
-        User.objects.create_user(
-            username="admin2", password="admin123", is_superuser=True, is_staff=True
-        )
-        User.objects.create_user(
-            username="admin3", password="admin123", is_superuser=True, is_staff=True
-        )
-        User.objects.create_user(
-            username="admin4", password="admin123", is_superuser=True, is_staff=True
-        )
+    def _crear_admins_adicionales(self, total_admins):
+        actuales = User.objects.filter(is_superuser=True).count()
+        for indice in range(actuales + 1, total_admins + 1):
+            User.objects.create_user(
+                username=f"admin{indice}",
+                password="admin123",
+                is_superuser=True,
+                is_staff=True,
+            )
+
+    def _payload_usuario(self, username, rol="usuario"):
+        return {
+            "username": username,
+            "primer_nombre": "Nombre",
+            "segundo_nombre": "",
+            "apellidos": "Apellido",
+            "email": f"{username}@example.com",
+            "password1": "Admin12345!!",
+            "password2": "Admin12345!!",
+            "rol": rol,
+        }
+
+    def test_con_cuatro_admins_se_puede_crear_el_quinto(self):
+        self._crear_admins_adicionales(4)
         self.client.login(username="admin", password="admin123")
 
         response = self.client.post(
             reverse("crear_usuario"),
+            self._payload_usuario("admin5", rol="admin"),
+        )
+
+        self.assertRedirects(response, reverse("lista_usuarios"), fetch_redirect_response=False)
+        admin5 = User.objects.get(username="admin5")
+        self.assertTrue(admin5.is_superuser)
+        self.assertTrue(admin5.is_staff)
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 5)
+
+    def test_con_cinco_admins_se_puede_crear_el_sexto(self):
+        self._crear_admins_adicionales(5)
+        self.client.login(username="admin", password="admin123")
+
+        response = self.client.post(
+            reverse("crear_usuario"),
+            self._payload_usuario("admin6", rol="admin"),
+        )
+
+        self.assertRedirects(response, reverse("lista_usuarios"), fetch_redirect_response=False)
+        admin6 = User.objects.get(username="admin6")
+        self.assertTrue(admin6.is_superuser)
+        self.assertTrue(admin6.is_staff)
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 6)
+
+    def test_con_seis_admins_se_rechaza_el_septimo(self):
+        self._crear_admins_adicionales(6)
+        self.client.login(username="admin", password="admin123")
+
+        response = self.client.post(
+            reverse("crear_usuario"),
+            self._payload_usuario("admin7", rol="admin"),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Solo se permiten 6 usuarios con rol Administrador.")
+        self.assertFalse(User.objects.filter(username="admin7").exists())
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 6)
+
+    def test_convertir_usuario_existente_en_admin_respeta_el_limite(self):
+        self._crear_admins_adicionales(6)
+        usuario = User.objects.create_user(
+            username="convertible",
+            password="pass12345",
+            first_name="Usuario",
+            last_name="Convertible",
+            email="convertible@example.com",
+        )
+        self.client.login(username="admin", password="admin123")
+
+        response = self.client.post(
+            reverse("editar_usuario", args=[usuario.pk]),
             {
-                "username": "admin5",
-                "primer_nombre": "Admin",
+                "username": "convertible",
+                "primer_nombre": "Usuario",
                 "segundo_nombre": "",
-                "apellidos": "Cinco",
-                "email": "admin5@example.com",
-                "password1": "Admin12345!!",
-                "password2": "Admin12345!!",
+                "apellidos": "Convertible",
+                "email": "convertible@example.com",
                 "rol": "admin",
+                "password1": "",
+                "password2": "",
             },
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Solo se permiten 4 usuarios con rol Administrador.")
-        self.assertFalse(User.objects.filter(username="admin5").exists())
+        self.assertContains(response, "Solo se permiten 6 usuarios con rol Administrador.")
+        usuario.refresh_from_db()
+        self.assertFalse(usuario.is_superuser)
+        self.assertFalse(usuario.is_staff)
+
+    def test_quitar_rol_admin_libera_cupo_para_agregar_otro(self):
+        self._crear_admins_adicionales(6)
+        admin6 = User.objects.get(username="admin6")
+        self.client.login(username="admin", password="admin123")
+
+        demote_response = self.client.post(
+            reverse("editar_usuario", args=[admin6.pk]),
+            {
+                "username": "admin6",
+                "primer_nombre": "Admin",
+                "segundo_nombre": "",
+                "apellidos": "Seis",
+                "email": "admin6@example.com",
+                "rol": "usuario",
+                "password1": "",
+                "password2": "",
+            },
+        )
+
+        self.assertRedirects(demote_response, reverse("lista_usuarios"), fetch_redirect_response=False)
+        admin6.refresh_from_db()
+        self.assertFalse(admin6.is_superuser)
+        self.assertFalse(admin6.is_staff)
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 5)
+
+        create_response = self.client.post(
+            reverse("crear_usuario"),
+            self._payload_usuario("admin_nuevo", rol="admin"),
+        )
+
+        self.assertRedirects(create_response, reverse("lista_usuarios"), fetch_redirect_response=False)
+        nuevo_admin = User.objects.get(username="admin_nuevo")
+        self.assertTrue(nuevo_admin.is_superuser)
+        self.assertTrue(nuevo_admin.is_staff)
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 6)
+
+    def test_usuarios_normales_no_cuentan_contra_el_limite(self):
+        self._crear_admins_adicionales(5)
+        for indice in range(1, 4):
+            User.objects.create_user(username=f"ejec_limite_{indice}", password="pass12345")
+        self.client.login(username="admin", password="admin123")
+
+        response = self.client.post(
+            reverse("crear_usuario"),
+            self._payload_usuario("admin6", rol="admin"),
+        )
+
+        self.assertRedirects(response, reverse("lista_usuarios"), fetch_redirect_response=False)
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 6)
+        self.assertEqual(User.objects.filter(is_superuser=False).count(), 5)
+
+    def test_permisos_existentes_permanecen_al_crear_admin(self):
+        self._crear_admins_adicionales(5)
+        self.client.login(username="admin", password="admin123")
+
+        response = self.client.post(
+            reverse("crear_usuario"),
+            self._payload_usuario("admin_permiso", rol="admin"),
+        )
+
+        self.assertRedirects(response, reverse("lista_usuarios"), fetch_redirect_response=False)
+        user = User.objects.get(username="admin_permiso")
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.is_staff)
 
     def test_crud_referencias_solo_admin_en_escritura(self):
         self.client.login(username="ejec", password="ejec123")
