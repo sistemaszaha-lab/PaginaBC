@@ -198,6 +198,12 @@ class OperacionesPanelFiltroUsuariosTests(TestCase):
             f'data-assigned-user-ids="{self.asignado.id},{self.otro_asignado.id}"',
         )
 
+    def test_panel_no_renderiza_cliente_ni_descripcion_en_tarjetas(self):
+        resp = self.client.get(reverse("operaciones:panel_operaciones"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'operaciones-card__client')
+        self.assertNotContains(resp, 'operaciones-card__description')
+
     def test_panel_conserva_la_estructura_del_tablero_kanban(self):
         resp = self.client.get(reverse("operaciones:panel_operaciones"))
         self.assertEqual(resp.status_code, 200)
@@ -269,6 +275,7 @@ class OperacionesDetalleModalTests(TestCase):
         self.assertIn('for="id_asignados"', modal_html)
         self.assertIn('for="id_descripcion"', modal_html)
         self.assertIn("Operacion maritima de importacion.", modal_html)
+        self.assertIn("Coordinar documentacion con cliente.", modal_html)
         self.assertNotIn('data-operacion-options-section="1"', modal_html)
 
     def test_editar_operacion_preserva_valores(self):

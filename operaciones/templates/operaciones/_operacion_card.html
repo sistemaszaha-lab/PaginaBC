@@ -13,9 +13,6 @@
     <div class="operaciones-card__header">
       <div class="operaciones-card__header-main">
         <h4 class="operaciones-card__title mb-1">{{ operacion.titulo }}</h4>
-        <div class="operaciones-card__client{% if not operacion.cliente %} operaciones-card__client--muted{% endif %}">
-          {{ operacion.cliente|default:"Sin cliente" }}
-        </div>
       </div>
       <div class="operaciones-card__header-actions">
         <span class="operaciones-chip operaciones-chip--{{ operacion.prioridad|lower }}">{{ operacion.get_prioridad_display|upper }}</span>
@@ -33,10 +30,6 @@
         </button>
       </div>
     </div>
-
-    {% if operacion.descripcion %}
-      <div class="operaciones-card__description">{{ operacion.descripcion }}</div>
-    {% endif %}
 
     <div class="operaciones-card__tags" data-operacion-card-tags="1">
       {% for etiqueta in operacion.etiquetas.all %}
