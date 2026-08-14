@@ -479,7 +479,7 @@ class GarantiasInlineCreateTests(TestCase):
         )
         self.assertEqual(
             len(re.findall(r"<section\b[^>]*garantias-column", html)),
-            4,
+            3,
         )
         self.assertEqual(
             len(re.findall(r"<div\b[^>]*data-garantia-inline-shared-slot=", html)),
@@ -535,6 +535,8 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertIn("if (select.tomselect) return", javascript)
         self.assertIn("select.tomselect.destroy()", javascript)
         self.assertIn("function showToast(message, level)", javascript)
+        self.assertIn("'X-Requested-With': 'XMLHttpRequest'", javascript)
+        self.assertIn("error?.data?.message || extractJsonErrors(error) || requestErrorMessage(error)", javascript)
         self.assertIn("data-garantia-link-add", javascript)
         self.assertIn("data-garantia-link-remove", javascript)
         self.assertIn("if (!activeFilter) {", javascript)

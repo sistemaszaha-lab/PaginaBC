@@ -53,10 +53,42 @@
     let activeColumnShell = null;
     const columnLoadRequests = new Map();
     let boardVersion = 0;
+    let lastServerSyncedUserId = document.getElementById('OperacionesUserFilter')?.value || '';
 
     function reloadBoard() {
+      if (!boardUrl) return Promise.resolve();
       invalidateColumnLoads();
-      window.location.reload();
+      const url = new URL(boardUrl, window.location.origin);
+      const selectedUserId = getSelectedUserId();
+      if (selectedUserId) url.searchParams.set('usuario', selectedUserId);
+      return fetch(`${url.pathname}${url.search}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'text/html',
+        },
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Error ${response.status}`);
+          }
+          return response.text();
+        })
+        .then((html) => {
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = html;
+          const nextBoard = wrapper.querySelector('[data-operaciones-board="1"]');
+          if (!nextBoard) {
+            throw new Error('No se pudo recargar el tablero.');
+          }
+          root.innerHTML = nextBoard.innerHTML;
+          lastServerSyncedUserId = selectedUserId;
+          initSortable();
+          syncCopyActions();
+          syncInlineCreateAccess();
+          applyUserFilter();
+        });
     }
 
     function postForm(url, formData, formElement = null) {
@@ -655,6 +687,7 @@
       invalidateColumnLoads();
       card.replaceWith(nextCard);
       syncColumnState(nextCard.closest('.panel-operaciones-col'));
+      applyUserFilter();
       return nextCard;
     }
 
@@ -876,6 +909,35 @@
       return document.getElementById('OperacionesUserFilter')?.value || '';
     }
 
+    function getAssignedUserIds(card) {
+      return String(card?.dataset.assignedUserIds || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+    }
+
+    function applyUserFilter() {
+      const selectedUserId = getSelectedUserId();
+      root.querySelectorAll('[data-panel-operacion-card="1"]').forEach((card) => {
+        const assignedUserIds = getAssignedUserIds(card);
+        const shouldShow = !selectedUserId || assignedUserIds.includes(selectedUserId);
+        card.classList.toggle('is-user-filter-hidden', !shouldShow);
+      });
+    }
+
+    function boardNeedsFilterSync() {
+      return Array.from(root.querySelectorAll('[data-operaciones-column="1"]')).some((shell) => {
+        const total = Number.parseInt(shell.dataset.total || '', 10);
+        const loaded = Number.parseInt(shell.dataset.loaded || '', 10);
+        return !Number.isNaN(total) && !Number.isNaN(loaded) && total > loaded;
+      });
+    }
+
+    function shouldSyncUserFilterWithServer() {
+      const selectedUserId = getSelectedUserId();
+      return boardNeedsFilterSync() || selectedUserId !== lastServerSyncedUserId;
+    }
+
     function setColumnLoading(shell, isLoading) {
       const button = shell?.querySelector('[data-operacion-load-more="1"]');
       const indicator = shell?.querySelector('[data-operacion-load-indicator="1"]');
@@ -1006,6 +1068,7 @@
           cards.forEach((card) => fragment.appendChild(card));
           column.appendChild(fragment);
           syncColumnState(column, data.total);
+          applyUserFilter();
           button.hidden = !data.has_more;
           return data;
         })
@@ -1714,7 +1777,12 @@
     root.addEventListener('change', (e) => {
       if (e.target && e.target.id === 'OperacionesUserFilter') {
         invalidateColumnLoads();
-        e.target.form?.submit();
+        applyUserFilter();
+        if (shouldSyncUserFilterWithServer()) {
+          reloadBoard().catch((error) => {
+            console.error('No se pudo sincronizar el filtro de usuario:', error);
+          });
+        }
         return;
       }
 
@@ -2549,4 +2617,5 @@
     syncCopyActions();
     syncInlineCreateAccess();
     initSortable();
+    applyUserFilter();
   })();

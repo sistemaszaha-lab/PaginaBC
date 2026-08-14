@@ -1580,7 +1580,14 @@
           control.disabled = true;
         });
         setInlineCreateButtonsDisabled(true);
-        window.csrfFetch(inlineCreateUrl, { method: 'POST', body: fd, headers: {'Accept': 'application/json'} })
+        window.csrfFetch(inlineCreateUrl, {
+          method: 'POST',
+          body: fd,
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          }
+        })
           .then((response) => readInlineCreateResponse(response))
           .then((data) => {
             if (!data.ok) return;
@@ -1618,7 +1625,10 @@
               return;
             }
             console.error('No se pudo crear la garantia:', error);
-            showToast(error?.data?.message || requestErrorMessage(error), 'danger');
+            showToast(
+              error?.data?.message || extractJsonErrors(error) || requestErrorMessage(error),
+              'danger'
+            );
           })
           .finally(() => {
             const activeForm = inlineSharedSlot?.querySelector('[data-garantia-inline-form="1"]');

@@ -3,6 +3,7 @@
   data-panel-operacion-card="1"
   data-trash-remove-item="1"
   data-panel-operacion-id="{{ operacion.id }}"
+  data-assigned-user-ids="{% for usuario in operacion.asignados.all %}{% if not forloop.first %},{% endif %}{{ usuario.id }}{% endfor %}"
   data-operacion-state="{{ operacion.estado }}"
   data-operacion-move-url="{% url 'operaciones:mover_operacion' operacion.id %}"
   class="operaciones-card"

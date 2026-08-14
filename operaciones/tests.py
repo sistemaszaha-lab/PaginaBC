@@ -161,12 +161,13 @@ class OperacionesPanelFiltroUsuariosTests(TestCase):
         User = get_user_model()
         self.user = User.objects.create_user(username="tester", password="pass", first_name="Tester")
         self.asignado = User.objects.create_user(username="asignado", password="pass", first_name="Asignado")
+        self.otro_asignado = User.objects.create_user(username="otro-asignado", password="pass", first_name="Otro")
 
         self.operacion = Operacion.objects.create(
             titulo="Op 1",
             creado_por=self.user,
         )
-        self.operacion.asignados.add(self.asignado)
+        self.operacion.asignados.add(self.asignado, self.otro_asignado)
 
         self.client = Client()
         self.client.force_login(self.user)
@@ -187,6 +188,15 @@ class OperacionesPanelFiltroUsuariosTests(TestCase):
         resp = self.client.get(reverse("operaciones:panel_operaciones"), {"usuario": str(self.asignado.id)})
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Op 1")
+        self.assertContains(resp, f'<option value="{self.asignado.id}" selected>')
+
+    def test_panel_expone_ids_reales_de_asignados_en_la_tarjeta(self):
+        resp = self.client.get(reverse("operaciones:panel_operaciones"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(
+            resp,
+            f'data-assigned-user-ids="{self.asignado.id},{self.otro_asignado.id}"',
+        )
 
     def test_panel_conserva_la_estructura_del_tablero_kanban(self):
         resp = self.client.get(reverse("operaciones:panel_operaciones"))
@@ -1143,9 +1153,14 @@ class OperacionesInlineCreateTests(TestCase):
         javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn("function applyUserFilter()", javascript)
         self.assertIn("const selectedUserId = document.getElementById('OperacionesUserFilter')?.value", javascript)
+        self.assertIn("const assignedUserIds = getAssignedUserIds(card);", javascript)
+        self.assertIn("card.classList.toggle('is-user-filter-hidden', !shouldShow);", javascript)
         self.assertIn("const shouldInsertCard = !selectedUserId || assignedUserIds.includes(selectedUserId);", javascript)
         self.assertIn("if (shouldInsertCard && !insertCardFromHtml(targetColumn, data.html))", javascript)
+        self.assertNotIn("e.target.form?.submit();", javascript)
+        self.assertNotIn("window.location.reload()", javascript)
 
     def test_javascript_tom_select_se_inicializa_y_destruye_una_sola_vez(self):
         response = self.client.get(reverse("operaciones:panel_operaciones"))
