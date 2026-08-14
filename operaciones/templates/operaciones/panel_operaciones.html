@@ -21,15 +21,23 @@
     data-operacion-column-create-open="1">
     + Agregar columna
   </button>
-  <form method="get" class="operaciones-toolbar__filter">
+  <div class="operaciones-toolbar__filter">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
-    <select id="OperacionesUserFilter" name="usuario" class="form-select">
-      <option value="">Todos</option>
-      {% for usuario in usuarios_filtro %}
-      <option value="{{ usuario.id }}" {% if usuario.seleccionado %}selected{% endif %}>{{ usuario.nombre }}</option>
-      {% endfor %}
-    </select>
-  </form>
+    <div class="d-flex gap-2 align-items-center">
+      <select id="OperacionesUserFilter" name="usuario" class="form-select">
+        <option value="">Todos</option>
+        {% for usuario in usuarios_filtro %}
+        <option value="{{ usuario.id }}" {% if usuario.seleccionado %}selected{% endif %}>{{ usuario.nombre }}</option>
+        {% endfor %}
+      </select>
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary"
+        data-operaciones-user-filter-apply="1">
+        Aplicar
+      </button>
+    </div>
+  </div>
 </div>
 
 {% include "operaciones/_tablero.html" with columnas=columnas estados=estados only %}

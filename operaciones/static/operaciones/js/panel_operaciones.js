@@ -87,7 +87,7 @@
           initSortable();
           syncCopyActions();
           syncInlineCreateAccess();
-          applyUserFilter();
+          applyAssignedUserFilter();
         });
     }
 
@@ -687,7 +687,7 @@
       invalidateColumnLoads();
       card.replaceWith(nextCard);
       syncColumnState(nextCard.closest('.panel-operaciones-col'));
-      applyUserFilter();
+      applyAssignedUserFilter();
       return nextCard;
     }
 
@@ -916,12 +916,12 @@
         .filter(Boolean);
     }
 
-    function applyUserFilter() {
+    function applyAssignedUserFilter() {
       const selectedUserId = getSelectedUserId();
       root.querySelectorAll('[data-panel-operacion-card="1"]').forEach((card) => {
         const assignedUserIds = getAssignedUserIds(card);
         const shouldShow = !selectedUserId || assignedUserIds.includes(selectedUserId);
-        card.classList.toggle('is-user-filter-hidden', !shouldShow);
+        card.classList.toggle('operacion-user-filter-hidden', !shouldShow);
       });
     }
 
@@ -1068,7 +1068,7 @@
           cards.forEach((card) => fragment.appendChild(card));
           column.appendChild(fragment);
           syncColumnState(column, data.total);
-          applyUserFilter();
+          applyAssignedUserFilter();
           button.hidden = !data.has_more;
           return data;
         })
@@ -1775,17 +1775,6 @@
     }
 
     root.addEventListener('change', (e) => {
-      if (e.target && e.target.id === 'OperacionesUserFilter') {
-        invalidateColumnLoads();
-        applyUserFilter();
-        if (shouldSyncUserFilterWithServer()) {
-          reloadBoard().catch((error) => {
-            console.error('No se pudo sincronizar el filtro de usuario:', error);
-          });
-        }
-        return;
-      }
-
       const stateSelect = e.target.closest('[data-operacion-state-select="1"]');
       if (!stateSelect) return;
 
@@ -1812,6 +1801,21 @@
         sourceColumn,
         sourceIndex: getCardIndex(card, sourceColumn),
       });
+    });
+
+    document.addEventListener('click', (e) => {
+      const applyFilterButton = e.target.closest('[data-operaciones-user-filter-apply="1"]');
+      if (!applyFilterButton) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      invalidateColumnLoads();
+      applyAssignedUserFilter();
+      if (shouldSyncUserFilterWithServer()) {
+        reloadBoard().catch((error) => {
+          console.error('No se pudo sincronizar el filtro de usuario:', error);
+        });
+      }
     });
 
     root.addEventListener('click', (e) => {
@@ -2617,5 +2621,5 @@
     syncCopyActions();
     syncInlineCreateAccess();
     initSortable();
-    applyUserFilter();
+    applyAssignedUserFilter();
   })();
