@@ -13,9 +13,7 @@
         <div data-panel-cotizacion-inline-slot="titulo">
           {% include "panel_cotizaciones/_inline_field_titulo.html" with c=c only %}
         </div>
-        <div class="mt-2" data-panel-cotizacion-inline-slot="cliente">
-          {% include "panel_cotizaciones/_inline_field_cliente.html" with c=c only %}
-        </div>
+        <div class="mt-2" data-panel-cotizacion-inline-slot="cliente"></div>
       </div>
       <div class="panel-cotizacion-card__top-actions">
         <div data-panel-cotizacion-inline-slot="prioridad">
@@ -34,12 +32,6 @@
         </button>
       </div>
     </div>
-
-    {% if c.descripcion %}
-      <div class="panel-cotizacion-card__section">
-        <p class="panel-cotizacion-card__description mb-0">{{ c.descripcion|truncatewords:18 }}</p>
-      </div>
-    {% endif %}
 
     {% if c.etiquetas.all %}
       <div class="panel-cotizacion-card__section">

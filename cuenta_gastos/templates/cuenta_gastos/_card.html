@@ -16,9 +16,7 @@
                     {% include "cuenta_gastos/_inline_field_titulo.html" with cuenta=cuenta only %}
                 </div>
 
-                <div data-cuenta-inline-slot="cliente">
-                    {% include "cuenta_gastos/_inline_field_cliente.html" with cuenta=cuenta only %}
-                </div>
+                <div data-cuenta-inline-slot="cliente"></div>
             </div>
 
             <div class="cuenta-card__header-actions">
@@ -60,12 +58,6 @@
                 {% include "cuenta_gastos/_inline_field_vencimiento.html" with cuenta=cuenta only %}
             </div>
         </div>
-
-        {% if cuenta.descripcion %}
-        <div class="cuenta-card__description">
-            {{ cuenta.descripcion }}
-        </div>
-        {% endif %}
 
         {% if cuenta.etiquetas.all %}
         <div class="cuenta-card__tags">

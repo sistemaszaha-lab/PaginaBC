@@ -113,6 +113,14 @@ class PanelCotizacionAccessAndRenderingTests(TestCase):
         response = self.client.get(reverse("panel_cotizaciones:panel_cotizaciones"))
         self.assertEqual(response.status_code, 302)
 
+    def test_panel_no_renderiza_cliente_ni_descripcion_en_tarjetas(self):
+        client = Client()
+        client.force_login(self.ejecutivo)
+        response = client.get(reverse("panel_cotizaciones:panel_cotizaciones"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "panel-cotizacion-card__client")
+        self.assertNotContains(response, "panel-cotizacion-card__description")
+
     def test_detalle_drawer_renderiza(self):
         client = Client()
         client.force_login(self.ejecutivo)
@@ -124,6 +132,7 @@ class PanelCotizacionAccessAndRenderingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Carga inicial")
         self.assertContains(response, "CLIENTE UNO")
+        self.assertContains(response, "Descripcion")
         self.assertContains(response, "zaha-detail-modal__header")
         self.assertContains(response, "zaha-detail-modal__body")
         self.assertContains(response, "zaha-detail-modal__footer")

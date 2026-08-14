@@ -68,6 +68,15 @@ class GarantiasFiltroTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Garantia Visible")
 
+    def test_panel_no_renderiza_cliente_ni_descripcion_en_tarjetas(self):
+        self.garantia.cliente = Cliente.objects.create(nombre="Cliente visible solo en detalle")
+        self.garantia.descripcion = "Descripcion solo para detalle"
+        self.garantia.save(update_fields=["cliente", "descripcion"])
+        response = self.client.get(reverse("garantias:panel_garantias"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "garantia-card__client")
+        self.assertNotContains(response, "garantia-card__description")
+
     def test_panel_no_duplica_por_many_to_many(self):
         response = self.client.get(
             reverse("garantias:panel_garantias"), {"usuario": str(self.asignado.id)}
@@ -923,6 +932,8 @@ class GarantiasColumnasDinamicasTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "garantia-drawer__panel")
+        self.assertContains(response, 'name="descripcion"')
+        self.assertContains(response, 'name="cliente"')
 
     def test_detalle_layout_modal_renderiza_clases_compartidas(self):
         response = self.client.get(
@@ -1241,8 +1252,8 @@ class GarantiasInlineUpdateTests(TestCase):
         self.assertEqual(self.garantia.fecha_vencimiento, date(2026, 2, 20))
         self.assertEqual(list(self.garantia.asignados.all()), [self.asignado])
         html = response.json()["html"]
-        self.assertIn("Descripcion que debe conservarse", html)
-        self.assertIn(str(self.cliente), html)
+        self.assertNotIn("Descripcion que debe conservarse", html)
+        self.assertNotIn(str(self.cliente), html)
         self.assertIn('data-garantia-state-select="1"', html)
 
     def test_inline_update_fecha_vencimiento(self):

@@ -39,15 +39,7 @@
       </button>
     </div>
 
-    <div class="garantia-card__section">
-      <div data-garantia-inline-slot="cliente">
-        {% include "garantias/_inline_field_cliente.html" with g=g today=today only %}
-      </div>
-
-      {% if g.descripcion %}
-        <p class="garantia-card__description mb-0">{{ g.descripcion|truncatewords:18 }}</p>
-      {% endif %}
-    </div>
+    <div data-garantia-inline-slot="cliente"></div>
 
     <div class="garantia-card__section garantia-card__meta">
       <div class="garantia-card__meta-block">

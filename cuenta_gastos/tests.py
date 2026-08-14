@@ -87,6 +87,12 @@ class CuentaGastosTests(TestCase):
         resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
         self.assertEqual(resp.status_code, 200)
 
+    def test_panel_no_renderiza_cliente_ni_descripcion_en_tarjetas(self):
+        resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "cuenta-card__client")
+        self.assertNotContains(resp, "cuenta-card__description")
+
     def test_panel_no_instancia_formulario_inline_de_creacion(self):
         with patch("cuenta_gastos.views.CuentaGastosInlineCreateForm") as form_class:
             resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
@@ -1176,6 +1182,8 @@ class CuentaGastosTests(TestCase):
         self.assertIn('name="layout" value="drawer"', data["html"])
         self.assertIn("data-cuenta-tags-section", data["html"])
         self.assertIn("data-cuenta-options-section", data["html"])
+        self.assertIn('name="descripcion"', data["html"])
+        self.assertIn('name="cliente"', data["html"])
 
     def test_editar_cuenta_preserva_valores(self):
         # We send a POST request with empty values for title, description, client, assignments, tags, options, etc.
@@ -1230,6 +1238,8 @@ class CuentaGastosTests(TestCase):
         self.assertTrue(data["success"])
         self.assertIn("cuenta-drawer__panel", data["html"])
         self.assertIn('id="cuenta-%s"' % self.cuenta.id, data["card_html"])
+        self.assertNotIn("cuenta-card__client", data["card_html"])
+        self.assertNotIn("cuenta-card__description", data["card_html"])
 
     def test_agregar_comentario_ajax_devuelve_solo_seccion_y_contador(self):
         resp = self.client.post(
