@@ -552,6 +552,11 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertEqual(javascript.count("root.addEventListener('submit'"), 1)
         self.assertIn("async function readDetailFormResponse(response)", javascript)
         self.assertIn("if (data.status === 'validation_error') {", javascript)
+        self.assertIn("let detailRequestController = null", javascript)
+        self.assertIn("DETAIL_REQUEST_TIMEOUT_MS = 15000", javascript)
+        self.assertIn("abortActiveDetailRequest()", javascript)
+        self.assertIn("data-garantia-detail-retry=\"1\"", javascript)
+        self.assertIn("Reintentar", javascript)
 
     def test_creacion_inline_devuelve_json_y_tarjeta(self):
         response = self.client.post(
@@ -944,6 +949,43 @@ class GarantiasColumnasDinamicasTests(TestCase):
         self.assertContains(response, "zaha-detail-modal__header")
         self.assertContains(response, "zaha-detail-modal__body")
         self.assertContains(response, "zaha-detail-modal__footer")
+        self.assertNotEqual(response.redirect_chain if hasattr(response, "redirect_chain") else [], [("", 302)])
+        self.assertTrue(response.content.strip())
+
+    def test_detalle_parcial_inexistente_devuelve_404(self):
+        response = self.client.get(
+            reverse("garantias:detalle_garantia_parcial", args=[999999]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_detalle_get_no_modifica_fecha_ni_descripcion(self):
+        self.garantia.descripcion = "Prueba"
+        self.garantia.fecha_vencimiento = date(2026, 8, 25)
+        self.garantia.save(update_fields=["descripcion", "fecha_vencimiento"])
+
+        response = self.client.get(
+            reverse("garantias:detalle_garantia_parcial", args=[self.garantia.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.garantia.refresh_from_db()
+        self.assertEqual(self.garantia.descripcion, "Prueba")
+        self.assertEqual(self.garantia.fecha_vencimiento, date(2026, 8, 25))
+
+    def test_detalle_renderiza_fecha_dateinput_en_formato_iso(self):
+        self.garantia.fecha_vencimiento = date(2026, 8, 25)
+        self.garantia.save(update_fields=["fecha_vencimiento"])
+
+        response = self.client.get(
+            reverse("garantias:detalle_garantia_parcial", args=[self.garantia.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="fecha_vencimiento"')
+        self.assertContains(response, 'value="2026-08-25"')
 
 
 class GarantiasCopiarPegarTests(TestCase):
@@ -1415,6 +1457,11 @@ class GarantiasComentarioTests(TestCase):
             creado_por=self.admin,
             estado=Garantia.Estado.EN_PROCESO,
         )
+        self.otra_garantia = Garantia.objects.create(
+            titulo="Otra garantia comentarios",
+            creado_por=self.admin,
+            estado=Garantia.Estado.EN_PROCESO,
+        )
 
     def test_comentario_ajax_devuelve_html_parcial_y_contador(self):
         response = self.client.post(
@@ -1451,6 +1498,30 @@ class GarantiasComentarioTests(TestCase):
         self.assertIn('data-garantia-comentario-form="1"', data["html"])
         self.assertEqual(GarantiaComentario.objects.filter(garantia=self.garantia).count(), 0)
 
+    def test_comentario_se_asocia_solo_a_la_garantia_correcta(self):
+        response = self.client.post(
+            reverse("garantias:agregar_comentario", args=[self.garantia.pk]),
+            {
+                "comentario": "Comentario garantia A",
+                "layout": "drawer",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            GarantiaComentario.objects.filter(
+                garantia=self.garantia,
+                comentario="Comentario garantia A",
+            ).exists()
+        )
+        self.assertFalse(
+            GarantiaComentario.objects.filter(
+                garantia=self.otra_garantia,
+                comentario="Comentario garantia A",
+            ).exists()
+        )
+
     def test_agregar_comentario_ajax_valida_csrf(self):
         client = Client(enforce_csrf_checks=True)
         client.login(username="admin_comentarios_garantias", password="pass123")
@@ -1477,6 +1548,68 @@ class GarantiasComentarioTests(TestCase):
         data = response_con_csrf.json()
         self.assertTrue(data["success"])
         self.assertTrue(GarantiaComentario.objects.filter(comentario="Comentario con CSRF").exists())
+
+
+class GarantiaDetalleEdicionTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin_detalle_edicion_garantias",
+            password="pass123",
+            is_superuser=True,
+            is_staff=True,
+            first_name="Admin",
+        )
+        self.client.force_login(self.admin)
+        self.cliente = Cliente.objects.create(nombre="Cliente detalle")
+        self.asignado = User.objects.create_user(
+            username="asignado_detalle_edicion_garantias",
+            password="pass123",
+            first_name="Asignado",
+        )
+        self.garantia = Garantia.objects.create(
+            titulo="Garantia detalle",
+            descripcion="Descripcion inicial",
+            cliente=self.cliente,
+            prioridad=Garantia.Prioridad.MEDIA,
+            fecha_vencimiento=date(2026, 8, 25),
+            creado_por=self.admin,
+            estado=Garantia.Estado.SOLICITUD_NAVIERA,
+        )
+        self.garantia.asignados.add(self.asignado)
+
+    def test_detalle_precarga_descripcion(self):
+        response = self.client.get(
+            reverse("garantias:detalle_garantia_parcial", args=[self.garantia.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="descripcion"')
+        self.assertContains(response, "Descripcion inicial")
+
+    def test_editar_garantia_persiste_descripcion_y_conserva_otros_campos(self):
+        response = self.client.post(
+            reverse("garantias:editar_garantia", args=[self.garantia.pk]),
+            {
+                "titulo": "Garantia detalle",
+                "descripcion": "Descripcion modificada",
+                "cliente": self.cliente.pk,
+                "prioridad": Garantia.Prioridad.MEDIA,
+                "fecha_vencimiento": "2026-08-25",
+                "asignados": [self.asignado.pk],
+                "layout": "modal",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.garantia.refresh_from_db()
+        self.assertEqual(self.garantia.descripcion, "Descripcion modificada")
+        self.assertEqual(self.garantia.fecha_vencimiento, date(2026, 8, 25))
+        self.assertEqual(self.garantia.cliente, self.cliente)
+        self.assertEqual(self.garantia.prioridad, Garantia.Prioridad.MEDIA)
+        self.assertEqual(list(self.garantia.asignados.all()), [self.asignado])
 
 
 class GarantiasArchivosAjaxTests(TestCase):

@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, F, Q, Window
+from django.db.models import Count, F, Prefetch, Q, Window
 from django.db.models.functions import RowNumber
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -164,6 +164,38 @@ def _garantia_queryset():
     )
 
 
+def _garantia_detalle_queryset():
+    return (
+        Garantia.objects.filter(eliminado_en__isnull=True)
+        .select_related("cliente", "creado_por", "columna")
+        .prefetch_related(
+            "asignados",
+            "etiquetas",
+            Prefetch(
+                "comentarios",
+                queryset=GarantiaComentario.objects.select_related("usuario").order_by("-fecha", "-id"),
+                to_attr="comentarios_detalle",
+            ),
+            Prefetch(
+                "archivos",
+                queryset=GarantiaArchivo.objects.select_related("subido_por").order_by("-fecha", "-id"),
+                to_attr="archivos_detalle",
+            ),
+            Prefetch(
+                "enlaces",
+                queryset=GarantiaEnlace.objects.select_related("creado_por").order_by("-fecha", "-id"),
+                to_attr="enlaces_detalle",
+            ),
+        )
+        .annotate(
+            comentarios_count=Count("comentarios", distinct=True),
+            archivos_count=Count("archivos", distinct=True),
+            enlaces_count=Count("enlaces", distinct=True),
+        )
+        .order_by("-fecha_creacion", "-id")
+    )
+
+
 def _board_queryset(usuario=None):
     codigos_activos = [codigo for codigo, _nombre in _columnas_estado_choices()]
     queryset = _garantia_queryset().filter(estado__in=codigos_activos).filter(
@@ -301,10 +333,10 @@ def _contexto_modal_garantia(garantia, form=None, archivos_form=None, enlace_for
         "nombre_corto_asignados": [_nombre_corto_usuario(usuario) for usuario in asignados],
         "iniciales_asignados": [_iniciales_usuario(usuario) for usuario in asignados],
         "asignados_count": len(asignados),
-        "comentarios": _comentarios_queryset(garantia),
+        "comentarios": getattr(garantia, "comentarios_detalle", _comentarios_queryset(garantia)),
         "comentarios_count": garantia.comentarios_count,
-        "archivos": _archivos_queryset(garantia),
-        "enlaces": _enlaces_queryset(garantia),
+        "archivos": getattr(garantia, "archivos_detalle", _archivos_queryset(garantia)),
+        "enlaces": getattr(garantia, "enlaces_detalle", _enlaces_queryset(garantia)),
         "etiquetas": list(garantia.etiquetas.all()),
     }
 
@@ -1048,7 +1080,7 @@ def agregar_comentario(request, pk):
 @login_required
 @admin_required
 def detalle_garantia(request, pk):
-    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    garantia = get_object_or_404(_garantia_detalle_queryset(), pk=pk)
     layout = (request.GET.get("layout") or "modal").strip()
     contexto = _contexto_modal_garantia(garantia)
     contexto["layout"] = layout
@@ -1060,7 +1092,7 @@ def detalle_garantia(request, pk):
 @login_required
 @admin_required
 def detalle_garantia_parcial(request, pk):
-    garantia = get_object_or_404(_garantia_queryset(), pk=pk)
+    garantia = get_object_or_404(_garantia_detalle_queryset(), pk=pk)
     layout = (request.GET.get("layout") or "modal").strip()
     contexto = _contexto_modal_garantia(garantia)
     contexto["layout"] = layout

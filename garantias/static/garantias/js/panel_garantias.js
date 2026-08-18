@@ -31,6 +31,7 @@
     const drawerRoot = document.getElementById('garantia-drawer-root');
     const drawerElement = drawerRoot?.querySelector('.garantia-drawer');
     const drawerContent = document.getElementById('garantiaDrawerContent');
+    const DETAIL_REQUEST_TIMEOUT_MS = 15000;
     const copyStorageKey = 'garantias.copiedCard';
     const pendingCardIds = new Set();
     const sectionRequestVersions = new WeakMap();
@@ -38,6 +39,7 @@
     let currentDetailUrl = '';
     let currentDetailCardId = '';
     let currentDetailLayout = 'modal';
+    let detailRequestController = null;
     let drawerBusy = false;
     const inlineSharedSlot = document.querySelector('[data-garantia-inline-shared-slot="1"]');
     const inlineSlotHome = document.querySelector('[data-garantia-inline-slot-home="1"]');
@@ -121,10 +123,18 @@
       return 'No se pudo completar la accion. Verifica tu conexion e intenta de nuevo.';
     }
 
-    function getHtml(url) {
+    function getHtml(url, options = {}) {
+      const controller = options.controller || new AbortController();
+      let timeoutReached = false;
+      const timeoutId = window.setTimeout(() => {
+        timeoutReached = true;
+        controller.abort();
+      }, DETAIL_REQUEST_TIMEOUT_MS);
+
       return fetch(url, {
         credentials: 'same-origin',
-        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' }
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
+        signal: controller.signal,
       }).then((response) => {
         if (!response.ok) {
           const error = new Error(`Error ${response.status}`);
@@ -137,7 +147,33 @@
           throw error;
         }
         return response.text();
+      }).catch((error) => {
+        if (error?.name === 'AbortError' && timeoutReached) {
+          const timeoutError = new Error('Tiempo de espera agotado.');
+          timeoutError.status = 408;
+          throw timeoutError;
+        }
+        throw error;
+      }).finally(() => {
+        window.clearTimeout(timeoutId);
       });
+    }
+
+    function abortActiveDetailRequest() {
+      if (!detailRequestController) return;
+      detailRequestController.abort();
+      detailRequestController = null;
+    }
+
+    function renderDetailLoadError(layout, url, message) {
+      const safeMessage = message || 'No fue posible cargar los detalles. Intenta nuevamente.';
+      const retryButton = url
+        ? `<button type="button" class="btn btn-outline-secondary btn-sm mt-3" data-garantia-detail-retry="1" data-detail-url="${url}" data-detail-layout="${layout}">Reintentar</button>`
+        : '';
+      if (layout === 'drawer') {
+        return `<div class="garantia-drawer__loading text-danger">${safeMessage}${retryButton}</div>`;
+      }
+      return `<div class="modal-body p-4 text-center text-danger">${safeMessage}${retryButton}</div>`;
     }
 
     function ensureEmptyState(column) {
@@ -294,6 +330,7 @@
     function closeDrawer(force) {
       if (!drawerRoot || !drawerElement) return;
       if (drawerBusy && !force) return;
+      abortActiveDetailRequest();
       drawerRoot.classList.remove('is-open');
       drawerRoot.setAttribute('aria-hidden', 'true');
       unlockBodyScroll();
@@ -1229,13 +1266,15 @@
 
     function loadModal(url, cardId) {
       if (!modalContent || !modalInstance) return;
+      abortActiveDetailRequest();
+      detailRequestController = new AbortController();
       const version = detailState.version + 1;
       detailState.version = version;
       detailState.id = cardId || '';
       detailState.layout = 'modal';
       modalContent.innerHTML = '<div class="modal-body p-4 text-center text-muted">Cargando...</div>';
       modalInstance.show();
-      getHtml(url)
+      getHtml(url, {controller: detailRequestController})
         .then((html) => {
           if (detailState.version !== version || detailState.id !== cardId || !modalElement.classList.contains('show')) return;
           if (!html || !html.trim()) {
@@ -1248,13 +1287,19 @@
         })
         .catch((error) => {
           if (detailState.version !== version || detailState.id !== cardId || !modalElement.classList.contains('show')) return;
+          if (error?.name === 'AbortError') return;
           console.error('No se pudo cargar la garantia:', error);
-          modalContent.innerHTML = '<div class="modal-body p-4 text-center text-danger">No fue posible cargar los detalles.</div>';
+          modalContent.innerHTML = renderDetailLoadError('modal', url, 'No fue posible cargar los detalles. Intenta nuevamente.');
+        })
+        .finally(() => {
+          if (detailState.version === version) detailRequestController = null;
         });
     }
 
     function loadDrawer(url, cardId) {
       if (!drawerRoot || !drawerElement || !drawerContent) return;
+      abortActiveDetailRequest();
+      detailRequestController = new AbortController();
       const detailUrl = url.includes('?') ? `${url}&layout=drawer` : `${url}?layout=drawer`;
       const version = detailState.version + 1;
       detailState.version = version;
@@ -1266,19 +1311,32 @@
       drawerContent.innerHTML = '<div class="garantia-drawer__loading">Cargando...</div>';
       openDrawerShell();
       setDrawerBusy(true);
-      getHtml(detailUrl)
+      getHtml(detailUrl, {controller: detailRequestController})
         .then((html) => {
           if (detailState.version !== version || detailState.id !== cardId || !drawerRoot.classList.contains('is-open')) return;
+          if (!html || !html.trim()) {
+            const error = new Error('Respuesta HTML vacia.');
+            error.status = 200;
+            throw error;
+          }
           drawerContent.innerHTML = html;
           if (window.initGarantiaSelects) window.initGarantiaSelects(drawerContent);
         })
         .catch((error) => {
           if (detailState.version !== version || detailState.id !== cardId || !drawerRoot.classList.contains('is-open')) return;
+          if (error?.name === 'AbortError') return;
           console.error('No se pudo cargar la garantia:', error);
-          drawerContent.innerHTML = `<div class="garantia-drawer__loading text-danger">${requestErrorMessage(error)}</div>`;
+          drawerContent.innerHTML = renderDetailLoadError(
+            'drawer',
+            detailUrl,
+            'No fue posible cargar los detalles. Intenta nuevamente.'
+          );
         })
         .finally(() => {
-          if (detailState.version === version) setDrawerBusy(false);
+          if (detailState.version === version) {
+            detailRequestController = null;
+            setDrawerBusy(false);
+          }
         });
     }
 
@@ -1520,6 +1578,21 @@
       currentDetailUrl = url;
       currentDetailCardId = cardId;
       loadModal(url, cardId);
+      return;
+    });
+
+    document.addEventListener('click', (e) => {
+      const retryButton = e.target.closest('[data-garantia-detail-retry="1"]');
+      if (!retryButton) return;
+      e.preventDefault();
+      const url = retryButton.dataset.detailUrl || currentDetailUrl;
+      const layout = retryButton.dataset.detailLayout || currentDetailLayout || 'modal';
+      if (!url) return;
+      if (layout === 'drawer') {
+        loadDrawer(url.replace(/[?&]layout=drawer\b/, ''), currentDetailCardId);
+        return;
+      }
+      loadModal(url, currentDetailCardId);
     });
 
     root.addEventListener('submit', (e) => {
@@ -1761,18 +1834,31 @@
       const textarea = commentForm.querySelector('textarea[name="comentario"]');
       const text = (textarea?.value || '').trim();
       if (!url) return;
+      if (!text) {
+        showCommentFormError(detailRoot, 'Escribe un comentario antes de enviarlo.');
+        textarea?.focus();
+        return;
+      }
       const submitButton = commentForm.querySelector('[data-garantia-comment-submit="1"]');
       if (commentForm.dataset.pending === 'true') return;
 
       const fd = new FormData(commentForm);
       const layout = commentForm.querySelector('[name="layout"]')?.value || currentDetailLayout || 'drawer';
       fd.set('layout', layout);
+      fd.set('comentario', text);
       const detailVersion = detailState.version;
       commentForm.dataset.pending = 'true';
       commentForm.setAttribute('aria-busy', 'true');
       if (submitButton) submitButton.disabled = true;
       setDrawerBusy(layout === 'drawer');
-      window.csrfFetch(url, { method: 'POST', body: fd, headers: {'Accept': 'application/json'} })
+      window.csrfFetch(url, {
+        method: 'POST',
+        body: fd,
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        }
+      })
         .then((response) => {
           return readJsonResponse(response).then((data) => ({ ok: response.ok, status: response.status, data }));
         })
@@ -1992,7 +2078,10 @@
       window.csrfFetch(modalForm.getAttribute('action'), {
         method: 'POST',
         body: fd,
-        headers: { 'Accept': 'application/json' }
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        }
       })
       .then((response) => readDetailFormResponse(response))
       .then((data) => {
@@ -2065,6 +2154,7 @@
     });
 
     modalElement?.addEventListener('hidden.bs.modal', () => {
+      abortActiveDetailRequest();
       detailState.version += 1;
       detailState.id = '';
       currentDetailUrl = '';

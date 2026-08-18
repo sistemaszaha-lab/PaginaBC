@@ -97,7 +97,10 @@ class GarantiaForm(forms.ModelForm):
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
             "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
-            "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "fecha_vencimiento": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"class": "form-control", "type": "date"},
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -145,7 +148,8 @@ class GarantiaInlineCreateForm(GarantiaForm):
             "cliente": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "fecha_vencimiento": forms.DateInput(
-                attrs={"class": "form-control form-control-sm", "type": "date"}
+                format="%Y-%m-%d",
+                attrs={"class": "form-control form-control-sm", "type": "date"},
             ),
             "etiquetas": forms.SelectMultiple(
                 attrs={
@@ -288,7 +292,10 @@ class GarantiaEditarForm(forms.ModelForm):
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
             "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
-            "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "fecha_vencimiento": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"class": "form-control", "type": "date"},
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -296,6 +303,12 @@ class GarantiaEditarForm(forms.ModelForm):
         for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados"]:
             if name in self.fields:
                 self.fields[name].required = False
+        self.fields["cliente"].queryset = (
+            Cliente.objects.only("id", "nombre", "empresa").order_by("nombre", "empresa", "id")
+        )
+        self.fields["asignados"].queryset = User.objects.only(
+            "id", "first_name", "last_name", "username"
+        ).order_by("first_name", "last_name", "username", "id")
 
 
 class GarantiaQuickEditForm(GarantiaEditarForm):
@@ -306,7 +319,10 @@ class GarantiaQuickEditForm(GarantiaEditarForm):
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control form-control-sm", "type": "date"}),
+            "fecha_vencimiento": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"class": "form-control form-control-sm", "type": "date"},
+            ),
         }
 
 
