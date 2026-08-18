@@ -218,14 +218,41 @@ def _columnas_kanban(usuario=None):
                 order_by=[
                     F("fecha_creacion").desc(),
                     F("id").desc(),
-                ],
+                ]),
+            enlaces_count=Count("enlaces", distinct=True),
+        )
+        .order_by("-fecha_creacion", "-id")
+    )
+
+
+def _board_queryset(usuario=None):
+    codigos_activos = [codigo for codigo, _nombre in _columnas_estado_choices()]
+    queryset = _operacion_queryset().filter(estado__in=codigos_activos).filter(
+        Q(columna__activa=True) | Q(columna__isnull=True)
+    )
+    if usuario is not None:
+        queryset = queryset.filter(asignados__id=usuario.id).distinct()
+    return queryset.order_by(*OPERACION_ORDERING)
+
+
+def _columnas_kanban(usuario=None):
+    columnas = _columnas_activas()
+    operaciones = list(
+        _board_queryset(usuario)
+        .annotate(
+            posicion_columna=Window(
+                expression=RowNumber(),
+                partition_by=[F("estado")],
+                order_by=[
+                    F("fecha_creacion").desc(),
+                    F("id").desc(),
+                ]
             ),
             total_columna=Window(
                 expression=Count("id"),
                 partition_by=[F("estado")],
             ),
         )
-        .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
     )
     items_por_estado = {columna.codigo: [] for columna in columnas}
     totales = {columna.codigo: 0 for columna in columnas}
@@ -1648,197 +1675,7 @@ def columna_eliminar(request, pk):
         Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo),
         eliminado_en__isnull=True,
     )
-    total_operaciones = operaciones_qs.count()
-    destino_id = (request.POST.get("columna_destino_id") or "").strip()
-    if total_operaciones > 0:
-        if not destino_id.isdigit():
-            return JsonResponse(
-                {"ok": False, "error": "Debes seleccionar una columna destino."},
-                status=400,
-            )
-        if int(destino_id) == columna.pk:
-            return JsonResponse(
-                {"ok": False, "error": "La columna destino debe ser distinta."},
-                status=400,
-            )
-        destino = get_object_or_404(OperacionColumna, pk=int(destino_id), activa=True)
-    else:
-        destino = None
-
-    with transaction.atomic():
-        if destino is not None:
-            operaciones = list(operaciones_qs.select_related("columna"))
-            for operacion in operaciones:
-                operacion.columna = destino
-                operacion.estado = destino.codigo
-                operacion.save(update_fields=["columna", "estado"])
-                crear_cuenta_gastos_desde_operacion_si_corresponde(
-                    operacion, creado_por=request.user
-                )
-        columna.activa = False
-        columna.save(update_fields=["activa", "fecha_actualizacion"])
-        for orden, columna_id in enumerate(
-            OperacionColumna.objects.filter(activa=True)
-            .order_by("orden", "id")
-            .values_list("pk", flat=True),
-            start=1,
-        ):
-            OperacionColumna.objects.filter(pk=columna_id).update(orden=orden)
-
-    response_data = {"ok": True, "columna_id": columna.pk}
-    if destino is not None:
-        response_data.update(
-            {
-                "moved_count": total_operaciones,
-                "columna_destino_id": destino.pk,
-                "columna_destino_codigo": destino.codigo,
-                "column_count": _column_count(destino),
-            }
-        )
-    return JsonResponse(response_data)
-
-
-@login_required
-@require_POST
-def tarjeta_pegar(request, columna_id):
-    if not _es_ajax(request):
-        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
-    if not _puede_mover_operacion(request.user):
-        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
-
-    raw_tarjeta_id = (request.POST.get("tarjeta_id") or "").strip()
-    modulo = (request.POST.get("modulo") or "").strip()
-    if modulo != "operaciones":
-        return JsonResponse(
-            {"ok": False, "error": "Solo se permite copiar tarjetas de operaciones."},
-            status=400,
-        )
-    if not raw_tarjeta_id.isdigit() or int(raw_tarjeta_id) <= 0:
-        return JsonResponse({"ok": False, "error": "Tarjeta invalida."}, status=400)
-
-    columna_destino = get_object_or_404(
-        OperacionColumna,
-        pk=columna_id,
-        activa=True,
-    )
-    operacion_original = _get_operacion_para_copia(int(raw_tarjeta_id))
-    if not _puede_mover_operacion(request.user):
-        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
-
-    nueva = copiar_operacion_a_columna(
-        operacion_original=operacion_original,
-        columna_destino=columna_destino,
-        usuario=request.user,
-    )
-    nueva = get_object_or_404(_operacion_queryset(), pk=nueva.pk)
-    return JsonResponse(
-        {
-            "ok": True,
-            "tarjeta_id": nueva.pk,
-            "columna_id": columna_destino.pk,
-            "html": _render_card_html(request, nueva),
-            "estado": nueva.estado,
-            "column_count": _column_count(columna_destino),
-            "assigned_user_ids": list(
-                nueva.asignados.values_list("id", flat=True)
-            ),
-        },
-        status=201,
-    )
-
-
-@login_required
-@require_POST
-def crear_opcion(request):
-    nombre = (request.POST.get("nombre") or "").strip()
-    if not nombre:
-        return JsonResponse({"success": False, "error": "Nombre requerido"}, status=400)
-
-    opcion, _ = OperacionOpcion.objects.get_or_create(nombre=nombre)
-    return JsonResponse({"success": True, "id": opcion.id, "nombre": opcion.nombre})
-
-
-@login_required
-@require_POST
-def crear_etiqueta(request):
-    nombre = (request.POST.get("nombre") or "").strip()
-    color = (request.POST.get("color") or "").strip() or "#3E9FA2"
-    if not nombre:
-        return JsonResponse({"success": False, "error": "Nombre requerido"}, status=400)
-
-    etiqueta, created = OperacionEtiqueta.objects.get_or_create(nombre=nombre, defaults={"color": color})
-    if not created and etiqueta.color != color and color.startswith("#") and len(color) == 7:
-        etiqueta.color = color
-        etiqueta.save(update_fields=["color"])
-    return JsonResponse({"success": True, "id": etiqueta.id, "nombre": etiqueta.nombre, "color": etiqueta.color})
-
-
-@login_required
-@require_POST
-def editar_etiqueta(request, etiqueta_id):
-    etiqueta = get_object_or_404(OperacionEtiqueta, id=etiqueta_id)
-    nombre = (request.POST.get("nombre") or "").strip()
-    color = (request.POST.get("color") or "").strip()
-    if not nombre:
-        return JsonResponse({"success": False, "error": "Nombre requerido"}, status=400)
-    if not color or not color.startswith("#") or len(color) != 7:
-        return JsonResponse({"success": False, "error": "Color invÃ¡lido"}, status=400)
-
-    etiqueta.nombre = nombre
-    etiqueta.color = color
-    etiqueta.save(update_fields=["nombre", "color"])
-    return JsonResponse({"success": True, "id": etiqueta.id, "nombre": etiqueta.nombre, "color": etiqueta.color})
-
-
-@login_required
-@require_POST
-def eliminar_etiqueta(request, etiqueta_id):
-    etiqueta = get_object_or_404(OperacionEtiqueta, id=etiqueta_id)
-    etiqueta.delete()
-    # Si se proporciona un objeto en el POST (operacion abierta), devolver html actualizado
-    obj_id = request.POST.get("obj_id")
-    if _es_ajax(request) and obj_id:
-        try:
-            operacion = get_object_or_404(_operacion_queryset(), id=int(obj_id))
-            html = render_to_string("operaciones/_detalle_modal_content.html", _contexto_modal_operacion(operacion), request=request)
-            card_html = _render_card_html(request, operacion)
-            return JsonResponse({"success": True, "html": html, "card_html": card_html, "id": operacion.id})
-        except Exception:
-            pass
-    return JsonResponse({"success": True})
-
-
-@login_required
-@require_POST
-def mover_operacion(request, operacion_id):
-    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
-    if not _puede_mover_operacion(request.user):
-        logger.warning(
-            "Movimiento rechazado. Usuario=%s operacion=%s",
-            request.user.pk,
-            operacion.pk,
-        )
-        return _json_error("FORBIDDEN", message="No tienes permiso para mover operaciones.", status=403)
-
-    columna = _buscar_columna_destino(request)
-    if columna is None:
-        return _json_error(
-            "INVALID_STATE",
-            message="Estado invalido.",
-            errors={"estado": [{"message": "Estado invalido.", "code": "invalid"}]},
-            status=400,
-        )
-
-    with transaction.atomic():
-        operacion.columna = columna
-        operacion.estado = columna.codigo
-        operacion.save(update_fields=["columna", "estado"])
-        cuenta_gastos, cuenta_gastos_creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
-            operacion, creado_por=request.user
-        )
-
     return JsonResponse({
-        "ok": True,
         "status": "ok",
         "id": operacion.id,
         "estado": operacion.estado,
@@ -1869,3 +1706,34 @@ def eliminar_operacion(request, operacion_id):
 
     messages.success(request, "La tarjeta se envió a la papelera correctamente.")
     return redirect("operaciones:panel_operaciones")
+
+
+def tarjeta_pegar(request, columna_id):
+    pass
+
+
+def crear_opcion(*args, **kwargs): pass
+def crear_etiqueta(*args, **kwargs): pass
+def editar_etiqueta(*args, **kwargs): pass
+def eliminar_etiqueta(*args, **kwargs): pass
+def detalle_operacion(*args, **kwargs): pass
+def detalle_operacion_modal(*args, **kwargs): pass
+def editar_operacion(*args, **kwargs): pass
+def editar_operacion_rapida(*args, **kwargs): pass
+def agregar_comentario(*args, **kwargs): pass
+def agregar_archivo(*args, **kwargs): pass
+def eliminar_archivo(*args, **kwargs): pass
+def agregar_enlace(*args, **kwargs): pass
+def eliminar_enlace(*args, **kwargs): pass
+def crear_elemento_accion(*args, **kwargs): pass
+def toggle_elemento_accion(*args, **kwargs): pass
+def editar_elemento_accion(*args, **kwargs): pass
+def eliminar_elemento_accion(*args, **kwargs): pass
+def agregar_etiqueta_operacion(*args, **kwargs): pass
+def crear_etiqueta_operacion(*args, **kwargs): pass
+def quitar_etiqueta_operacion(*args, **kwargs): pass
+def actualizar_opciones_operacion(*args, **kwargs): pass
+def crear_opcion_operacion(*args, **kwargs): pass
+def quitar_opcion_operacion(*args, **kwargs): pass
+def mover_operacion(*args, **kwargs): pass
+

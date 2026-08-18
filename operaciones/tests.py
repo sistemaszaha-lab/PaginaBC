@@ -2384,8 +2384,8 @@ class OperacionesProgressiveLoadingTests(TestCase):
         )
 
     def _endpoint(self, estado, loaded_ids=(), **params):
-        params.setdefault("offset", len(loaded_ids))
-        params.setdefault(
+        params.sfecha_vencimientoefault("offset", len(loaded_ids))
+        params.sfecha_vencimientoefault(
             "loaded", ",".join(str(value) for value in loaded_ids)
         )
         return self.client.get(

@@ -314,7 +314,7 @@
       }
     }
 
-    function moveOperacionCard({ card, targetColumn, targetState, sourceColumn, sourceIndex }) {
+    function moveOperacionCard({ card, targetColumn, targetState, sourceColumn, sourceIndex, targetIndex }) {
       const cardId = card?.dataset.panelOperacionId;
       const previousState = card?.dataset.operacionState || sourceColumn?.dataset.estado;
       const previousLabel = getStateLabel(card, previousState);
@@ -332,7 +332,7 @@
         return Promise.resolve(false);
       }
 
-      if (targetState === previousState) {
+      if (targetState === previousState && originIndex === targetIndex) {
         syncCardStateUI(card, previousState, previousLabel);
         syncColumnUI(originColumn, targetColumn);
         return Promise.resolve(true);
@@ -350,6 +350,7 @@
       formData.append('estado', targetState);
       const targetColumnId = targetColumn?.dataset.columnaId || '';
       if (targetColumnId) formData.append('columna_id', targetColumnId);
+      if (targetIndex !== undefined) formData.append('posicion', targetIndex);
 
       return postForm(card.dataset.operacionMoveUrl, formData)
         .then(async (response) => {
@@ -1144,6 +1145,7 @@
               targetState: evt.to?.dataset.estado,
               sourceColumn: evt.from,
               sourceIndex: evt.oldIndex,
+              targetIndex: evt.newIndex,
             });
           }
         });

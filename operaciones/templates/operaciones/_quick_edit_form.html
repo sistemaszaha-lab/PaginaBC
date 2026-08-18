@@ -24,14 +24,23 @@
       {% if form.cliente.errors %}<div class="text-danger small mt-1">{{ form.cliente.errors|join:", " }}</div>{% endif %}
     </div>
 
+    <div class="mb-2">
+      <label class="form-label small mb-1" for="{{ form.prioridad.id_for_label }}">Prioridad</label>
+      {{ form.prioridad }}
+    </div>
+
     <div class="row g-2 mb-2">
-      <div class="col-6">
-        <label class="form-label small mb-1" for="{{ form.prioridad.id_for_label }}">Prioridad</label>
-        {{ form.prioridad }}
+      <div class="col-4">
+        <label class="form-label small mb-1" for="{{ form.etd.id_for_label }}">ETD</label>
+        {{ form.etd }}
       </div>
-      <div class="col-6">
-        <label class="form-label small mb-1" for="{{ form.fecha_vencimiento.id_for_label }}">Vencimiento</label>
-        {{ form.fecha_vencimiento }}
+      <div class="col-4">
+        <label class="form-label small mb-1" for="{{ form.eta.id_for_label }}">ETA</label>
+        {{ form.eta }}
+      </div>
+      <div class="col-4">
+        <label class="form-label small mb-1" for="{{ form.carga_lista.id_for_label }}">Carga</label>
+        {{ form.carga_lista }}
       </div>
     </div>
 

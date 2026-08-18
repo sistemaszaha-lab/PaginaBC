@@ -31,7 +31,10 @@
             {% endfor %}
           </div>
           <span class="small text-muted">{{ operacion.asignados.count }} asignados</span>
-          <span class="small text-muted">Vence: {% if operacion.fecha_vencimiento %}{{ operacion.fecha_vencimiento|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}</span>
+          {% if operacion.etd %}<span class="small text-muted">ETD: {{ operacion.etd|date:"d/m/Y" }}</span>{% endif %}
+          {% if operacion.eta %}<span class="small text-muted">ETA: {{ operacion.eta|date:"d/m/Y" }}</span>{% endif %}
+          {% if operacion.carga_lista %}<span class="small text-muted">Carga: {{ operacion.carga_lista|date:"d/m/Y" }}</span>{% endif %}
+          {% if not operacion.etd and not operacion.eta and not operacion.carga_lista %}<span class="small text-muted">Sin fechas</span>{% endif %}
         </div>
       </div>
       <button
@@ -63,15 +66,42 @@
             <label for="{{ form.cliente.id_for_label }}" class="form-label fw-semibold">Cliente</label>
             {{ form.cliente }}
           </div>
+  <div class="row g-4">
+    <div class="col-12 col-lg-8">
+      <form id="operacion-edit-form" method="post" enctype="multipart/form-data" action="{% url 'operaciones:editar_operacion' operacion.id %}"
+        data-operacion-modal-form="1">
+        {% csrf_token %}
+        <input type="hidden" name="asignados_present" value="1">
+
+        <div class="mb-3">
+          <label for="{{ form.titulo.id_for_label }}" class="form-label fw-semibold">Título</label>
+          {{ form.titulo }}
+        </div>
+
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label for="{{ form.cliente.id_for_label }}" class="form-label fw-semibold">Cliente</label>
+            {{ form.cliente }}
+          </div>
           <div class="col-md-6 mb-3">
             <label for="{{ form.prioridad.id_for_label }}" class="form-label fw-semibold">Prioridad</label>
             {{ form.prioridad }}
           </div>
         </div>
 
-        <div class="mb-3">
-          <label for="{{ form.fecha_vencimiento.id_for_label }}" class="form-label fw-semibold">Vencimiento</label>
-          {{ form.fecha_vencimiento }}
+        <div class="row">
+          <div class="col-md-4 mb-3">
+            <label for="{{ form.etd.id_for_label }}" class="form-label fw-semibold">ETD</label>
+            {{ form.etd }}
+          </div>
+          <div class="col-md-4 mb-3">
+            <label for="{{ form.eta.id_for_label }}" class="form-label fw-semibold">ETA</label>
+            {{ form.eta }}
+          </div>
+          <div class="col-md-4 mb-3">
+            <label for="{{ form.carga_lista.id_for_label }}" class="form-label fw-semibold">Carga lista</label>
+            {{ form.carga_lista }}
+          </div>
         </div>
 
         <div class="mb-3">
@@ -91,6 +121,10 @@
 
       <hr class="my-4" />
 
+      {% include "operaciones/_comentarios_section.html" %}
+
+      <hr class="my-4" />
+
       {% include "operaciones/_elementos_accion_section.html" %}
 
       <hr class="my-4" />
@@ -105,13 +139,11 @@
     </div>
 
     <div class="col-12 col-lg-4">
-      {% include "operaciones/_comentarios_section.html" %}
+      <!-- Mantenemos la columna para opciones/futuros addons si es necesario, o la ocultamos si ya no hay nada que poner -->
     </div>
   </div>
 </div>
 <div class="modal-footer zaha-detail-modal__footer d-flex justify-content-between">
-  <form method="post" action="{% url 'operaciones:eliminar_operacion' operacion.id %}" data-operacion-modal-delete="1">
-    {% csrf_token %}
     <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
     <button type="submit" class="btn btn-danger">Eliminar</button>
   </form>

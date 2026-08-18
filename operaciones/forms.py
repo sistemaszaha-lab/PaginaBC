@@ -92,7 +92,9 @@ class OperacionInlineCreateForm(forms.ModelForm):
             "descripcion",
             "cliente",
             "prioridad",
-            "fecha_vencimiento",
+            "etd",
+            "eta",
+            "carga_lista",
             "asignados",
             "etiquetas",
         ]
@@ -112,7 +114,13 @@ class OperacionInlineCreateForm(forms.ModelForm):
             ),
             "cliente": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "fecha_vencimiento": forms.DateInput(
+            "etd": forms.DateInput(
+                attrs={"class": "form-control form-control-sm", "type": "date"}
+            ),
+            "eta": forms.DateInput(
+                attrs={"class": "form-control form-control-sm", "type": "date"}
+            ),
+            "carga_lista": forms.DateInput(
                 attrs={"class": "form-control form-control-sm", "type": "date"}
             ),
             "asignados": forms.SelectMultiple(
@@ -136,7 +144,9 @@ class OperacionInlineCreateForm(forms.ModelForm):
             "descripcion",
             "cliente",
             "prioridad",
-            "fecha_vencimiento",
+            "etd",
+            "eta",
+            "carga_lista",
             "asignados",
             "etiquetas",
             "archivos",
@@ -248,12 +258,18 @@ class OperacionQuickEditForm(forms.ModelForm):
 
     class Meta:
         model = Operacion
-        fields = ["titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados"]
+        fields = ["titulo", "cliente", "prioridad", "etd", "eta", "carga_lista", "asignados"]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "cliente": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "fecha_vencimiento": forms.DateInput(
+            "etd": forms.DateInput(
+                attrs={"class": "form-control form-control-sm", "type": "date"}
+            ),
+            "eta": forms.DateInput(
+                attrs={"class": "form-control form-control-sm", "type": "date"}
+            ),
+            "carga_lista": forms.DateInput(
                 attrs={"class": "form-control form-control-sm", "type": "date"}
             ),
             "asignados": forms.SelectMultiple(
@@ -269,7 +285,9 @@ class OperacionQuickEditForm(forms.ModelForm):
         self.fields["titulo"].required = True
         self.fields["cliente"].required = False
         self.fields["prioridad"].required = False
-        self.fields["fecha_vencimiento"].required = False
+        self.fields["etd"].required = False
+        self.fields["eta"].required = False
+        self.fields["carga_lista"].required = False
         self.fields["asignados"].required = False
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
         User = get_user_model()
