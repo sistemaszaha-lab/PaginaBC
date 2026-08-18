@@ -9,9 +9,7 @@
         {{ form.as_p }}
 
         <div class="mt-4 mb-4">
-          {% include "garantias/_etiquetas_section.html" with garantia=garantia etiquetas=etiquetas
-          etiquetas_count=etiquetas_count etiquetas_form=etiquetas_form etiqueta_create_form=etiqueta_create_form only
-          %}
+          {% include "garantias/_etiquetas_section.html" with garantia=garantia etiquetas=etiquetas etiquetas_count=etiquetas_count etiquetas_form=etiquetas_form etiqueta_create_form=etiqueta_create_form only %}
         </div>
 
       </form>
@@ -19,19 +17,16 @@
       <hr class="my-4" />
 
       <div class="mt-4">
-        {% include "garantias/_archivos_section.html" with garantia=garantia archivos=archivos
-        archivos_form=archivos_form only %}
+        {% include "garantias/_archivos_section.html" with garantia=garantia archivos=archivos archivos_form=archivos_form only %}
       </div>
 
       <div class="mt-4">
-        {% include "garantias/_enlaces_section.html" with garantia=garantia enlaces=enlaces enlace_form=enlace_form only
-        %}
+        {% include "garantias/_enlaces_section.html" with garantia=garantia enlaces=enlaces enlace_form=enlace_form only %}
       </div>
     </div>
 
     <div class="col-12 col-lg-4">
-      {% include "garantias/comentarios/_comentarios_section.html" with garantia=garantia
-      comentario_form=comentario_form comentarios=comentarios comentarios_count=comentarios_count layout=layout only %}
+      {% include "garantias/comentarios/_comentarios_section.html" with garantia=garantia comentario_form=comentario_form comentarios=comentarios comentarios_count=comentarios_count layout=layout only %}
     </div>
   </div>
 </div>

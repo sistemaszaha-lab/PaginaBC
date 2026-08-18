@@ -1038,6 +1038,45 @@
       feedback.classList.toggle('es-error', level === 'danger');
     }
 
+    async function readRepositorioJsonResponse(response) {
+      const contentType = response.headers.get('content-type') || '';
+
+      if (!contentType.includes('application/json')) {
+        const responseText = await response.text();
+        const status = response.status;
+        const statusText = response.statusText || '';
+        const redirected = Boolean(response.redirected);
+        const responseUrl = response.url || '';
+        let message = `Respuesta inesperada del servidor (${status}${statusText ? ` ${statusText}` : ''}).`;
+
+        if (redirected || status === 302) {
+          message = 'La sesión ya no es válida. Recarga la página e intenta nuevamente.';
+        } else if (status === 403) {
+          message = 'La solicitud fue rechazada. Recarga la página e intenta nuevamente.';
+        } else if (status >= 500) {
+          message = 'El servidor no pudo procesar la carga del archivo.';
+        }
+
+        const error = new Error(message);
+        error.status = status;
+        error.statusText = statusText;
+        error.redirected = redirected;
+        error.responseUrl = responseUrl;
+        error.contentType = contentType;
+        error.responseText = responseText;
+        throw error;
+      }
+
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        const error = new Error(data.message || 'No se pudieron subir los archivos.');
+        error.status = response.status;
+        error.payload = data;
+        throw error;
+      }
+      return data;
+    }
+
     function setRepositorioPending(isPending, buttonText) {
       const rootNode = getRepositorioRoot();
       if (!rootNode) return;
@@ -1082,11 +1121,7 @@
           'Accept': 'application/json',
         },
       })
-        .then(async (response) => {
-          const data = await response.json();
-          if (!response.ok || !data.ok) throw data;
-          return data;
-        })
+        .then((response) => readRepositorioJsonResponse(response))
         .then((data) => {
           replaceRepositorioHtml(data.html);
           setRepositorioExpanded(Boolean(data.mostrar_todos));
@@ -1136,15 +1171,13 @@
           credentials: 'same-origin',
           body: formData,
           headers: {
+            'Accept': 'application/json',
             'X-CSRFToken': obtenerCsrfToken(),
             'X-Requested-With': 'XMLHttpRequest',
           },
         });
 
-        const data = await response.json();
-        if (!response.ok || !data.ok) {
-          throw new Error(data.message || 'No se pudieron subir los archivos.');
-        }
+        const data = await readRepositorioJsonResponse(response);
 
         replaceRepositorioHtml(data.html);
         setRepositorioExpanded(Boolean(data.mostrar_todos));

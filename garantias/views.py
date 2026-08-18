@@ -324,12 +324,15 @@ def _safe_next_url(request):
 
 def _contexto_modal_garantia(garantia, form=None, archivos_form=None, enlace_form=None, comentario_form=None):
     asignados = [usuario for usuario in garantia.asignados.all() if _nombre_corto_usuario(usuario)]
+    etiquetas = list(garantia.etiquetas.all())
     return {
         "garantia": garantia,
         "form": form or GarantiaEditarForm(instance=garantia),
         "archivos_form": archivos_form or GarantiaArchivosForm(),
         "enlace_form": enlace_form or GarantiaEnlaceForm(),
         "comentario_form": comentario_form or GarantiaComentarioForm(),
+        "etiquetas_form": GarantiaEtiquetaAssignForm(),
+        "etiqueta_create_form": GarantiaEtiquetaCreateForm(),
         "nombre_corto_asignados": [_nombre_corto_usuario(usuario) for usuario in asignados],
         "iniciales_asignados": [_iniciales_usuario(usuario) for usuario in asignados],
         "asignados_count": len(asignados),
@@ -337,7 +340,8 @@ def _contexto_modal_garantia(garantia, form=None, archivos_form=None, enlace_for
         "comentarios_count": garantia.comentarios_count,
         "archivos": getattr(garantia, "archivos_detalle", _archivos_queryset(garantia)),
         "enlaces": getattr(garantia, "enlaces_detalle", _enlaces_queryset(garantia)),
-        "etiquetas": list(garantia.etiquetas.all()),
+        "etiquetas": etiquetas,
+        "etiquetas_count": len(etiquetas),
     }
 
 

@@ -951,6 +951,14 @@ class GarantiasColumnasDinamicasTests(TestCase):
         self.assertContains(response, "zaha-detail-modal__footer")
         self.assertNotEqual(response.redirect_chain if hasattr(response, "redirect_chain") else [], [("", 302)])
         self.assertTrue(response.content.strip())
+        self.assertNotContains(response, "{% include")
+        self.assertContains(response, "Comentarios")
+        self.assertContains(response, "Etiquetas")
+        self.assertContains(response, "Archivos")
+        self.assertContains(response, "Enlaces")
+        self.assertContains(response, 'name="descripcion"')
+        self.assertContains(response, 'name="fecha_vencimiento"')
+        self.assertContains(response, "Sin asignados")
 
     def test_detalle_parcial_inexistente_devuelve_404(self):
         response = self.client.get(

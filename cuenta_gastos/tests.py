@@ -1708,8 +1708,10 @@ class RepositorioCuentaGastosTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn("application/json", response["Content-Type"])
         data = response.json()
         self.assertTrue(data["ok"])
+        self.assertEqual(data["message"], "PDF cargado correctamente.")
         self.assertTrue(DocumentoRepositorio.objects.filter(nombre_original="manual.pdf").exists())
 
     def test_se_pueden_subir_varios_pdf_en_una_sola_solicitud(self):
@@ -1742,6 +1744,7 @@ class RepositorioCuentaGastosTests(TestCase):
                     HTTP_X_REQUESTED_WITH="XMLHttpRequest",
                 )
                 self.assertEqual(response.status_code, 400)
+                self.assertIn("application/json", response["Content-Type"])
                 self.assertEqual(response.json(), {"ok": False, "message": "EL FORMATO NO ES VÁLIDO"})
 
     def test_si_un_archivo_es_invalido_no_se_guarda_ninguno(self):
@@ -1758,6 +1761,17 @@ class RepositorioCuentaGastosTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(DocumentoRepositorio.objects.count(), 0)
+
+    def test_post_sin_archivo_devuelve_400_json(self):
+        response = self.client.post(
+            reverse("cuenta_gastos:repositorio_subir"),
+            {},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("application/json", response["Content-Type"])
+        self.assertEqual(response.json(), {"ok": False, "message": "EL FORMATO NO ES VÁLIDO"})
 
     def test_listado_documentos_ordenado_del_mas_reciente_al_mas_antiguo(self):
         antiguo = DocumentoRepositorio.objects.create(
@@ -1810,6 +1824,15 @@ class RepositorioCuentaGastosTests(TestCase):
 
         for response in endpoints:
             self.assertEqual(response.status_code, 302)
+
+    def test_javascript_repositorio_valida_content_type_antes_de_json(self):
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        self.assertIn("async function readRepositorioJsonResponse(response)", javascript)
+        self.assertIn("response.headers.get('content-type') || ''", javascript)
+        self.assertIn("if (!contentType.includes('application/json'))", javascript)
+        self.assertIn("const responseText = await response.text();", javascript)
+        self.assertIn("'Accept': 'application/json'", javascript)
+        self.assertIn("La sesión ya no es válida. Recarga la página e intenta nuevamente.", javascript)
 
     def test_visualizacion_usa_inline(self):
         documento = DocumentoRepositorio.objects.create(
