@@ -51,7 +51,6 @@
     const detailState = {id: null, url: null, layout: 'modal', pending: false};
     let operacionDeleteUrl = null;
     let activeColumnShell = null;
-    const columnLoadRequests = new Map();
     let boardVersion = 0;
     let lastServerSyncedUserId = document.getElementById('OperacionesUserFilter')?.value || '';
 
@@ -958,140 +957,6 @@
 
     function invalidateColumnLoads() {
       boardVersion += 1;
-      columnLoadRequests.forEach((entry) => entry.controller.abort());
-      columnLoadRequests.clear();
-    }
-
-    function loadMoreCards(button) {
-      const shell = button?.closest('[data-operaciones-column="1"]');
-      const column = shell?.querySelector('.panel-operaciones-col');
-      const state = shell?.dataset.estado || column?.dataset.estado || '';
-      const loadUrl = button?.dataset.loadUrl || '';
-      if (!shell || !column || !state || !loadUrl) {
-        return Promise.reject(new Error('Columna no disponible.'));
-      }
-
-      const existing = columnLoadRequests.get(state);
-      if (existing) return existing.promise;
-
-      const loadedIds = getLoadedCardIds(column);
-      const offset = loadedIds.length;
-      const url = new URL(loadUrl, window.location.origin);
-      url.searchParams.set('offset', String(offset));
-      url.searchParams.set('loaded', loadedIds.join(','));
-      const selectedUserId = getSelectedUserId();
-      if (selectedUserId) url.searchParams.set('usuario', selectedUserId);
-
-      const controller = new AbortController();
-      const requestVersion = boardVersion;
-      setColumnLoading(shell, true);
-      showColumnLoadError(shell, '');
-
-      const request = fetch(`${url.pathname}${url.search}`, {
-        method: 'GET',
-        credentials: 'same-origin',
-        signal: controller.signal,
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          'Accept': 'application/json',
-        },
-      })
-        .then(async (response) => {
-          const contentType = response.headers.get('content-type') || '';
-          if (!contentType.includes('application/json')) {
-            throw new Error('Respuesta JSON invalida.');
-          }
-          let data;
-          try {
-            data = await response.json();
-          } catch (_) {
-            throw new Error('Respuesta JSON invalida.');
-          }
-          if (!response.ok || !data.ok) {
-            throw new Error(data.error || `Error ${response.status}`);
-          }
-          return data;
-        })
-        .then((data) => {
-          if (requestVersion !== boardVersion || controller.signal.aborted) {
-            return null;
-          }
-          const staleIds = Array.isArray(data.stale_ids)
-            ? data.stale_ids.map((value) => String(value))
-            : null;
-          const uniqueStaleIds = staleIds ? new Set(staleIds) : null;
-          if (
-            data.estado !== state ||
-            !Number.isInteger(data.loaded) ||
-            data.loaded < 0 ||
-            data.loaded > 10 ||
-            !Number.isInteger(data.next_offset) ||
-            !uniqueStaleIds ||
-            uniqueStaleIds.size !== staleIds.length ||
-            staleIds.some((cardId) => !loadedIds.includes(cardId)) ||
-            data.next_offset !== offset - staleIds.length + data.loaded ||
-            !Number.isInteger(data.total) ||
-            data.total < data.next_offset ||
-            typeof data.has_more !== 'boolean' ||
-            typeof data.html !== 'string' ||
-            (data.loaded > 0 && !data.html.trim()) ||
-            (data.loaded === 0 && data.has_more)
-          ) {
-            throw new Error('Respuesta incompatible con la columna.');
-          }
-
-          staleIds.forEach((cardId) => getCardElement(cardId)?.remove());
-          const wrapper = document.createElement('div');
-          wrapper.innerHTML = data.html;
-          const cards = Array.from(wrapper.children).filter(
-            (node) => node.matches?.('[data-panel-operacion-card="1"]')
-          );
-          if (cards.length !== data.loaded) {
-            throw new Error('Cantidad de tarjetas inesperada.');
-          }
-          const existingIds = new Set(getLoadedCardIds(column));
-          const responseIds = new Set();
-          cards.forEach((card) => {
-            const cardId = card.dataset.panelOperacionId || '';
-            if (
-              !cardId ||
-              existingIds.has(cardId) ||
-              responseIds.has(cardId) ||
-              card.dataset.operacionState !== state
-            ) {
-              throw new Error('Tarjeta duplicada o incompatible.');
-            }
-            responseIds.add(cardId);
-          });
-
-          column.querySelector('.panel-operacion-empty')?.remove();
-          const fragment = document.createDocumentFragment();
-          cards.forEach((card) => fragment.appendChild(card));
-          column.appendChild(fragment);
-          syncColumnState(column, data.total);
-          applyAssignedUserFilter();
-          button.hidden = !data.has_more;
-          return data;
-        })
-        .catch((error) => {
-          if (error.name === 'AbortError' || requestVersion !== boardVersion) {
-            return null;
-          }
-          showColumnLoadError(
-            shell,
-            'No se pudieron cargar las tarjetas. Intenta nuevamente.'
-          );
-          throw error;
-        })
-        .finally(() => {
-          if (columnLoadRequests.get(state)?.promise === request) {
-            columnLoadRequests.delete(state);
-            if (shell.isConnected) setColumnLoading(shell, false);
-          }
-        });
-
-      columnLoadRequests.set(state, {promise: request, controller});
-      return request;
     }
 
     function submitColumnOrder() {
@@ -1821,13 +1686,6 @@
     });
 
     root.addEventListener('click', (e) => {
-      const loadMoreButton = e.target.closest('[data-operacion-load-more="1"]');
-      if (loadMoreButton) {
-        e.preventDefault();
-        loadMoreCards(loadMoreButton).catch(() => {});
-        return;
-      }
-
       const quickEditOpenButton = e.target.closest('[data-operacion-quick-edit-open="1"]');
       if (quickEditOpenButton) {
         e.preventDefault();

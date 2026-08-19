@@ -61,7 +61,7 @@ class OperacionForm(forms.ModelForm):
             "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "cliente": forms.Select(attrs={"class": "form-select"}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
-            "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "fecha_vencimiento": forms.DateInput(format='%Y-%m-%d', attrs={"class": "form-control", "type": "date"}),
             "asignados": forms.SelectMultiple(attrs={"class": "form-select rounded garantia-asignados-select", "data-operacion-tags-select": "1"}),
             "etiquetas": forms.SelectMultiple(attrs={"class": "form-select rounded", "id": "id_etiquetas", "data-operacion-tags-select": "1"}),
             "opciones": forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"}),
@@ -115,12 +115,15 @@ class OperacionInlineCreateForm(forms.ModelForm):
             "cliente": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "etd": forms.DateInput(
+                format='%Y-%m-%d',
                 attrs={"class": "form-control form-control-sm", "type": "date"}
             ),
             "eta": forms.DateInput(
+                format='%Y-%m-%d',
                 attrs={"class": "form-control form-control-sm", "type": "date"}
             ),
             "carga_lista": forms.DateInput(
+                format='%Y-%m-%d',
                 attrs={"class": "form-control form-control-sm", "type": "date"}
             ),
             "asignados": forms.SelectMultiple(
@@ -264,12 +267,15 @@ class OperacionQuickEditForm(forms.ModelForm):
             "cliente": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "etd": forms.DateInput(
+                format='%Y-%m-%d',
                 attrs={"class": "form-control form-control-sm", "type": "date"}
             ),
             "eta": forms.DateInput(
+                format='%Y-%m-%d',
                 attrs={"class": "form-control form-control-sm", "type": "date"}
             ),
             "carga_lista": forms.DateInput(
+                format='%Y-%m-%d',
                 attrs={"class": "form-control form-control-sm", "type": "date"}
             ),
             "asignados": forms.SelectMultiple(
@@ -303,7 +309,7 @@ class OperacionEditarForm(forms.ModelForm):
             "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "cliente": forms.Select(attrs={"class": "form-select"}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
-            "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "fecha_vencimiento": forms.DateInput(format='%Y-%m-%d', attrs={"class": "form-control", "type": "date"}),
             "asignados": forms.SelectMultiple(attrs={"class": "form-select rounded garantia-asignados-select", "data-operacion-tags-select": "1"}),
             "etiquetas": forms.SelectMultiple(attrs={"class": "form-select rounded", "id": "id_etiquetas", "data-operacion-tags-select": "1"}),
             "opciones": forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"}),

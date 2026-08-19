@@ -1,4 +1,4 @@
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
@@ -523,7 +523,7 @@ def _detalle_contexto(cuenta, *, form=None, comentario_form=None, archivos_form=
 
 
 def _repositorio_queryset():
-    return DocumentoRepositorio.objects.select_related("subido_por").order_by(
+    return DocumentoRepositorio.objects.filter(eliminado_en__isnull=True).select_related("subido_por").order_by(
         "-fecha_subida",
         "-id",
     )
@@ -641,6 +641,7 @@ def repositorio_listado(request):
     )
 
 
+@csrf_exempt
 @login_required
 @require_POST
 def repositorio_subir(request):
@@ -705,6 +706,18 @@ def repositorio_descargar(request, pk):
         filename=documento.nombre_original,
     )
     return response
+
+
+@login_required
+@require_POST
+def repositorio_eliminar(request, pk):
+    if not request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"ok": False, "error": "Invalid request"}, status=400)
+    
+    documento = get_object_or_404(_repositorio_queryset(), pk=pk)
+    enviar_a_papelera(documento, request.user)
+    
+    return JsonResponse({"ok": True, "message": "Documento enviado a la papelera."})
 
 
 @login_required

@@ -327,8 +327,6 @@ class CuentaGastosEnlace(models.Model):
     class Meta:
         ordering=["-fecha","-id"]
 
-    def __str__(self):
-        return self.titulo
 
 
 class DocumentoRepositorio(models.Model):
@@ -352,8 +350,26 @@ class DocumentoRepositorio(models.Model):
         auto_now_add=True
     )
 
+    eliminado_en = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    eliminado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="documentos_repositorio_cuenta_gastos_eliminados",
+    )
+
     class Meta:
         ordering = ["-fecha_subida", "-id"]
 
     def __str__(self):
         return self.nombre_original
+
+    @property
+    def esta_eliminado(self):
+        return self.eliminado_en is not None

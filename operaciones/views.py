@@ -69,9 +69,7 @@ COLUMNAS_INICIALES = (
     (Operacion.Estado.EXPEDIENTE_CG, "Expediente CG"),
     (Operacion.Estado.SOLICITUD_CUENTA_GASTOS, "Solicitud de cuenta gastos"),
 )
-INITIAL_CARDS_PER_COLUMN = 5
-CARDS_PAGE_SIZE = 10
-OPERACION_ORDERING = ("-fecha_creacion", "-id")
+OPERACION_ORDERING = ("posicion", "-fecha_creacion", "-id")
 
 
 def _columnas_activas_queryset():
@@ -146,12 +144,9 @@ def _column_context(*, columna: OperacionColumna, items, count: int, loaded: int
         "items": items,
         "count": count,
         "loaded": loaded,
-        "has_more": count > loaded,
-        "remaining": max(0, count - loaded),
-        "load_url": reverse(
-            "operaciones:tarjetas_columna",
-            kwargs={"codigo": columna.codigo},
-        ),
+        "has_more": False,
+        "remaining": 0,
+        "load_url": "",
     }
 
 
@@ -216,34 +211,7 @@ def _columnas_kanban(usuario=None):
                 expression=RowNumber(),
                 partition_by=[F("estado")],
                 order_by=[
-                    F("fecha_creacion").desc(),
-                    F("id").desc(),
-                ]),
-            enlaces_count=Count("enlaces", distinct=True),
-        )
-        .order_by("-fecha_creacion", "-id")
-    )
-
-
-def _board_queryset(usuario=None):
-    codigos_activos = [codigo for codigo, _nombre in _columnas_estado_choices()]
-    queryset = _operacion_queryset().filter(estado__in=codigos_activos).filter(
-        Q(columna__activa=True) | Q(columna__isnull=True)
-    )
-    if usuario is not None:
-        queryset = queryset.filter(asignados__id=usuario.id).distinct()
-    return queryset.order_by(*OPERACION_ORDERING)
-
-
-def _columnas_kanban(usuario=None):
-    columnas = _columnas_activas()
-    operaciones = list(
-        _board_queryset(usuario)
-        .annotate(
-            posicion_columna=Window(
-                expression=RowNumber(),
-                partition_by=[F("estado")],
-                order_by=[
+                    F("posicion").asc(),
                     F("fecha_creacion").desc(),
                     F("id").desc(),
                 ]
@@ -328,22 +296,6 @@ def _get_usuario_filter_estricto(request):
         )
     return usuario, None
 
-
-def _parse_loaded_ids(request, offset):
-    raw_values = request.GET.getlist("loaded")
-    parts = []
-    for raw_value in raw_values:
-        parts.extend(
-            value.strip()
-            for value in raw_value.split(",")
-            if value.strip()
-        )
-    if any(not value.isdigit() or int(value) <= 0 for value in parts):
-        return None
-    loaded_ids = list(dict.fromkeys(int(value) for value in parts))
-    if len(loaded_ids) != len(parts) or len(loaded_ids) != offset:
-        return None
-    return loaded_ids
 
 
 def _usuarios_filtro(selected_user_id=None):
@@ -717,71 +669,6 @@ def tablero_partial(request):
         },
     )
 
-
-@login_required
-@require_GET
-def tarjetas_columna(request, codigo):
-    columna_obj = _buscar_columna_activa_por_codigo(codigo)
-    if columna_obj is None:
-        return JsonResponse(
-            {"ok": False, "error": "Estado no encontrado."},
-            status=404,
-        )
-
-    raw_offset = (request.GET.get("offset") or "").strip()
-    if not raw_offset.isdigit():
-        return JsonResponse(
-            {"ok": False, "error": "Offset invalido."},
-            status=400,
-        )
-    offset = int(raw_offset)
-    usuario, error = _get_usuario_filter_estricto(request)
-    if error is not None:
-        return error
-    loaded_ids = _parse_loaded_ids(request, offset)
-    if loaded_ids is None:
-        return JsonResponse(
-            {"ok": False, "error": "Tarjetas cargadas invalidas."},
-            status=400,
-        )
-
-    columna = _board_queryset(usuario).filter(estado=columna_obj.codigo)
-    total = columna.count()
-    recognized_loaded_ids = set(
-        columna.filter(pk__in=loaded_ids).values_list("pk", flat=True)
-    )
-    stale_ids = [
-        pk for pk in loaded_ids if pk not in recognized_loaded_ids
-    ]
-    siguientes = list(
-        columna.exclude(pk__in=loaded_ids)[: CARDS_PAGE_SIZE + 1]
-    )
-    has_more = len(siguientes) > CARDS_PAGE_SIZE
-    operaciones = siguientes[:CARDS_PAGE_SIZE]
-    estados = _columnas_estado_choices()
-    html = "".join(
-        render_to_string(
-            "operaciones/_operacion_card.html",
-            {"operacion": operacion, "estados": estados},
-            request=request,
-        )
-        for operacion in operaciones
-    )
-    loaded = len(operaciones)
-    return JsonResponse(
-        {
-            "ok": True,
-            "estado": columna_obj.codigo,
-            "columna_id": columna_obj.pk,
-            "columna_codigo": columna_obj.codigo,
-            "html": html,
-            "loaded": loaded,
-            "next_offset": len(recognized_loaded_ids) + loaded,
-            "has_more": has_more,
-            "total": total,
-            "stale_ids": stale_ids,
-        }
-    )
 
 
 @login_required
@@ -1716,24 +1603,67 @@ def crear_opcion(*args, **kwargs): pass
 def crear_etiqueta(*args, **kwargs): pass
 def editar_etiqueta(*args, **kwargs): pass
 def eliminar_etiqueta(*args, **kwargs): pass
-def detalle_operacion(*args, **kwargs): pass
-def detalle_operacion_modal(*args, **kwargs): pass
-def editar_operacion(*args, **kwargs): pass
-def editar_operacion_rapida(*args, **kwargs): pass
-def agregar_comentario(*args, **kwargs): pass
-def agregar_archivo(*args, **kwargs): pass
-def eliminar_archivo(*args, **kwargs): pass
-def agregar_enlace(*args, **kwargs): pass
-def eliminar_enlace(*args, **kwargs): pass
-def crear_elemento_accion(*args, **kwargs): pass
-def toggle_elemento_accion(*args, **kwargs): pass
-def editar_elemento_accion(*args, **kwargs): pass
-def eliminar_elemento_accion(*args, **kwargs): pass
-def agregar_etiqueta_operacion(*args, **kwargs): pass
-def crear_etiqueta_operacion(*args, **kwargs): pass
-def quitar_etiqueta_operacion(*args, **kwargs): pass
-def actualizar_opciones_operacion(*args, **kwargs): pass
-def crear_opcion_operacion(*args, **kwargs): pass
-def quitar_opcion_operacion(*args, **kwargs): pass
-def mover_operacion(*args, **kwargs): pass
+
+@login_required
+@require_POST
+def mover_operacion(request, operacion_id):
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        return JsonResponse({"ok": False, "error": "No tienes permisos."}, status=403)
+        
+    estado = request.POST.get("estado")
+    columna_id = request.POST.get("columna_id")
+    posicion_str = request.POST.get("posicion")
+    
+    if not estado:
+        return JsonResponse({"ok": False, "error": "Estado requerido."}, status=400)
+        
+    columna_obj = _buscar_columna_activa_por_codigo(estado)
+    if not columna_obj:
+        return JsonResponse({"ok": False, "error": "Estado invalido."}, status=400)
+        
+    posicion = 0
+    if posicion_str and posicion_str.isdigit():
+        posicion = int(posicion_str)
+        
+    with transaction.atomic():
+        operacion.estado = estado
+        operacion.columna = columna_obj
+        operacion.posicion = posicion
+        operacion.save(update_fields=["estado", "columna", "posicion"])
+        
+        operaciones = list(
+            _operacion_queryset().filter(
+                Q(columna=columna_obj) | Q(columna__isnull=True, estado=columna_obj.codigo)
+            ).exclude(id=operacion.id).order_by("posicion", "-fecha_creacion", "-id")
+        )
+        
+        # Insertamos en el nuevo índice
+        if posicion >= len(operaciones):
+            operaciones.append(operacion)
+        else:
+            operaciones.insert(posicion, operacion)
+            
+        operaciones_a_actualizar = []
+        for idx, op in enumerate(operaciones):
+            if op.posicion != idx:
+                op.posicion = idx
+                if op.id != operacion.id:
+                    operaciones_a_actualizar.append(op)
+                    
+        if operaciones_a_actualizar:
+            Operacion.objects.bulk_update(operaciones_a_actualizar, ["posicion"])
+            
+    return JsonResponse({
+        "ok": True,
+        "status": "ok",
+        "id": operacion.id,
+        "estado": operacion.estado,
+        "estado_label": columna_obj.nombre,
+        "columna_id": columna_obj.pk,
+        "columna_codigo": columna_obj.codigo,
+    })
 

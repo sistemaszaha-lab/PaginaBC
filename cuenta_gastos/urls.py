@@ -30,6 +30,11 @@ urlpatterns = [
         views.repositorio_descargar,
         name="repositorio_descargar",
     ),
+    path(
+        "repositorio/<int:pk>/eliminar/",
+        views.repositorio_eliminar,
+        name="repositorio_eliminar",
+    ),
 
     path(
         "crear/",

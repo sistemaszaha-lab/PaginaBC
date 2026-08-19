@@ -1,6 +1,45 @@
   console.info('panel_cuenta_gastos.js cargado');
 
   document.addEventListener("click", function (event) {
+    const btnEliminar = event.target.closest('.repositorio-accion-eliminar');
+    if (btnEliminar) {
+      event.preventDefault();
+      const documentoId = btnEliminar.dataset.documentoId;
+      if (!documentoId || !confirm('¿Estás seguro de mover este documento a la papelera?')) return;
+      
+      const card = btnEliminar.closest('.repositorio-documento');
+      const token = document.querySelector("#repositorio-pdf-form input[name='csrfmiddlewaretoken']")?.value || '';
+      
+      const csrfToken = (typeof window.getCSRFToken === 'function') 
+        ? window.getCSRFToken() 
+        : token;
+
+      btnEliminar.disabled = true;
+      fetch(`/cuenta-gastos/repositorio/${documentoId}/eliminar/`, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      }).then(res => res.json()).then(data => {
+        if (data.ok) {
+          if (card) {
+            card.style.transition = 'opacity 0.3s ease';
+            card.style.opacity = '0';
+            setTimeout(() => card.remove(), 300);
+          }
+        } else {
+          alert(data.error || 'No se pudo mover a la papelera');
+          btnEliminar.disabled = false;
+        }
+      }).catch(err => {
+        console.error(err);
+        alert('Error al mover a la papelera');
+        btnEliminar.disabled = false;
+      });
+      return;
+    }
+
     const boton = event.target.closest('#repositorio-pdf-boton-inactivo');
 
     if (!boton) {
@@ -39,20 +78,29 @@
     subirPdfsRepositorio(archivos, input);
   });
 
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+
   async function subirPdfsRepositorio(archivos, input) {
     const formulario = document.getElementById('repositorio-pdf-form');
     const boton = document.getElementById('repositorio-pdf-boton');
     const mensaje = document.getElementById('repositorio-mensaje');
 
-    if (!formulario || !boton) {
-      console.error('No se encontró el formulario o botón del repositorio');
-      return;
-    }
+    if (!formulario || !boton) return;
 
-    const archivosValidos = archivos.every(function (archivo) {
-      return archivo.name.toLowerCase().endsWith('.pdf');
-    });
-
+    const archivosValidos = archivos.every(archivo => archivo.name.toLowerCase().endsWith('.pdf'));
     if (!archivosValidos) {
       mostrarMensajeRepositorio('EL FORMATO NO ES VÁLIDO', true);
       input.value = '';
@@ -60,18 +108,11 @@
     }
 
     const formData = new FormData();
-
-    archivos.forEach(function (archivo) {
-      formData.append('archivos', archivo);
-    });
+    archivos.forEach(archivo => formData.append('archivos', archivo));
 
     if (document.getElementById('repositorio-panel')?.dataset.expanded === '1') {
       formData.append('mostrar_todos', '1');
     }
-
-    const csrfToken = formulario.querySelector(
-      "input[name='csrfmiddlewaretoken']"
-    )?.value;
 
     if (mensaje) {
       mensaje.hidden = true;
@@ -82,40 +123,35 @@
     boton.disabled = true;
     boton.innerHTML = '<span>Subiendo...</span>';
 
+    const csrftoken = getCookie('csrftoken');
+    
+    console.warn("DIAGNÓSTICO CSRF:");
+    console.log("Token extraído:", csrftoken);
+    console.log("URL Destino:", formulario.action);
+
     try {
       const response = await fetch(formulario.action, {
         method: 'POST',
         body: formData,
         headers: {
-          'X-CSRFToken': csrfToken || '',
-          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrftoken,
+          'X-Requested-With': 'XMLHttpRequest'
         },
         credentials: 'same-origin',
       });
 
       const contentType = response.headers.get('content-type') || '';
-
       if (!contentType.includes('application/json')) {
         const texto = await response.text();
-        throw new Error(
-          `Respuesta inesperada del servidor (${response.status}): ${texto.slice(0, 120)}`
-        );
+        throw new Error(`Respuesta inesperada del servidor (${response.status}): ${texto.slice(0, 120)}`);
       }
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || 'No se pudieron subir los archivos.'
-        );
-      }
+      if (!response.ok) throw new Error(data.message || 'No se pudieron subir los archivos.');
 
       if (data.html) {
         const panelActual = document.getElementById('repositorio-panel');
-
-        if (panelActual) {
-          panelActual.outerHTML = data.html;
-        }
+        if (panelActual) panelActual.outerHTML = data.html;
       } else {
         window.location.reload();
       }
@@ -123,17 +159,12 @@
       input.value = '';
     } catch (error) {
       console.error(error);
-      mostrarMensajeRepositorio(
-        error.message || 'No se pudieron subir los archivos.',
-        true
-      );
+      mostrarMensajeRepositorio(error.message || 'No se pudieron subir los archivos.', true);
     } finally {
       const botonActual = document.getElementById('repositorio-pdf-boton');
-
       if (botonActual) {
         botonActual.disabled = false;
-        botonActual.innerHTML =
-          "<span aria-hidden='true'>&#8593;</span><span>Subir PDF</span>";
+        botonActual.innerHTML = "<span aria-hidden='true'>&#8593;</span><span>Subir PDF</span>";
       }
     }
   }

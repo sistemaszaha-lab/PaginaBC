@@ -132,6 +132,16 @@ TRASH_MODELS: dict[str, TrashModelConfig] = {
         responsable_attr="ejecutivo",
         select_related=("ejecutivo", "eliminado_por", "solicitud_origen", "operacion_generada"),
     ),
+    "documento_repositorio": TrashModelConfig(
+        tipo="documento_repositorio",
+        app_label="cuenta_gastos",
+        model_name="DocumentoRepositorio",
+        modulo_label="Repositorio de Documentos",
+        titulo_attr="nombre_original",
+        fecha_attr="fecha_subida",
+        responsable_attr="subido_por",
+        select_related=("subido_por", "eliminado_por"),
+    ),
 }
 
 MODEL_TO_TIPO = {

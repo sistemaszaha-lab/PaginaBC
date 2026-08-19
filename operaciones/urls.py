@@ -32,11 +32,6 @@ urlpatterns = [
         views.tarjeta_pegar,
         name="tarjeta_pegar",
     ),
-    path(
-        "columna/<str:codigo>/tarjetas/",
-        views.tarjetas_columna,
-        name="tarjetas_columna",
-    ),
     path("nueva/", views.crear_operacion, name="crear_operacion"),
     path("referencias/<int:pk>/enviar-a-operaciones/", views.enviar_referencia_a_operaciones, name="enviar_referencia_a_operaciones"),
     path("nueva/inline/formulario/", views.formulario_operacion_inline, name="formulario_operacion_inline"),
