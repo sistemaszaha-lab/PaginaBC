@@ -1595,8 +1595,74 @@ def eliminar_operacion(request, operacion_id):
     return redirect("operaciones:panel_operaciones")
 
 
+@login_required
+@require_POST
 def tarjeta_pegar(request, columna_id):
-    pass
+    if not _es_ajax(request):
+        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
+    
+    import json
+    if request.content_type == "application/json":
+        try:
+            data = json.loads(request.body)
+            raw_tarjeta_id = str(data.get("tarjeta_id", "")).strip()
+            modulo = str(data.get("modulo", "")).strip()
+        except json.JSONDecodeError:
+            raw_tarjeta_id = ""
+            modulo = ""
+    else:
+        raw_tarjeta_id = (request.POST.get("tarjeta_id") or "").strip()
+        modulo = (request.POST.get("modulo") or "").strip()
+
+    if modulo and modulo != "operaciones":
+        return JsonResponse(
+            {"ok": False, "error": "Solo se permite copiar tarjetas de operaciones."},
+            status=400,
+        )
+        
+    if not raw_tarjeta_id.isdigit() or int(raw_tarjeta_id) <= 0:
+        return JsonResponse({"ok": False, "error": "Tarjeta invalida."}, status=400)
+
+    columna_destino = get_object_or_404(OperacionColumna, pk=columna_id, activa=True)
+    operacion_original = get_object_or_404(_operacion_queryset(), pk=int(raw_tarjeta_id))
+
+    if not _puede_modificar_operacion(request.user, operacion_original):
+        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
+
+    with transaction.atomic():
+        # Clonar la instancia principal
+        nueva_operacion = get_object_or_404(_operacion_queryset(), pk=int(raw_tarjeta_id))
+        nueva_operacion.pk = None
+        
+        # Modificar campos identificativos
+        nueva_operacion.titulo = f"{operacion_original.titulo} - Copia"[:255]
+        nueva_operacion.columna = columna_destino
+        nueva_operacion.estado = columna_destino.codigo
+        nueva_operacion.creado_por = request.user
+        nueva_operacion.fecha_creacion = timezone.now()
+        
+        # Setear a None relaciones OneToOne
+        nueva_operacion.referencia_origen = None
+        
+        # Guardar la nueva instancia principal
+        nueva_operacion.save()
+
+        # Copiar relaciones ManyToMany
+        nueva_operacion.asignados.set(operacion_original.asignados.all())
+        nueva_operacion.etiquetas.set(operacion_original.etiquetas.all())
+        nueva_operacion.opciones.set(operacion_original.opciones.all())
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "tarjeta_id": nueva_operacion.pk,
+            "columna_id": columna_destino.pk,
+            "html": _render_card_html(request, nueva_operacion),
+            "estado": nueva_operacion.estado,
+            "column_count": _column_count(columna_destino),
+        },
+        status=201,
+    )
 
 
 def crear_opcion(*args, **kwargs): pass

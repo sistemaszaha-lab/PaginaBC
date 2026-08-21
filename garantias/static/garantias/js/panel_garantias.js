@@ -1482,13 +1482,18 @@
           return;
         }
         pasteCardButton.disabled = true;
-        const fd = new FormData();
-        fd.append('tarjeta_id', String(copiedCard.tarjeta_id));
-        fd.append('modulo', copiedCard.modulo);
+        const payload = {
+          tarjeta_id: String(copiedCard.tarjeta_id),
+          modulo: copiedCard.modulo
+        };
         window.csrfFetch(pasteUrl, {
           method: 'POST',
-          body: fd,
-          headers: {'Accept': 'application/json'}
+          body: JSON.stringify(payload),
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
         })
           .then((response) => readJsonResponse(response).then((data) => ({ ok: response.ok, status: response.status, data })))
           .then(({ ok, status, data }) => {

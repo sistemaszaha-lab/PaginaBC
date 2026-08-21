@@ -944,11 +944,20 @@ def columna_eliminar(request, pk):
 def tarjeta_pegar(request, columna_id):
     if not _es_ajax(request):
         return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
-    if not _puede_operar_garantias(request.user):
-        return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
 
-    raw_tarjeta_id = (request.POST.get("tarjeta_id") or "").strip()
-    modulo = (request.POST.get("modulo") or "").strip()
+    import json
+    if request.content_type == "application/json":
+        try:
+            data = json.loads(request.body)
+            raw_tarjeta_id = str(data.get("tarjeta_id", "")).strip()
+            modulo = str(data.get("modulo", "")).strip()
+        except json.JSONDecodeError:
+            raw_tarjeta_id = ""
+            modulo = ""
+    else:
+        raw_tarjeta_id = (request.POST.get("tarjeta_id") or "").strip()
+        modulo = (request.POST.get("modulo") or "").strip()
+
     if modulo and modulo != "garantias":
         return JsonResponse(
             {"ok": False, "error": "Solo se permite copiar tarjetas de garantias."},
@@ -958,23 +967,38 @@ def tarjeta_pegar(request, columna_id):
         return JsonResponse({"ok": False, "error": "Tarjeta invalida."}, status=400)
 
     columna_destino = get_object_or_404(GarantiaColumna, pk=columna_id, activa=True)
-    garantia_original = _get_garantia_para_copia(int(raw_tarjeta_id))
+    garantia_original = get_object_or_404(_garantia_queryset(), pk=int(raw_tarjeta_id))
+    
     if not _puede_operar_garantias(request.user):
         return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
 
-    nueva = copiar_garantia_a_columna(
-        garantia_original=garantia_original,
-        columna_destino=columna_destino,
-        usuario=request.user,
-    )
-    nueva = get_object_or_404(_garantia_queryset(), pk=nueva.pk)
+    from django.db import transaction
+    from django.utils import timezone
+    with transaction.atomic():
+        # Clonación robusta: obtenemos de nuevo para desvincularla de memoria si fuese necesario
+        nueva_garantia = get_object_or_404(_garantia_queryset(), pk=int(raw_tarjeta_id))
+        nueva_garantia.pk = None  # Reiniciar el ID
+        
+        # Modificar título para indicar copia y otros metadatos
+        nueva_garantia.titulo = f"{garantia_original.titulo} - Copia"[:255]
+        nueva_garantia.columna = columna_destino
+        nueva_garantia.estado = columna_destino.codigo
+        nueva_garantia.creado_por = request.user
+        nueva_garantia.fecha_creacion = timezone.now()
+        
+        nueva_garantia.save()
+
+        # Copiar relaciones ManyToMany
+        nueva_garantia.asignados.set(garantia_original.asignados.all())
+        nueva_garantia.etiquetas.set(garantia_original.etiquetas.all())
+
     return JsonResponse(
         {
             "ok": True,
-            "tarjeta_id": nueva.pk,
+            "tarjeta_id": nueva_garantia.pk,
             "columna_id": columna_destino.pk,
-            "html": _render_card_html(request, nueva),
-            "estado": nueva.estado,
+            "html": _render_card_html(request, nueva_garantia),
+            "estado": nueva_garantia.estado,
             "column_count": _column_count(columna_destino),
         },
         status=201,
