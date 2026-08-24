@@ -373,3 +373,12 @@ class DocumentoRepositorio(models.Model):
     @property
     def esta_eliminado(self):
         return self.eliminado_en is not None
+
+    @property
+    def tamano_seguro(self):
+        if not self.archivo:
+            return 0
+        try:
+            return self.archivo.size
+        except (FileNotFoundError, OSError, ValueError):
+            return 0
