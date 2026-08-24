@@ -696,16 +696,21 @@ def repositorio_visualizar(request, pk):
 @login_required
 @require_GET
 def repositorio_descargar(request, pk):
+    from django.http import Http404
     documento = get_object_or_404(_repositorio_queryset(), pk=pk)
-    response = FileResponse(
-        documento.archivo.open("rb"),
-        content_type="application/pdf",
-    )
-    response.headers["Content-Disposition"] = content_disposition_header(
-        as_attachment=True,
-        filename=documento.nombre_original,
-    )
-    return response
+    
+    try:
+        response = FileResponse(
+            documento.archivo.open("rb"),
+            content_type="application/pdf",
+        )
+        response.headers["Content-Disposition"] = content_disposition_header(
+            as_attachment=True,
+            filename=documento.nombre_original,
+        )
+        return response
+    except FileNotFoundError:
+        raise Http404("El archivo físico ya no se encuentra disponible en el servidor.")
 
 
 @login_required
