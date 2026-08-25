@@ -868,8 +868,10 @@ def crear_operacion_inline(request):
 @require_http_methods(["GET", "POST"])
 def editar_operacion_rapida(request, operacion_id):
     operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
-    if not _puede_modificar_operacion(request.user, operacion):
-        raise PermissionDenied("No tienes permisos para modificar esta operacion.")
+    # Regla de negocio: Administradores y ejecutivos tienen acceso permitido
+    if getattr(request.user, "rol", None) not in ["admin", "ejecutivo"]:
+        if not _puede_modificar_operacion(request.user, operacion):
+            raise PermissionDenied("No tienes permisos para modificar esta operacion.")
 
     if request.method == "GET":
         return JsonResponse(
