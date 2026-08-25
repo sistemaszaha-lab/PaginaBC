@@ -252,9 +252,23 @@ def _safe_next_url(request):
 
 
 def _puede_modificar_operacion(user, operacion):
+    """Retorna True si el usuario tiene permiso para modificar la operacion.
+
+    Reglas (en orden de prioridad):
+    - Superusuario o staff de Django → acceso total.
+    - Miembro del grupo 'admin' o 'ejecutivo' → acceso total.
+    - Creador de la operación → acceso.
+    - Usuario asignado a la operación → acceso.
+    """
     if not user.is_authenticated:
         return False
-    if user.is_superuser or operacion.creado_por_id == user.id:
+    if user.is_superuser or user.is_staff:
+        return True
+    # Acceso por grupo de Django (case-insensitive para 'admin' y 'ejecutivo')
+    if user.groups.filter(name__icontains="admin").exists() or \
+       user.groups.filter(name__icontains="ejecutivo").exists():
+        return True
+    if operacion.creado_por_id == user.id:
         return True
     return operacion.asignados.filter(id=user.id).exists()
 
@@ -868,21 +882,9 @@ def crear_operacion_inline(request):
 @require_http_methods(["GET", "POST"])
 def editar_operacion_rapida(request, operacion_id):
     operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
-    
-    # 1. Validación blindada: revisa atributo de texto (ignorando mayúsculas)
-    rol_texto = str(getattr(request.user, "rol", "")).lower()
-    
-    # 2. Revisa si pertenece a un Grupo de Django llamado "ejecutivo" o "admin"
-    es_grupo_permitido = request.user.groups.filter(name__icontains="ejecutivo").exists() or \
-                         request.user.groups.filter(name__icontains="admin").exists()
-                         
-    # 3. Revisa permisos nativos de Django (is_staff o is_superuser)
-    es_admin_nativo = request.user.is_superuser or request.user.is_staff
 
-    # Regla de negocio: Si no cumple NINGUNA de las condiciones anteriores, verificamos si es el dueño
-    if rol_texto not in ["admin", "ejecutivo"] and not es_grupo_permitido and not es_admin_nativo:
-        if not _puede_modificar_operacion(request.user, operacion):
-            raise PermissionDenied("No tienes permisos para modificar esta operacion.")
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied("No tienes permisos para modificar esta operacion.")
 
     if request.method == "GET":
         return JsonResponse(
@@ -892,7 +894,7 @@ def editar_operacion_rapida(request, operacion_id):
     post_data = request.POST.copy()
     form = OperacionQuickEditForm(post_data, instance=operacion)
     _preservar_campos_no_enviados(form, post_data, "titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados")
-    
+
     if not form.is_valid():
         return _json_error(
             "FORM_INVALID",
