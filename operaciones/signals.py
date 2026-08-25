@@ -20,11 +20,11 @@ def clonar_operacion_a_cuenta_gastos(sender, instance, created, **kwargs):
                 CuentaGastos.objects.get_or_create(
                     titulo=instance.titulo,
                     defaults={
-                        'operacion_origen': instance,
                         'descripcion': instance.descripcion,
                         'cliente': instance.cliente,
                         'columna': columna_destino,
-                        'estado': columna_destino.codigo,
+                        # Protegemos el campo estado por si no existe
+                        'estado': columna_destino.codigo if hasattr(columna_destino, 'codigo') else None,
                         'prioridad': instance.prioridad,
                         'creado_por': instance.creado_por,
                         'fecha_vencimiento': instance.fecha_vencimiento
@@ -34,5 +34,5 @@ def clonar_operacion_a_cuenta_gastos(sender, instance, created, **kwargs):
                 print("[ADVERTENCIA] No se pudo clonar porque no existe la columna 'Solicitud de pago'.")
                 
     except Exception as e:
-        # 3. Chaleco antibalas: Tragarse la excepción y solo imprimir el error
+        # 3. Chaleco antibalas: Tragarse la excepción para no colapsar el sistema
         print(f"[CRÍTICO] Fallo silencioso al clonar Operacion ID {instance.id}. Error: {str(e)}")
