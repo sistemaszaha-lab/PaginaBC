@@ -611,6 +611,10 @@ class CuentaGastosTests(TestCase):
         )
         operacion.asignados.add(self.asignado)
 
+        # El signal post_save de Operacion ya creó la CuentaGastos.
+        # Lo eliminamos para probar específicamente la lógica del servicio aislada.
+        CuentaGastos.objects.filter(operacion_origen=operacion).delete()
+
         cuenta, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
             operacion,
             creado_por=self.user,

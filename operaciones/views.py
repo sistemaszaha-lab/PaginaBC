@@ -1646,8 +1646,8 @@ def tarjeta_pegar(request, columna_id):
         return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
 
     with transaction.atomic():
-        # Clonar la instancia principal
-        nueva_operacion = get_object_or_404(_operacion_queryset(), pk=int(raw_tarjeta_id))
+        # Clonar la instancia principal sin prefetch para no arrastrar la caché de M2M
+        nueva_operacion = get_object_or_404(Operacion, pk=int(raw_tarjeta_id))
         nueva_operacion.pk = None
         
         # Modificar campos identificativos
@@ -1689,56 +1689,69 @@ def eliminar_etiqueta(*args, **kwargs): pass
 @login_required
 @require_POST
 def mover_operacion(request, operacion_id):
-    if not _es_ajax(request):
-        return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
-    
     operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
     if not _puede_modificar_operacion(request.user, operacion):
-        return JsonResponse({"ok": False, "error": "No tienes permisos."}, status=403)
-        
+        return JsonResponse({"ok": False, "status": "error", "error": "No tienes permisos."}, status=403)
+
     estado = request.POST.get("estado")
     columna_id = request.POST.get("columna_id")
     posicion_str = request.POST.get("posicion")
-    
+
     if not estado:
-        return JsonResponse({"ok": False, "error": "Estado requerido."}, status=400)
-        
+        return JsonResponse({"ok": False, "status": "error", "error": "Estado requerido."}, status=400)
+
     columna_obj = _buscar_columna_activa_por_codigo(estado)
     if not columna_obj:
-        return JsonResponse({"ok": False, "error": "Estado invalido."}, status=400)
-        
+        return JsonResponse({"ok": False, "status": "error", "error": "Estado invalido."}, status=400)
+
     posicion = 0
     if posicion_str and posicion_str.isdigit():
         posicion = int(posicion_str)
-        
+
     with transaction.atomic():
+        from cuenta_gastos.models import CuentaGastos
+        antes_existia = CuentaGastos.objects.filter(operacion_origen=operacion).exists()
+
         operacion.estado = estado
         operacion.columna = columna_obj
         operacion.posicion = posicion
         operacion.save(update_fields=["estado", "columna", "posicion"])
-        
+        crear_cuenta_gastos_desde_operacion_si_corresponde(
+            operacion,
+            creado_por=request.user,
+        )
+
         operaciones = list(
             _operacion_queryset().filter(
                 Q(columna=columna_obj) | Q(columna__isnull=True, estado=columna_obj.codigo)
             ).exclude(id=operacion.id).order_by("posicion", "-fecha_creacion", "-id")
         )
-        
-        # Insertamos en el nuevo índice
+
         if posicion >= len(operaciones):
             operaciones.append(operacion)
         else:
             operaciones.insert(posicion, operacion)
-            
+
         operaciones_a_actualizar = []
         for idx, op in enumerate(operaciones):
             if op.posicion != idx:
                 op.posicion = idx
                 if op.id != operacion.id:
                     operaciones_a_actualizar.append(op)
-                    
+
         if operaciones_a_actualizar:
             Operacion.objects.bulk_update(operaciones_a_actualizar, ["posicion"])
-            
+
+        # La creación idempotente es manejada en gran parte por el post_save signal
+        # de Operacion, pero corregimos creado_por al usuario que hizo el drag&drop.
+        cuenta_gastos_obj = CuentaGastos.objects.filter(operacion_origen=operacion).first()
+        cuenta_gastos_creada = bool(cuenta_gastos_obj is not None and not antes_existia)
+        
+        if cuenta_gastos_obj and cuenta_gastos_creada:
+            if cuenta_gastos_obj.creado_por != request.user:
+                cuenta_gastos_obj.creado_por = request.user
+                cuenta_gastos_obj.save(update_fields=["creado_por"])
+
     return JsonResponse({
         "ok": True,
         "status": "ok",
@@ -1747,5 +1760,7 @@ def mover_operacion(request, operacion_id):
         "estado_label": columna_obj.nombre,
         "columna_id": columna_obj.pk,
         "columna_codigo": columna_obj.codigo,
+        "cuenta_gastos_creada": cuenta_gastos_creada,
+        "cuenta_gastos_id": cuenta_gastos_obj.pk if cuenta_gastos_obj else None,
     })
 

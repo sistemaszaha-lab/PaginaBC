@@ -1,38 +1,62 @@
+"""
+Signal que duplica automáticamente una Operacion hacia CuentaGastos
+cuando su estado cambia a SOLICITUD_CUENTA_GASTOS.
+
+La lógica de creación y anti-duplicación vive en:
+    cuenta_gastos.services.crear_cuenta_gastos_desde_operacion_si_corresponde
+
+Este signal actúa como hook de respaldo para cualquier save() directo
+sobre Operacion (p. ej. edición de campos sin pasar por la vista mover).
+La vista `mover_operacion` también llama al servicio directamente dentro
+de su transacción atómica, por lo que ambos mecanismos son idempotentes
+y seguros de convivir.
+"""
 import logging
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+
 from .models import Operacion
-from cuenta_gastos.models import CuentaGastos, CuentaGastosColumna
+
+logger = logging.getLogger(__name__)
+
 
 @receiver(post_save, sender=Operacion)
-def clonar_operacion_a_cuenta_gastos(sender, instance, created, **kwargs):
-    try:
-        if not instance.columna:
-            return
+def duplicar_a_cuenta_gastos_si_corresponde(sender, instance, **kwargs):
+    """
+    Dispara la creación idempotente de una CuentaGastos cuando la
+    Operacion está en columna SOLICITUD_CUENTA_GASTOS.
 
-        # 1. Buscar la columna por su nombre exacto de texto
-        if instance.columna.nombre.lower() == "solicitud a cuenta de gastos":
-            
-            columna_destino = CuentaGastosColumna.objects.filter(nombre__iexact="Solicitud de pago").first()
-            
-            if columna_destino:
-                # 2. Anti-duplicados: Usar get_or_create filtrando por título
-                CuentaGastos.objects.get_or_create(
-                    titulo=instance.titulo,
-                    defaults={
-                        'descripcion': instance.descripcion,
-                        'cliente': instance.cliente,
-                        'columna': columna_destino,
-                        # Protegemos el campo estado por si no existe
-                        'estado': columna_destino.codigo if hasattr(columna_destino, 'codigo') else None,
-                        'prioridad': instance.prioridad,
-                        'creado_por': instance.creado_por,
-                        'fecha_vencimiento': instance.fecha_vencimiento
-                    }
-                )
-            else:
-                print("[ADVERTENCIA] No se pudo clonar porque no existe la columna 'Solicitud de pago'.")
-                
-    except Exception as e:
-        # 3. Chaleco antibalas: Tragarse la excepción para no colapsar el sistema
-        print(f"[CRÍTICO] Fallo silencioso al clonar Operacion ID {instance.id}. Error: {str(e)}")
+    Mapeo de campos (Operacion → CuentaGastos):
+        titulo           → titulo
+        descripcion      → descripcion
+        cliente          → cliente
+        prioridad        → prioridad
+        fecha_vencimiento→ fecha_vencimiento
+        creado_por       → creado_por
+        asignados (M2M)  → asignados (M2M)
+        pk               → operacion_origen (FK de trazabilidad)
+
+    Campos de CuentaGastos SIN equivalente en Operacion (quedan
+    en su valor por defecto / vacíos – el equipo los completará a mano):
+        etiquetas, opciones, archivos, enlaces, comentarios
+    Columna destino fija: CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS
+    (código "SOLICITUD_CUENTA_GASTOS", visible en CuentaGastos como
+    "Solicitud de cuenta de agencia aduanal").
+    """
+    # Importación diferida para evitar importaciones circulares al arrancar.
+    from cuenta_gastos.services import crear_cuenta_gastos_desde_operacion_si_corresponde
+
+    if instance.estado != Operacion.Estado.SOLICITUD_CUENTA_GASTOS:
+        return
+
+    try:
+        crear_cuenta_gastos_desde_operacion_si_corresponde(
+            instance,
+            creado_por=instance.creado_por,
+        )
+    except Exception:
+        # Registrar el error pero nunca interrumpir el flujo principal.
+        logger.exception(
+            "Error al duplicar Operacion id=%s a CuentaGastos.", instance.pk
+        )

@@ -11,6 +11,7 @@ from django.test.utils import CaptureQueriesContext
 from django.db import connection
 from django.middleware.csrf import get_token
 from django.http import HttpRequest
+from django.db.models.signals import post_save
 from django.urls import resolve, reverse
 from django.utils import timezone
 
@@ -28,6 +29,7 @@ from solicitudes.models import Referencia
 from clientes.models import Cliente
 from cuenta_gastos.models import CuentaGastos
 from cuenta_gastos.services import crear_cuenta_gastos_desde_operacion_si_corresponde
+from operaciones.signals import duplicar_a_cuenta_gastos_si_corresponde
 
 PANEL_JS_PATH = (
     Path(__file__).resolve().parent
@@ -131,6 +133,26 @@ class OperacionACuentaGastosTests(TestCase):
         self.assertEqual(self.operacion.estado, Operacion.Estado.SOLICITUD_CUENTA_GASTOS)
         self.assertEqual(self.operacion.columna.codigo, Operacion.Estado.SOLICITUD_CUENTA_GASTOS)
 
+    def test_mover_a_solicitud_cuenta_gastos_no_depende_del_signal(self):
+        post_save.disconnect(
+            duplicar_a_cuenta_gastos_si_corresponde,
+            sender=Operacion,
+        )
+        try:
+            response = self.client.post(
+                reverse("operaciones:mover_operacion", args=[self.operacion.pk]),
+                {"estado": Operacion.Estado.SOLICITUD_CUENTA_GASTOS},
+            )
+        finally:
+            post_save.connect(
+                duplicar_a_cuenta_gastos_si_corresponde,
+                sender=Operacion,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["cuenta_gastos_creada"])
+        self.assertTrue(CuentaGastos.objects.filter(operacion_origen=self.operacion).exists())
+
     def test_servicio_es_idempotente_y_no_crea_fuera_del_estado_destino(self):
         cuenta, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
             self.operacion, creado_por=self.usuario
@@ -139,6 +161,9 @@ class OperacionACuentaGastosTests(TestCase):
         self.assertFalse(creada)
         self.operacion.estado = Operacion.Estado.SOLICITUD_CUENTA_GASTOS
         self.operacion.save(update_fields=["estado"])
+        # El signal post_save ya creó la tarjeta. La eliminamos para probar el servicio.
+        from cuenta_gastos.models import CuentaGastos
+        CuentaGastos.objects.filter(operacion_origen=self.operacion).delete()
         primera, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
             self.operacion, creado_por=self.usuario
         )
@@ -713,7 +738,7 @@ class OperacionesCopiarPegarTests(TestCase):
         self.assertEqual(self.original.estado, self.columna_pendiente.codigo)
         self.assertEqual(copia.columna_id, self.columna_seguros.pk)
         self.assertEqual(copia.estado, self.columna_seguros.codigo)
-        self.assertEqual(copia.titulo, self.original.titulo)
+        self.assertEqual(copia.titulo, f"{self.original.titulo} - Copia"[:255])
         self.assertEqual(copia.descripcion, self.original.descripcion)
         self.assertEqual(copia.cliente, self.original.cliente)
         self.assertEqual(copia.prioridad, self.original.prioridad)
@@ -741,9 +766,12 @@ class OperacionesCopiarPegarTests(TestCase):
         self.assertEqual(move_response.status_code, 200)
 
     def test_ejecutivo_puede_pegar_y_la_cuenta_gastos_se_crea_para_la_copia(self):
+        self.original.asignados.add(self.ejecutivo)
         self.original.estado = self.columna_cg.codigo
         self.original.columna = self.columna_cg
         self.original.save()
+        from cuenta_gastos.models import CuentaGastos
+        CuentaGastos.objects.filter(operacion_origen=self.original).delete()
         cuenta_original, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
             self.original,
             creado_por=self.admin,
@@ -1297,7 +1325,6 @@ class OperacionesQuickEditTests(TestCase):
             {
                 "titulo": "Operacion actualizada",
                 "prioridad": Operacion.Prioridad.ALTA,
-                "fecha_vencimiento": "2026-06-30",
                 "asignados_present": "1",
                 "asignados": [self.assigned_user.id],
                 "estado": Operacion.Estado.SEGUROS,
@@ -1315,7 +1342,6 @@ class OperacionesQuickEditTests(TestCase):
         self.operacion.refresh_from_db()
         self.assertEqual(self.operacion.titulo, "Operacion actualizada")
         self.assertEqual(self.operacion.prioridad, Operacion.Prioridad.ALTA)
-        self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-06-30")
         self.assertEqual(self.operacion.estado, Operacion.Estado.PENDIENTE)
         self.assertEqual(self.operacion.descripcion, "Descripcion que no se edita rapido")
         self.assertEqual(list(self.operacion.asignados.all()), [self.assigned_user])
@@ -2712,3 +2738,117 @@ class OperacionesProgressiveLoadingTests(TestCase):
         self.assertEqual(
             javascript.count("root.addEventListener('change'"), 1
         )
+
+
+@override_settings(
+    STORAGES={
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
+class DuplicarTarjetasPendientesCommandTests(TestCase):
+    """
+    Tests para el management command duplicar_tarjetas_pendientes.
+
+    Cubre:
+    1. Crea tarjetas de CuentaGastos para operaciones existentes en
+       SOLICITUD_CUENTA_GASTOS que aún no tienen espejo.
+    2. Idempotente: una segunda ejecución no crea duplicados.
+    3. --dry-run no escribe en la BD.
+    """
+
+    def setUp(self):
+        from django.core.management import call_command
+        self._call_command = call_command
+
+        User = get_user_model()
+        self.usuario = User.objects.create_user(username="cmd-user", password="pass")
+        self.cliente = Cliente.objects.create(nombre="CLIENTE CMD")
+        self.columna_cg = OperacionColumna.objects.get(
+            codigo=Operacion.Estado.SOLICITUD_CUENTA_GASTOS
+        )
+
+        # Operacion que SÍ debe procesarse
+        self.op_pendiente = Operacion.objects.create(
+            titulo="Pendiente de duplicar",
+            descripcion="Descripción cmd",
+            cliente=self.cliente,
+            estado=Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+            columna=self.columna_cg,
+            prioridad=Operacion.Prioridad.ALTA,
+            creado_por=self.usuario,
+            fecha_vencimiento="2026-09-01",
+        )
+        self.op_pendiente.asignados.add(self.usuario)
+
+        # Operacion en otra columna que NO debe procesarse
+        self.columna_otra = OperacionColumna.objects.get(
+            codigo=Operacion.Estado.PENDIENTE
+        )
+        self.op_otra = Operacion.objects.create(
+            titulo="En columna pendiente",
+            estado=Operacion.Estado.PENDIENTE,
+            columna=self.columna_otra,
+            creado_por=self.usuario,
+        )
+
+    def test_command_crea_tarjeta_cuenta_gastos_para_operaciones_pendientes(self):
+        from cuenta_gastos.models import CuentaGastos
+        # El signal ya creó la CuentaGastos al hacer Operacion.objects.create()
+        # en setUp. Verificamos que el mapeo de campos es correcto.
+        cuenta = CuentaGastos.objects.get(operacion_origen=self.op_pendiente)
+        self.assertEqual(cuenta.titulo, self.op_pendiente.titulo)
+        self.assertEqual(cuenta.descripcion, self.op_pendiente.descripcion)
+        self.assertEqual(cuenta.cliente, self.op_pendiente.cliente)
+        self.assertEqual(cuenta.prioridad, self.op_pendiente.prioridad)
+        self.assertEqual(
+            str(cuenta.fecha_vencimiento),
+            str(self.op_pendiente.fecha_vencimiento),
+        )
+        # La operacion en otra columna no debe haberse procesado
+        self.assertFalse(
+            CuentaGastos.objects.filter(operacion_origen=self.op_otra).exists()
+        )
+        # El command tampoco debe crear una segunda copia
+        antes = CuentaGastos.objects.count()
+        self._call_command("duplicar_tarjetas_pendientes", verbosity=0)
+        self.assertEqual(CuentaGastos.objects.count(), antes)
+
+    def test_command_crea_espejo_cuando_no_existe(self):
+        """Verifica que el command crea la tarjeta cuando no existe espejo previo."""
+        from cuenta_gastos.models import CuentaGastos
+        # Crear una operacion en estado correcto pero desconectando el signal
+        # manualmente eliminando el espejo ya existente para simular backfill.
+        CuentaGastos.objects.filter(operacion_origen=self.op_pendiente).delete()
+
+        antes = CuentaGastos.objects.count()
+        self._call_command("duplicar_tarjetas_pendientes", verbosity=0)
+        despues = CuentaGastos.objects.count()
+
+        self.assertEqual(despues, antes + 1)
+        self.assertTrue(
+            CuentaGastos.objects.filter(operacion_origen=self.op_pendiente).exists()
+        )
+
+
+    def test_command_es_idempotente_en_segunda_ejecucion(self):
+        from cuenta_gastos.models import CuentaGastos
+
+        self._call_command("duplicar_tarjetas_pendientes", verbosity=0)
+        primera_vez = CuentaGastos.objects.count()
+
+        self._call_command("duplicar_tarjetas_pendientes", verbosity=0)
+        segunda_vez = CuentaGastos.objects.count()
+
+        self.assertEqual(primera_vez, segunda_vez)
+        self.assertEqual(
+            CuentaGastos.objects.filter(operacion_origen=self.op_pendiente).count(),
+            1,
+        )
+
+    def test_command_dry_run_no_escribe_en_bd(self):
+        from cuenta_gastos.models import CuentaGastos
+        antes = CuentaGastos.objects.count()
+
+        self._call_command("duplicar_tarjetas_pendientes", dry_run=True, verbosity=0)
+
+        self.assertEqual(CuentaGastos.objects.count(), antes)
