@@ -90,7 +90,6 @@
 .operacion-action-items__list { display: grid; gap: 0.6rem; }
 .operacion-action-items__empty { padding: 0.25rem 0; }
 .operacion-action-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; padding: 0.45rem 0; }
-.operacion-action-item__checkbox { margin-top: 0.2rem; }
 .operacion-action-item__content { min-width: 0; }
 .operacion-action-item__text { color: var(--operaciones-text-main); font-size: 0.95rem; line-height: 1.45; text-decoration: none; white-space: normal; overflow-wrap: anywhere; }
 .operacion-action-item__text:hover { color: #0d5653; text-decoration: none; }

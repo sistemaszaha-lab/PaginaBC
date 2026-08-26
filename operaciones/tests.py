@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import re
 from datetime import timedelta
 from unittest.mock import patch
@@ -106,6 +107,9 @@ class OperacionACuentaGastosTests(TestCase):
         self.usuario = User.objects.create_user(username="movedor-cg", password="pass")
         self.asignado = User.objects.create_user(username="asignado-cg", password="pass")
         self.cliente = Cliente.objects.create(nombre="CLIENTE CG")
+        self.columna_cg = OperacionColumna.objects.get(
+            codigo=Operacion.Estado.SOLICITUD_CUENTA_GASTOS
+        )
         self.operacion = Operacion.objects.create(
             titulo="Operación origen", descripcion="Descripción origen", cliente=self.cliente,
             prioridad=Operacion.Prioridad.ALTA, fecha_vencimiento="2026-08-01",
@@ -113,6 +117,30 @@ class OperacionACuentaGastosTests(TestCase):
         )
         self.operacion.asignados.add(self.asignado)
         self.client.force_login(self.usuario)
+
+    def _crear_operacion_en_cg(self, titulo, *, creado_por=None):
+        operacion = Operacion.objects.create(
+            titulo=titulo,
+            descripcion=f"Descripcion {titulo}",
+            cliente=self.cliente,
+            estado=Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+            columna=self.columna_cg,
+            prioridad=Operacion.Prioridad.MEDIA,
+            fecha_vencimiento="2026-08-15",
+            creado_por=creado_por or self.usuario,
+        )
+        operacion.asignados.add(self.asignado)
+        return operacion
+
+    def _post_enviar_a_cuenta_gastos(self, operacion_ids, *, usuario=None):
+        if usuario is not None:
+            self.client.force_login(usuario)
+        return self.client.post(
+            reverse("operaciones:enviar_a_cuenta_gastos"),
+            data=json.dumps({"operacion_ids": operacion_ids}),
+            content_type="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
 
     def test_mover_a_solicitud_cuenta_gastos_crea_tarjeta_mapeada(self):
         response = self.client.post(
@@ -174,6 +202,89 @@ class OperacionACuentaGastosTests(TestCase):
         self.assertFalse(creada_dos)
         self.assertEqual(primera.pk, segunda.pk)
         self.assertEqual(CuentaGastos.objects.filter(operacion_origen=self.operacion).count(), 1)
+
+    def test_enviar_a_cuenta_gastos_crea_copias_y_respeta_idempotencia(self):
+        op_creada = self._crear_operacion_en_cg("Operacion nueva")
+        op_existente = self._crear_operacion_en_cg("Operacion existente")
+        op_otra = self._crear_operacion_en_cg("Operacion otra")
+        CuentaGastos.objects.filter(operacion_origen=op_creada).delete()
+        CuentaGastos.objects.filter(operacion_origen=op_otra).delete()
+
+        response = self._post_enviar_a_cuenta_gastos(
+            [op_creada.pk, op_existente.pk, op_otra.pk]
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["resumen"], {"creadas": 2, "existentes": 1, "fallidas": 0})
+        resultados = {item["operacion_id"]: item for item in data["resultados"]}
+        self.assertTrue(resultados[op_creada.pk]["creada"])
+        self.assertTrue(resultados[op_otra.pk]["creada"])
+        self.assertFalse(resultados[op_existente.pk]["creada"])
+        self.assertEqual(resultados[op_existente.pk]["motivo"], "ya_existia")
+
+        cuenta_creada = CuentaGastos.objects.get(operacion_origen=op_creada)
+        cuenta_existente = CuentaGastos.objects.get(operacion_origen=op_existente)
+        cuenta_otra = CuentaGastos.objects.get(operacion_origen=op_otra)
+        self.assertEqual(cuenta_creada.titulo, op_creada.titulo)
+        self.assertEqual(cuenta_creada.descripcion, op_creada.descripcion)
+        self.assertEqual(cuenta_creada.cliente, op_creada.cliente)
+        self.assertEqual(cuenta_creada.prioridad, op_creada.prioridad)
+        self.assertEqual(list(cuenta_creada.asignados.all()), [self.asignado])
+        self.assertEqual(cuenta_existente.titulo, op_existente.titulo)
+        self.assertEqual(cuenta_otra.titulo, op_otra.titulo)
+        self.assertEqual(list(cuenta_otra.asignados.all()), [self.asignado])
+        self.assertEqual(
+            Operacion.objects.get(pk=op_creada.pk).estado,
+            Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+        )
+        self.assertEqual(
+            Operacion.objects.get(pk=op_existente.pk).estado,
+            Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+        )
+        self.assertEqual(
+            Operacion.objects.get(pk=op_otra.pk).estado,
+            Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+        )
+
+    def test_enviar_a_cuenta_gastos_es_idempotente_en_una_segunda_llamada(self):
+        operacion = self._crear_operacion_en_cg("Operacion idempotente")
+        CuentaGastos.objects.filter(operacion_origen=operacion).delete()
+
+        primera = self._post_enviar_a_cuenta_gastos([operacion.pk])
+        segunda = self._post_enviar_a_cuenta_gastos([operacion.pk])
+
+        self.assertEqual(primera.status_code, 200)
+        self.assertEqual(segunda.status_code, 200)
+        self.assertTrue(primera.json()["resultados"][0]["creada"])
+        self.assertFalse(segunda.json()["resultados"][0]["creada"])
+        self.assertEqual(segunda.json()["resultados"][0]["motivo"], "ya_existia")
+        self.assertEqual(CuentaGastos.objects.filter(operacion_origen=operacion).count(), 1)
+
+    def test_enviar_a_cuenta_gastos_rechaza_operacion_fuera_del_estado(self):
+        respuesta = self._post_enviar_a_cuenta_gastos([self.operacion.pk])
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertFalse(CuentaGastos.objects.filter(operacion_origen=self.operacion).exists())
+        self.assertEqual(
+            respuesta.json()["resultados"],
+            [{"operacion_id": self.operacion.pk, "error": "no_encontrada_o_estado_invalido"}],
+        )
+
+    def test_enviar_a_cuenta_gastos_rechaza_sin_permiso(self):
+        otro = get_user_model().objects.create_user(username="sin-permiso-cg", password="pass")
+        operacion = self._crear_operacion_en_cg("Operacion privada", creado_por=self.usuario)
+        CuentaGastos.objects.filter(operacion_origen=operacion).delete()
+
+        respuesta = self._post_enviar_a_cuenta_gastos([operacion.pk], usuario=otro)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(
+            respuesta.json()["resultados"],
+            [{"operacion_id": operacion.pk, "error": "sin_permisos"}],
+        )
+        self.assertFalse(CuentaGastos.objects.filter(operacion_origen=operacion).exists())
 
 
 @override_settings(
@@ -2731,6 +2842,8 @@ class OperacionesProgressiveLoadingTests(TestCase):
         self.assertIn("invalidateColumnLoads();", javascript)
         self.assertIn("root.dataset.panelJsInitialized = '1'", javascript)
         self.assertEqual(javascript.count("Sortable.create("), 2)
+        self.assertIn("data-operacion-select-checkbox=\"1\"", javascript)
+        self.assertIn("data-operacion-enviar-cuenta-gastos=\"1\"", javascript)
         self.assertEqual(
             javascript.count("root.addEventListener('click'"), 1
         )

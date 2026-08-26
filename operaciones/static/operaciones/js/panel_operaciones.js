@@ -1,4 +1,4 @@
-  (function () {
+﻿  (function () {
     const root = document.querySelector('[data-operaciones-board="1"]');
     const configElement = document.getElementById('panel-operaciones-config');
     if (!root || !configElement || root.dataset.panelJsInitialized === '1') return;
@@ -85,6 +85,7 @@
           lastServerSyncedUserId = selectedUserId;
           initSortable();
           syncCopyActions();
+          syncEnviarCuentaGastosControls();
           syncInlineCreateAccess();
           applyAssignedUserFilter();
         });
@@ -240,7 +241,7 @@
       const button = shell.querySelector('[data-operacion-load-more="1"]');
       if (button) {
         button.hidden = remaining === 0;
-        button.textContent = remaining ? `Cargar más (${remaining})` : 'Cargar más';
+        button.textContent = remaining ? `Cargar mÃ¡s (${remaining})` : 'Cargar mÃ¡s';
       }
       ensureEmptyState(column);
     }
@@ -999,6 +1000,8 @@
           animation: 150,
           ghostClass: 'panel-operacion-ghost',
           dragClass: 'panel-operacion-drag',
+          filter: '[data-operacion-select-checkbox="1"], [data-operacion-select-checkbox="1"] *',
+          preventOnFilter: false,
           onMove: function (evt) {
             return !isCardBusy(evt.dragged);
           },
@@ -1685,7 +1688,7 @@
       }
     });
 
-    root.addEventListener('click', (e) => {
+    root.addEventListener('click', (e) => {`r`n
       const quickEditOpenButton = e.target.closest('[data-operacion-quick-edit-open="1"]');
       if (quickEditOpenButton) {
         e.preventDefault();
@@ -1826,8 +1829,7 @@
       if (url) loadDetail(card?.dataset.panelOperacionId, url, 'modal');
     });
 
-    document.addEventListener('change', (e) => {
-      const checkbox = e.target.closest('.operacion-action-item__checkbox');
+    document.addEventListener('change', (e) => {`r`n      const checkbox = e.target.closest('.operacion-action-item__checkbox');
       if (!checkbox) return;
 
       const form = checkbox.closest('[data-operacion-action-toggle-form="1"]');
@@ -2479,7 +2481,9 @@
     rootObserver.observe(document.documentElement, {childList: true, subtree: true});
 
     syncCopyActions();
+
     syncInlineCreateAccess();
     initSortable();
     applyAssignedUserFilter();
   })();
+
