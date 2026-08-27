@@ -127,6 +127,8 @@
   </div>
 </div>
 <div class="modal-footer zaha-detail-modal__footer d-flex justify-content-between">
+  <form method="post" action="{% url 'operaciones:eliminar_operacion' operacion.id %}" data-operacion-modal-delete="1">
+    {% csrf_token %}
     <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
     <button type="submit" class="btn btn-danger">Eliminar</button>
   </form>

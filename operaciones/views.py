@@ -649,7 +649,10 @@ def _preservar_campos_no_enviados(form, post_data, *field_names):
 
 @login_required
 def panel_operaciones(request):
-    usuario = _get_usuario_filter(request)
+    if "usuario" in request.GET:
+        usuario = _get_usuario_filter(request)
+    else:
+        usuario = request.user
     columnas = _columnas_kanban(usuario)
 
     return render(request, "operaciones/panel_operaciones.html", {
@@ -673,7 +676,10 @@ def panel_operaciones(request):
 @login_required
 @require_GET
 def tablero_partial(request):
-    usuario = _get_usuario_filter(request)
+    if "usuario" in request.GET:
+        usuario = _get_usuario_filter(request)
+    else:
+        usuario = request.user
     return render(
         request,
         "operaciones/_tablero.html",

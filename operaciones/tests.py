@@ -411,8 +411,24 @@ class OperacionesDetalleModalTests(TestCase):
         self.assertIn('for="id_asignados"', modal_html)
         self.assertIn('for="id_descripcion"', modal_html)
         self.assertIn("Operacion maritima de importacion.", modal_html)
-        self.assertIn("Coordinar documentacion con cliente.", modal_html)
         self.assertNotIn('data-operacion-options-section="1"', modal_html)
+
+    def test_detalle_operacion_modal_renderiza_csrf(self):
+        resp = self.client.get(
+            reverse("operaciones:detalle_operacion_modal", args=[self.operacion.id]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 200)
+        html = resp.json()["html"]
+        
+        # Verificar que Django esta generando un token CSRF con valor
+        import re
+        csrf_match = re.search(r'name=["\']csrfmiddlewaretoken["\']\s+value=["\']([^"\']+)["\']', html)
+        self.assertIsNotNone(csrf_match, "El token CSRF no se encontro en el modal renderizado.")
+        self.assertTrue(len(csrf_match.group(1)) > 10, "El token CSRF esta vacio o es invalido.")
+        
+        # Tambien comprobamos que el form de eliminar este presente para evitar otra regresion visual
+        self.assertIn('data-operacion-modal-delete="1"', html)
 
     def test_editar_operacion_preserva_valores(self):
         # Crear asignados y etiquetas

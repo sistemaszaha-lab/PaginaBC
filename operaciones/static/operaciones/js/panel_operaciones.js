@@ -1,4 +1,4 @@
-﻿  (function () {
+  (function () {
     const root = document.querySelector('[data-operaciones-board="1"]');
     const configElement = document.getElementById('panel-operaciones-config');
     if (!root || !configElement || root.dataset.panelJsInitialized === '1') return;
@@ -59,7 +59,7 @@
       invalidateColumnLoads();
       const url = new URL(boardUrl, window.location.origin);
       const selectedUserId = getSelectedUserId();
-      if (selectedUserId) url.searchParams.set('usuario', selectedUserId);
+      url.searchParams.set('usuario', selectedUserId);
       return fetch(`${url.pathname}${url.search}`, {
         method: 'GET',
         credentials: 'same-origin',
