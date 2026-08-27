@@ -1688,7 +1688,8 @@
       }
     });
 
-    root.addEventListener('click', (e) => {`r`n
+    root.addEventListener('click', (e) => {
+
       const quickEditOpenButton = e.target.closest('[data-operacion-quick-edit-open="1"]');
       if (quickEditOpenButton) {
         e.preventDefault();
@@ -1826,10 +1827,11 @@
       e.stopPropagation();
       const url = link.getAttribute('data-modal-url') || link.getAttribute('href');
       const card = link.closest('[data-panel-operacion-card="1"]');
-      if (url) loadDetail(card?.dataset.panelOperacionId, url, 'modal');
+      if (url) loadDetail(card?.dataset.panelOperacionId, url, 'drawer');
     });
 
-    document.addEventListener('change', (e) => {`r`n      const checkbox = e.target.closest('.operacion-action-item__checkbox');
+    document.addEventListener('change', (e) => {
+      const checkbox = e.target.closest('.operacion-action-item__checkbox');
       if (!checkbox) return;
 
       const form = checkbox.closest('[data-operacion-action-toggle-form="1"]');

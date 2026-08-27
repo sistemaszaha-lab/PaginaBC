@@ -144,7 +144,7 @@
     if (typeof TomSelect === 'undefined') return;
     scope.querySelectorAll('[data-operacion-tags-select="1"]').forEach(function (select) {
       if (select.tomselect) return;
-      const isEtiquetas = select.id === 'id_etiquetas';
+      const isEtiquetas = select.id === 'id_etiquetas' || select.id === 'id_etiqueta';
       new TomSelect(select, {
         plugins: ['remove_button'],
         create: isEtiquetas,

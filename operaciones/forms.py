@@ -415,7 +415,7 @@ class OperacionEtiquetaAssignForm(forms.Form):
     etiqueta = forms.ModelChoiceField(
         queryset=OperacionEtiqueta.objects.none(),
         empty_label="Selecciona una etiqueta",
-        widget=forms.Select(attrs={"class": "form-select"}),
+        widget=forms.Select(attrs={"class": "form-select", "id": "id_etiqueta", "data-operacion-tags-select": "1"}),
     )
 
     def __init__(self, *args, **kwargs):

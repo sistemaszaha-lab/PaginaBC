@@ -73,9 +73,9 @@
         type="button"
         class="btn btn-sm operaciones-column__add-btn"
         data-operacion-inline-open="1"
-        data-columna-id="{{ columna.columna_id|default:columna.id }}"
-        data-estado="{{ columna.estado }}"
-        data-estado-label="{{ columna.titulo|default:columna.estado_texto }}"
+        data-operacion-inline-column-id="{{ columna.columna_id|default:columna.id }}"
+        data-operacion-inline-state="{{ columna.estado }}"
+        data-operacion-inline-label="{{ columna.titulo|default:columna.estado_texto }}"
       >
         + Nueva operación
       </button>
