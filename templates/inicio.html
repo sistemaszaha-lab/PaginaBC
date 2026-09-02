@@ -85,25 +85,26 @@
                     ],
                 },
                 options: {
+                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { display: false },
                         tooltip: {
                             callbacks: {
-                                label: (ctx) => `Operaciones: ${ctx.parsed.y}`,
+                                label: (ctx) => `Operaciones: ${ctx.parsed.x}`,
                             },
                         },
                     },
                     scales: {
                         x: {
-                            ticks: { color: textColor },
-                            grid: { display: false },
-                        },
-                        y: {
                             beginAtZero: true,
                             ticks: { color: textColor, precision: 0 },
                             grid: { color: gridColor },
+                        },
+                        y: {
+                            ticks: { color: textColor },
+                            grid: { display: false },
                         },
                     },
                 },

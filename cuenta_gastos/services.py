@@ -15,7 +15,8 @@ def crear_cuenta_gastos_desde_operacion_si_corresponde(operacion, *, creado_por)
     defaults = {
         "titulo": operacion.titulo, "descripcion": operacion.descripcion,
         "cliente": operacion.cliente, "prioridad": operacion.prioridad,
-        "fecha_vencimiento": operacion.fecha_vencimiento, "creado_por": creado_por,
+        "fecha_vencimiento": operacion.fecha_vencimiento,
+        "creado_por": creado_por,
         "estado": (
             columna.codigo
             if columna is not None

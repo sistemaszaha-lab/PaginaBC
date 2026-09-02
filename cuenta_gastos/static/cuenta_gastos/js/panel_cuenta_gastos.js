@@ -776,6 +776,10 @@
           body.dataset.columnaNombre = data.nombre;
         }
       }
+      if (data.color_fondo) {
+        columnShell.dataset.columnaColorFondo = data.color_fondo;
+        columnShell.style.background = data.color_fondo;
+      }
     }
 
     function buildInlineOpenButtonMarkup(shell) {
@@ -809,26 +813,13 @@
 
     function syncInlineCreateAccess() {
       const shells = Array.from(document.querySelectorAll('[data-cuenta-column="1"]'));
-      const firstShell = shells[0] || null;
-      const currentActions = document.querySelector('.cuenta-column__actions');
-
-      if (!firstShell) {
-        currentActions?.remove();
-        closeInlineCreate({ reset: false });
-        return;
-      }
-
-      const targetActions = ensureColumnActions(firstShell);
-      if (!targetActions) return;
-
-      if (currentActions && currentActions !== targetActions) {
-        if (inlineSharedSlot && !inlineSharedSlot.classList.contains('d-none')) {
-          closeInlineCreate({ reset: false });
+      
+      shells.forEach((shell) => {
+        const targetActions = ensureColumnActions(shell);
+        if (targetActions) {
+          targetActions.innerHTML = buildInlineOpenButtonMarkup(shell);
         }
-        currentActions.remove();
-      }
-
-      targetActions.innerHTML = buildInlineOpenButtonMarkup(firstShell);
+      });
     }
 
     function ensureEmptyState(column) {
@@ -1237,12 +1228,6 @@
       const countNode = shell.querySelector('[data-cuenta-column-count="1"]');
       if (countNode) countNode.textContent = String(total);
 
-      const button = shell.querySelector('[data-cuenta-load-more="1"]');
-      const remaining = Math.max(0, total - loaded);
-      if (button) {
-        button.hidden = remaining === 0;
-        button.textContent = `Cargar más (${remaining} restantes)`;
-      }
       ensureEmptyState(column);
     }
 
@@ -1257,148 +1242,6 @@
         .filter(Boolean);
     }
 
-    function setColumnLoading(shell, isLoading) {
-      const button = shell?.querySelector('[data-cuenta-load-more="1"]');
-      const indicator = shell?.querySelector('[data-cuenta-load-indicator="1"]');
-      if (button) {
-        button.disabled = isLoading;
-        button.setAttribute('aria-busy', isLoading ? 'true' : 'false');
-      }
-      if (indicator) indicator.hidden = !isLoading;
-    }
-
-    function showColumnLoadError(shell, message) {
-      const errorNode = shell?.querySelector('[data-cuenta-load-error="1"]');
-      if (!errorNode) return;
-      errorNode.textContent = message || '';
-      errorNode.hidden = !message;
-    }
-
-    function loadMoreCards(button) {
-      const shell = button?.closest('[data-cuenta-column="1"]');
-      const column = shell?.querySelector('.columna-drop');
-      const state = shell?.dataset.estado || column?.dataset.estado || '';
-      const loadUrl = button?.dataset.loadUrl || '';
-      if (!shell || !column || !state || !loadUrl) {
-        return Promise.reject(new Error('Columna no disponible.'));
-      }
-
-      const existing = columnLoadRequests.get(state);
-      if (existing) return existing.promise;
-
-      const loadedIds = getLoadedCardIds(column);
-      const offset = loadedIds.length;
-      const selectedUserId = document.getElementById('CuentaGastosUserFilter')?.value || '';
-      const url = new URL(loadUrl, window.location.origin);
-      url.searchParams.set('offset', String(offset));
-      url.searchParams.set('loaded', loadedIds.join(','));
-      if (selectedUserId) url.searchParams.set('usuario', selectedUserId);
-
-      const controller = new AbortController();
-      const requestVersion = filterVersion;
-      setColumnLoading(shell, true);
-      showColumnLoadError(shell, '');
-
-      const request = fetch(`${url.pathname}${url.search}`, {
-        method: 'GET',
-        credentials: 'same-origin',
-        signal: controller.signal,
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          'Accept': 'application/json',
-        },
-      })
-        .then(async (response) => {
-          const contentType = response.headers.get('content-type') || '';
-          if (!contentType.includes('application/json')) {
-            throw new Error('Respuesta JSON invalida.');
-          }
-          const data = await response.json();
-          if (!response.ok || !data.ok) {
-            throw new Error(data.error || `Error ${response.status}`);
-          }
-          return data;
-        })
-        .then((data) => {
-          if (requestVersion !== filterVersion || controller.signal.aborted) {
-            return null;
-          }
-          const staleIds = Array.isArray(data.stale_ids)
-            ? data.stale_ids.map((value) => String(value))
-            : null;
-          const uniqueStaleIds = staleIds ? new Set(staleIds) : null;
-          if (
-            data.estado !== state ||
-            !Number.isInteger(data.loaded) ||
-            data.loaded < 0 ||
-            !Number.isInteger(data.next_offset) ||
-            !uniqueStaleIds ||
-            uniqueStaleIds.size !== staleIds.length ||
-            staleIds.some((cardId) => !loadedIds.includes(cardId)) ||
-            data.next_offset !== offset - staleIds.length + data.loaded ||
-            !Number.isInteger(data.total) ||
-            data.total < data.next_offset ||
-            typeof data.has_more !== 'boolean' ||
-            typeof data.html !== 'string' ||
-            (data.loaded > 0 && !data.html.trim()) ||
-            (data.loaded === 0 && data.has_more)
-          ) {
-            throw new Error('Respuesta incompatible con la columna.');
-          }
-
-          staleIds.forEach((cardId) => {
-            Array.from(column.querySelectorAll('[data-cuenta-card="1"]'))
-              .find((card) => getCardId(card) === cardId)
-              ?.remove();
-          });
-          const wrapper = document.createElement('div');
-          wrapper.innerHTML = data.html;
-          const cards = Array.from(wrapper.children).filter(
-            (node) => node.matches?.('[data-cuenta-card="1"]')
-          );
-          if (cards.length !== data.loaded) {
-            throw new Error('Cantidad de tarjetas inesperada.');
-          }
-          const existingIds = new Set(getLoadedCardIds(column));
-          const responseIds = new Set();
-          cards.forEach((card) => {
-            const cardId = getCardId(card);
-            if (
-              !cardId ||
-              existingIds.has(cardId) ||
-              responseIds.has(cardId) ||
-              card.dataset.cuentaState !== state
-            ) {
-              throw new Error('Tarjeta duplicada o incompatible.');
-            }
-            responseIds.add(cardId);
-          });
-
-          column.querySelector('.cuenta-column__empty')?.remove();
-          const fragment = document.createDocumentFragment();
-          cards.forEach((card) => fragment.appendChild(card));
-          column.appendChild(fragment);
-          syncColumnState(column, data.total);
-          button.hidden = !data.has_more;
-          return data;
-        })
-        .catch((error) => {
-          if (error.name === 'AbortError' || requestVersion !== filterVersion) {
-            return null;
-          }
-          showColumnLoadError(shell, 'No se pudieron cargar las tarjetas. Intenta nuevamente.');
-          throw error;
-        })
-        .finally(() => {
-          if (columnLoadRequests.get(state)?.promise === request) {
-            columnLoadRequests.delete(state);
-            setColumnLoading(shell, false);
-          }
-        });
-
-      columnLoadRequests.set(state, {promise: request, controller});
-      return request;
-    }
 
     function insertCardAt(column, card, index) {
       if (!column || !card) return;
@@ -1804,14 +1647,7 @@
         return;
       }
 
-      const loadMoreButton = e.target.closest('[data-cuenta-load-more="1"]');
-      if (loadMoreButton) {
-        e.preventDefault();
-        loadMoreCards(loadMoreButton).catch((error) => {
-          console.error('No se pudieron cargar mas tarjetas:', error);
-        });
-        return;
-      }
+
 
       const inlineOpenButton = e.target.closest('[data-cuenta-inline-open="1"]');
       if (inlineOpenButton) {
@@ -1927,6 +1763,9 @@
         if (!shell || !form) return;
         form.elements.columna_id.value = shell.dataset.columnaId || '';
         form.elements.nombre.value = shell.dataset.columnaNombre || '';
+        if (form.elements.color_fondo) {
+          form.elements.color_fondo.value = shell.dataset.columnaColorFondo || '#F8F9FA';
+        }
         setColumnFormError(form, '');
         columnEditModal?.show();
         return;

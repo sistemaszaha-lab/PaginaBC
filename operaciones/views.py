@@ -900,7 +900,7 @@ def editar_operacion_rapida(request, operacion_id):
 
     post_data = request.POST.copy()
     form = OperacionQuickEditForm(post_data, instance=operacion)
-    _preservar_campos_no_enviados(form, post_data, "titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados")
+    _preservar_campos_no_enviados(form, post_data, "titulo", "cliente", "prioridad", "etd", "eta", "asignados")
 
     if not form.is_valid():
         return _json_error(
@@ -942,7 +942,7 @@ def detalle_operacion_modal(request, operacion_id):
             "descripcion",
             "cliente",
             "prioridad",
-            "fecha_vencimiento",
+            "etd",
             "asignados",
             "etiquetas",
             "opciones",
@@ -983,7 +983,7 @@ def editar_operacion(request, operacion_id):
         "descripcion",
         "cliente",
         "prioridad",
-        "fecha_vencimiento",
+        "etd",
         "asignados",
         "etiquetas",
         "opciones",

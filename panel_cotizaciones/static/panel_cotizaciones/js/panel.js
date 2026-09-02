@@ -272,16 +272,57 @@
       }
       const total = getColumnTotal(column);
       const loaded = column.querySelectorAll('[data-panel-cotizacion-card="1"]').length;
+
+    function getHtml(url, options = {}) {
+      return fetch(url, {
+        ...options,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(options.headers || {}),
+        },
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Error ${response.status}`);
+          }
+          return response.text();
+        });
+    }
+
+    function ensureEmptyState(column) {
+      const cards = column.querySelectorAll('[data-panel-cotizacion-card="1"]');
+      let empty = column.querySelector('.panel-cotizacion-empty');
+      if (!cards.length && !empty) {
+        empty = document.createElement('div');
+        empty.className = 'panel-cotizacion-empty';
+        empty.textContent = 'Sin cotizaciones.';
+        column.appendChild(empty);
+      }
+      if (cards.length && empty) empty.remove();
+    }
+
+    function getColumnShell(column) {
+      return column?.closest('[data-panel-cotizacion-column="1"]') || null;
+    }
+
+    function getColumnTotal(column) {
+      const value = Number.parseInt(getColumnShell(column)?.dataset.total || '0', 10);
+      return Number.isInteger(value) && value >= 0 ? value : 0;
+    }
+
+    function syncColumnState(column, totalValue) {
+      if (!column) return;
+      const shell = getColumnShell(column);
+      if (!shell) return;
+      if (Number.isInteger(totalValue) && totalValue >= 0) {
+        shell.dataset.total = String(totalValue);
+      }
+      const total = getColumnTotal(column);
+      const loaded = column.querySelectorAll('[data-panel-cotizacion-card="1"]').length;
       shell.dataset.loaded = String(loaded);
       const countNode = shell.querySelector('[data-panel-cotizacion-column-count="1"]');
       if (countNode) {
         countNode.textContent = String(total);
-      }
-      const button = shell.querySelector('[data-panel-cotizacion-load-more="1"]');
-      const remaining = Math.max(0, total - loaded);
-      if (button) {
-        button.hidden = remaining === 0;
-        button.textContent = `Cargar más (${remaining} restantes)`;
       }
       ensureEmptyState(column);
     }
@@ -753,159 +794,6 @@
       ).map((card) => getCardId(card)).filter(Boolean);
     }
 
-    function setColumnLoading(shell, isLoading) {
-      const button = shell?.querySelector('[data-panel-cotizacion-load-more="1"]');
-      const indicator = shell?.querySelector('[data-panel-cotizacion-load-indicator="1"]');
-      if (button) {
-        button.disabled = isLoading;
-        button.setAttribute('aria-busy', isLoading ? 'true' : 'false');
-      }
-      if (indicator) indicator.hidden = !isLoading;
-    }
-
-    function showColumnLoadError(shell, message) {
-      const errorNode = shell?.querySelector('[data-panel-cotizacion-load-error="1"]');
-      if (!errorNode) return;
-      errorNode.textContent = message || '';
-      errorNode.hidden = !message;
-    }
-
-    function invalidateColumnLoads() {
-      boardVersion += 1;
-      columnLoadRequests.forEach((entry) => entry.controller.abort());
-      columnLoadRequests.clear();
-    }
-
-    function loadMoreCards(button) {
-      const shell = button?.closest('[data-panel-cotizacion-column="1"]');
-      const column = shell?.querySelector('.panel-cotizaciones-col');
-      const state = shell?.dataset.estado || column?.dataset.estado || '';
-      const loadUrl = button?.dataset.loadUrl || '';
-      if (!shell || !column || !state || !loadUrl) {
-        return Promise.reject(new Error('Columna no disponible.'));
-      }
-
-      const existing = columnLoadRequests.get(state);
-      if (existing) return existing.promise;
-
-      const loadedIds = getLoadedCardIds(column);
-      const offset = loadedIds.length;
-      const url = new URL(loadUrl, window.location.origin);
-      url.searchParams.set('offset', String(offset));
-      url.searchParams.set('loaded', loadedIds.join(','));
-      getSelectedUserIds().forEach((userId) => {
-        url.searchParams.append('usuario', userId);
-      });
-
-      const controller = new AbortController();
-      const requestVersion = boardVersion;
-      setColumnLoading(shell, true);
-      showColumnLoadError(shell, '');
-
-      const request = fetch(`${url.pathname}${url.search}`, {
-        method: 'GET',
-        credentials: 'same-origin',
-        signal: controller.signal,
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          'Accept': 'application/json',
-        },
-      })
-        .then(async (response) => {
-          const contentType = response.headers.get('content-type') || '';
-          if (!contentType.includes('application/json')) {
-            throw new Error('Respuesta JSON invalida.');
-          }
-          const data = await response.json();
-          if (!response.ok || !data.ok) {
-            throw new Error(data.error || `Error ${response.status}`);
-          }
-          return data;
-        })
-        .then((data) => {
-          if (requestVersion !== boardVersion || controller.signal.aborted) {
-            return null;
-          }
-          const staleIds = Array.isArray(data.stale_ids)
-            ? data.stale_ids.map((value) => String(value))
-            : null;
-          const uniqueStaleIds = staleIds ? new Set(staleIds) : null;
-          if (
-            data.estado !== state ||
-            !Number.isInteger(data.loaded) ||
-            data.loaded < 0 ||
-            !Number.isInteger(data.next_offset) ||
-            !uniqueStaleIds ||
-            uniqueStaleIds.size !== staleIds.length ||
-            staleIds.some((cardId) => !loadedIds.includes(cardId)) ||
-            data.next_offset !== offset - staleIds.length + data.loaded ||
-            !Number.isInteger(data.total) ||
-            data.total < data.next_offset ||
-            typeof data.has_more !== 'boolean' ||
-            typeof data.html !== 'string' ||
-            (data.loaded > 0 && !data.html.trim()) ||
-            (data.loaded === 0 && data.has_more)
-          ) {
-            throw new Error('Respuesta incompatible con la columna.');
-          }
-
-          staleIds.forEach((cardId) => {
-            Array.from(column.querySelectorAll('[data-panel-cotizacion-card="1"]'))
-              .find((card) => getCardId(card) === cardId)
-              ?.remove();
-          });
-          const wrapper = document.createElement('div');
-          wrapper.innerHTML = data.html;
-          const cards = Array.from(wrapper.children).filter(
-            (node) => node.matches?.('[data-panel-cotizacion-card="1"]')
-          );
-          if (cards.length !== data.loaded) {
-            throw new Error('Cantidad de tarjetas inesperada.');
-          }
-          const existingIds = new Set(getLoadedCardIds(column));
-          const responseIds = new Set();
-          cards.forEach((card) => {
-            const cardId = getCardId(card);
-            if (
-              !cardId ||
-              existingIds.has(cardId) ||
-              responseIds.has(cardId) ||
-              card.dataset.panelCotizacionState !== state
-            ) {
-              throw new Error('Tarjeta duplicada o incompatible.');
-            }
-            responseIds.add(cardId);
-          });
-
-          column.querySelector('.panel-cotizacion-empty')?.remove();
-          const fragment = document.createDocumentFragment();
-          cards.forEach((card) => fragment.appendChild(card));
-          column.appendChild(fragment);
-          syncColumnState(column, data.total);
-          button.hidden = !data.has_more;
-          return data;
-        })
-        .catch((error) => {
-          if (error.name === 'AbortError' || requestVersion !== boardVersion) {
-            return null;
-          }
-          showColumnLoadError(
-            shell,
-            'No se pudieron cargar las tarjetas. Intenta nuevamente.'
-          );
-          throw error;
-        })
-        .finally(() => {
-          if (columnLoadRequests.get(state)?.promise === request) {
-            columnLoadRequests.delete(state);
-            if (shell.isConnected) setColumnLoading(shell, false);
-          }
-        });
-
-      columnLoadRequests.set(state, {promise: request, controller});
-      return request;
-    }
-
     function initSortables() {
       if (typeof Sortable === 'undefined') return;
       const columnsContainer = getColumnsContainer();
@@ -1088,18 +976,16 @@
     }
 
     function refreshBoard() {
-      invalidateColumnLoads();
       boardRefreshController?.abort();
       const controller = new AbortController();
       boardRefreshController = controller;
-      const requestVersion = boardVersion;
       const selectedUsuarios = getSelectedUserIds();
       const params = new URLSearchParams();
       selectedUsuarios.forEach((usuarioId) => params.append('usuario', usuarioId));
       const url = params.toString() ? `${boardUrl}?${params.toString()}` : boardUrl;
       return getHtml(url, {signal: controller.signal})
         .then((html) => {
-          if (requestVersion !== boardVersion || controller.signal.aborted) return;
+          if (controller.signal.aborted) return;
           const board = document.getElementById('panelCotizacionesBoard');
           if (!board) return;
           closeInlineCreateForm();
@@ -1108,7 +994,7 @@
           syncPasteActions();
         })
         .catch((error) => {
-          if (error.name === 'AbortError' || requestVersion !== boardVersion) return;
+          if (error.name === 'AbortError') return;
           console.error('No se pudo refrescar el tablero de cotizaciones:', error);
         })
         .finally(() => {
@@ -1139,16 +1025,9 @@
         return;
       }
 
-      showColumnLoadError(getColumnShell(sourceColumn), '');
-      showColumnLoadError(getColumnShell(targetColumn), '');
       moveCardToColumn(card, targetColumn);
       persistCardState(card, sourceColumn, targetColumn, nuevoEstado, previousState, triggerElement)
         .catch((error) => {
-          const message = getStateChangeErrorMessage(error);
-          showColumnLoadError(getColumnShell(sourceColumn), message);
-          if (sourceColumn !== targetColumn) {
-            showColumnLoadError(getColumnShell(targetColumn), message);
-          }
           console.error('No se pudo actualizar el estado de la cotizacion:', error);
         })
         .finally(() => {
@@ -1250,15 +1129,6 @@
         const errorNode = form.querySelector('[data-panel-cotizacion-column-delete-error="1"]');
         if (errorNode) errorNode.textContent = '';
         columnDeleteModalInstance?.show();
-        return;
-      }
-
-      const loadMoreButton = e.target.closest('[data-panel-cotizacion-load-more="1"]');
-      if (loadMoreButton) {
-        e.preventDefault();
-        loadMoreCards(loadMoreButton).catch((error) => {
-          console.error('No se pudieron cargar mas tarjetas:', error);
-        });
         return;
       }
 

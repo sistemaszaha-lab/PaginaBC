@@ -26,6 +26,7 @@ class CuentaGastosColumna(models.Model):
     codigo = models.CharField(max_length=60, unique=True)
     orden = models.PositiveIntegerField(default=0)
     activa = models.BooleanField(default=True)
+    color_fondo = models.CharField(max_length=7, default="#F8F9FA", verbose_name="Color de fondo")
     creada_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

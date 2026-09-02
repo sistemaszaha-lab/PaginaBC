@@ -84,10 +84,9 @@ class Operacion(models.Model):
         on_delete=models.PROTECT,
         related_name="operaciones_creadas",
     )
-    fecha_vencimiento = models.DateField(null=True, blank=True)
+    fecha_vencimiento = models.DateField(null=True, blank=True, verbose_name="ETD")
     etd = models.DateField(null=True, blank=True, verbose_name="ETD")
     eta = models.DateField(null=True, blank=True, verbose_name="ETA")
-    carga_lista = models.DateField(null=True, blank=True, verbose_name="Carga lista")
     posicion = models.PositiveIntegerField(default=0, db_index=True)
     fecha_creacion = models.DateTimeField(default=timezone.now)
     etiquetas = models.ManyToManyField("OperacionEtiqueta", blank=True, related_name="operaciones")

@@ -93,27 +93,5 @@
       {% endfor %}
     </div>
 
-    <div class="px-3 pb-3" data-panel-cotizacion-load-controls="1">
-      <button
-        type="button"
-        class="btn btn-sm btn-outline-secondary w-100"
-        data-panel-cotizacion-load-more="1"
-        data-load-url="{{ columna.load_url }}"
-        {% if not columna.has_more %}hidden{% endif %}>
-        Cargar más ({{ columna.remaining }} restantes)
-      </button>
-      <div
-        class="small text-muted text-center mt-2"
-        data-panel-cotizacion-load-indicator="1"
-        role="status"
-        hidden>
-        Cargando tarjetas...
-      </div>
-      <div
-        class="small text-danger text-center mt-2"
-        data-panel-cotizacion-load-error="1"
-        role="alert"
-        hidden></div>
-    </div>
   </section>
 </div>

@@ -59,8 +59,7 @@ COLUMNAS_INICIALES = (
     (PanelCotizacion.Estado.EN_PROGRESO, "En progreso"),
     (PanelCotizacion.Estado.ENVIADA, "Enviada"),
 )
-INITIAL_CARDS_PER_COLUMN = 10
-CARDS_PAGE_SIZE = 10
+
 PANEL_ORDERING = ("-fecha_creacion", "-id")
 
 
@@ -178,9 +177,9 @@ def _column_context(
         "estado_texto": columna.nombre,
         "items": items,
         "count": count,
-        "loaded": loaded,
-        "has_more": count > loaded,
-        "remaining": max(0, count - loaded),
+        "loaded": count,
+        "has_more": False,
+        "remaining": 0,
         "load_url": reverse(
             "panel_cotizaciones:tarjetas_columna",
             kwargs={"codigo": columna.codigo},
@@ -228,7 +227,6 @@ def _columnas_kanban(usuarios):
                 partition_by=[F("estado")],
             ),
         )
-        .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
     )
     items_por_codigo = {columna.codigo: [] for columna in columnas}
     totales = {columna.codigo: 0 for columna in columnas}
@@ -562,10 +560,10 @@ def tarjetas_columna(request: HttpRequest, codigo: str) -> JsonResponse:
         pk for pk in loaded_ids if pk not in recognized_loaded_ids
     ]
     siguientes = list(
-        columna.exclude(pk__in=loaded_ids)[: CARDS_PAGE_SIZE + 1]
+        columna.exclude(pk__in=loaded_ids)
     )
-    has_more = len(siguientes) > CARDS_PAGE_SIZE
-    objetos = siguientes[:CARDS_PAGE_SIZE]
+    has_more = False
+    objetos = siguientes
     columnas_estado = _columnas_estado_choices()
     html = "".join(
         render_to_string(

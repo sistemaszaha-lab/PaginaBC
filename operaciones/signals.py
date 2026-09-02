@@ -32,7 +32,7 @@ def duplicar_a_cuenta_gastos_si_corresponde(sender, instance, **kwargs):
         descripcion      → descripcion
         cliente          → cliente
         prioridad        → prioridad
-        fecha_vencimiento→ fecha_vencimiento
+        etd              → fecha_vencimiento
         creado_por       → creado_por
         asignados (M2M)  → asignados (M2M)
         pk               → operacion_origen (FK de trazabilidad)

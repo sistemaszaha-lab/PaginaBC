@@ -501,9 +501,10 @@ class CuentaGastosOpcionForm(forms.ModelForm):
 class CuentaGastosColumnaCreateForm(forms.ModelForm):
     class Meta:
         model = CuentaGastosColumna
-        fields = ["nombre"]
+        fields = ["nombre", "color_fondo"]
         widgets = {
             "nombre": forms.TextInput(attrs={"class": "form-control"}),
+            "color_fondo": forms.TextInput(attrs={"class": "form-control", "type": "color"}),
         }
 
     def clean_nombre(self):

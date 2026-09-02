@@ -506,7 +506,7 @@
   width: 340px;
   min-width: 340px;
   border-radius: 22px;
-  background: var(--cuenta-column-bg);
+  background-color: var(--cuenta-column-bg);
   border: 1px solid var(--cuenta-column-border);
   overflow: hidden;
 }

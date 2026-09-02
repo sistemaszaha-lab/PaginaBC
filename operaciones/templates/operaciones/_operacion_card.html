@@ -39,10 +39,10 @@
 
     <div class="operaciones-card__meta">
       <span class="operaciones-chip operaciones-chip--state" data-operacion-state-badge="1">{{ operacion.get_estado_display }}</span>
-      {% if operacion.etd %}<span>ETD: {{ operacion.etd|date:"d M Y" }}</span>{% endif %}
+      {% if operacion.fecha_vencimiento %}<span>ETD: {{ operacion.fecha_vencimiento|date:"d M Y" }}</span>{% endif %}
       {% if operacion.eta %}<span>ETA: {{ operacion.eta|date:"d M Y" }}</span>{% endif %}
       {% if operacion.carga_lista %}<span>Carga: {{ operacion.carga_lista|date:"d M Y" }}</span>{% endif %}
-      {% if not operacion.etd and not operacion.eta and not operacion.carga_lista %}<span>Sin fechas</span>{% endif %}
+      {% if not operacion.fecha_vencimiento and not operacion.eta and not operacion.carga_lista %}<span>Sin fechas</span>{% endif %}
       <span data-operacion-card-files-count="1">Archivos: {{ operacion.archivos_count|default:0 }}</span>
       <span data-operacion-card-links-count="1">Enlaces: {{ operacion.enlaces_count|default:0 }}</span>
       <span data-operacion-card-comments-count="1">Comentarios: {{ operacion.comentarios_count|default:0 }}</span>

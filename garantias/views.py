@@ -42,8 +42,7 @@ from .services import copiar_garantia_a_columna
 
 User = get_user_model()
 
-INITIAL_CARDS_PER_COLUMN = 10
-CARDS_PAGE_SIZE = 10
+
 GARANTIA_ORDERING = ("-fecha_creacion", "-id")
 COLUMNAS_INICIALES = (
     (Garantia.Estado.SOLICITUD_NAVIERA, "En proceso"),
@@ -118,9 +117,9 @@ def _column_context(*, columna: GarantiaColumna, items, count: int, loaded: int)
         "estado_texto": columna.nombre,
         "items": items,
         "count": count,
-        "loaded": loaded,
-        "has_more": count > loaded,
-        "remaining": max(0, count - loaded),
+        "loaded": count,
+        "has_more": False,
+        "remaining": 0,
         "load_url": reverse(
             "garantias:tarjetas_columna",
             kwargs={"codigo": columna.codigo},
@@ -224,7 +223,6 @@ def _columnas_kanban(usuario=None):
                 partition_by=[F("estado")],
             ),
         )
-        .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
     )
     items_por_estado = {columna.codigo: [] for columna in columnas}
     totales = {columna.codigo: 0 for columna in columnas}
@@ -561,10 +559,10 @@ def tarjetas_columna(request, codigo):
         pk for pk in loaded_ids if pk not in recognized_loaded_ids
     ]
     siguientes = list(
-        columna.exclude(pk__in=loaded_ids)[: CARDS_PAGE_SIZE + 1]
+        columna.exclude(pk__in=loaded_ids)
     )
-    has_more = len(siguientes) > CARDS_PAGE_SIZE
-    garantias = siguientes[:CARDS_PAGE_SIZE]
+    has_more = False
+    garantias = siguientes
     columnas_estado = _columnas_estado_choices()
     html = "".join(
         render_to_string(
@@ -972,25 +970,12 @@ def tarjeta_pegar(request, columna_id):
     if not _puede_operar_garantias(request.user):
         return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
 
-    from django.db import transaction
-    from django.utils import timezone
-    with transaction.atomic():
-        # Clonación robusta: obtenemos de nuevo para desvincularla de memoria si fuese necesario
-        nueva_garantia = get_object_or_404(_garantia_queryset(), pk=int(raw_tarjeta_id))
-        nueva_garantia.pk = None  # Reiniciar el ID
-        
-        # Modificar título para indicar copia y otros metadatos
-        nueva_garantia.titulo = f"{garantia_original.titulo} - Copia"[:255]
-        nueva_garantia.columna = columna_destino
-        nueva_garantia.estado = columna_destino.codigo
-        nueva_garantia.creado_por = request.user
-        nueva_garantia.fecha_creacion = timezone.now()
-        
-        nueva_garantia.save()
-
-        # Copiar relaciones ManyToMany
-        nueva_garantia.asignados.set(garantia_original.asignados.all())
-        nueva_garantia.etiquetas.set(garantia_original.etiquetas.all())
+    from .services import copiar_garantia_a_columna
+    nueva_garantia = copiar_garantia_a_columna(
+        garantia_original=garantia_original,
+        columna_destino=columna_destino,
+        usuario=request.user,
+    )
 
     return JsonResponse(
         {

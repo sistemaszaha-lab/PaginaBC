@@ -45,7 +45,7 @@ def copiar_operacion_a_columna(operacion_original, columna_destino, usuario):
             columna=columna_destino,
             prioridad=operacion_original.prioridad,
             creado_por=usuario,
-            fecha_vencimiento=operacion_original.fecha_vencimiento,
+            etd=operacion_original.etd,
         )
         nueva_operacion.asignados.set(operacion_original.asignados.all())
         nueva_operacion.etiquetas.set(operacion_original.etiquetas.all())

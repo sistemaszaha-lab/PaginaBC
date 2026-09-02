@@ -5,6 +5,8 @@
   data-columna-id="{{ columna.columna_id|default:columna.id }}"
   data-columna-codigo="{{ columna.codigo|default:columna.estado }}"
   data-columna-nombre="{{ columna.nombre|default:columna.titulo }}"
+  data-columna-color-fondo="{{ columna.color_fondo|default:'#F8F9FA' }}"
+  style="background: {{ columna.color_fondo|default:'#F8F9FA' }};"
   data-modulo="cuenta_gastos"
   data-edit-url="{% url 'cuenta_gastos:columna_editar' columna.columna_id|default:columna.id %}"
   data-delete-url="{% url 'cuenta_gastos:columna_eliminar' columna.columna_id|default:columna.id %}"
@@ -74,7 +76,7 @@
     </div>
   </header>
 
-  {% if es_primera_columna %}
+    {% if forloop.first %}
     <div class="cuenta-column__actions px-3 pt-3">
       <button
         type="button"
@@ -87,7 +89,7 @@
         + Nueva cuenta
       </button>
     </div>
-  {% endif %}
+    {% endif %}
 
   <div
     class="cuenta-column__body columna-drop d-flex flex-column gap-3"
@@ -104,30 +106,6 @@
     {% endfor %}
   </div>
 
-  <div class="px-3 pb-3" data-cuenta-load-controls="1">
-    <button
-      type="button"
-      class="btn btn-sm btn-outline-secondary w-100"
-      data-cuenta-load-more="1"
-      data-load-url="{{ columna.load_url }}"
-      {% if not columna.has_more %}hidden{% endif %}
-    >
-      Cargar más ({{ columna.remaining }} restantes)
-    </button>
-    <div
-      class="small text-muted text-center mt-2"
-      data-cuenta-load-indicator="1"
-      role="status"
-      hidden
-    >
-      Cargando tarjetas...
-    </div>
-    <div
-      class="small text-danger text-center mt-2"
-      data-cuenta-load-error="1"
-      role="alert"
-      hidden
-    ></div>
-  </div>
+
 </section>
 </div>

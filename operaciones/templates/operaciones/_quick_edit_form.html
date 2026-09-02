@@ -30,17 +30,13 @@
     </div>
 
     <div class="row g-2 mb-2">
-      <div class="col-4">
-        <label class="form-label small mb-1" for="{{ form.etd.id_for_label }}">ETD</label>
-        {{ form.etd }}
+      <div class="col-6">
+        <label class="form-label small mb-1" for="{{ form.fecha_vencimiento.id_for_label }}">ETD</label>
+        {{ form.fecha_vencimiento }}
       </div>
-      <div class="col-4">
-        <label class="form-label small mb-1" for="{{ form.eta.id_for_label }}">ETA</label>
+      <div class="col-6">
+        <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.eta.id_for_label }}">ETA</label>
         {{ form.eta }}
-      </div>
-      <div class="col-4">
-        <label class="form-label small mb-1" for="{{ form.carga_lista.id_for_label }}">Carga</label>
-        {{ form.carga_lista }}
       </div>
     </div>
 

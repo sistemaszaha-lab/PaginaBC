@@ -101,6 +101,16 @@
     </div>
   </section>
 
+  <!-- Gráfica de incidencias por usuario al mes -->
+  <div class="card mb-4 border-0 shadow-sm" style="border-radius: 12px;">
+    <div class="card-body p-4">
+      <h5 class="card-title fw-bold mb-3">Incidencias del mes actual por responsable</h5>
+      <div style="position: relative; height: 300px;">
+        <canvas id="incidenciasChart"></canvas>
+      </div>
+    </div>
+  </div>
+
   <!-- Buscador -->
   <form class="mb-3 d-flex gap-2 flex-wrap" onsubmit="return false;">
 
@@ -293,8 +303,74 @@
 
   <!-- Tabulator CDN -->
   <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 
   <!-- JS del módulo -->
   <script src="{% static 'incidencias/js/incidencias_tabla.js' %}"></script>
+  
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const resumenUsuarios = {{ resumen_usuarios|safe|default:"[]" }};
+      
+      const chartEl = document.getElementById("incidenciasChart");
+      if (!chartEl || !resumenUsuarios.length) {
+        if (chartEl) {
+          chartEl.parentNode.innerHTML = '<div class="text-muted mt-3">No hay datos para este mes.</div>';
+        }
+        return;
+      }
+
+      const labels = resumenUsuarios.map(u => u.nombre);
+      const values = resumenUsuarios.map(u => u.total);
+
+      const root = document.documentElement;
+      const isDark =
+          (root.getAttribute("data-bs-theme") || "").toLowerCase() === "dark" ||
+          root.classList.contains("dark");
+
+      const textColor = isDark ? "rgba(255, 255, 255, 0.85)" : "rgba(15, 23, 42, 0.8)";
+      const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
+      const primary = "rgba(62, 159, 162, 0.75)";
+      const primaryBorder = "rgba(62, 159, 162, 1)";
+
+      new Chart(chartEl, {
+          type: "bar",
+          data: {
+              labels: labels,
+              datasets: [
+                  {
+                      label: "Incidencias",
+                      data: values,
+                      backgroundColor: primary,
+                      borderColor: primaryBorder,
+                      borderWidth: 1,
+                      borderRadius: 6,
+                      maxBarThickness: 40,
+                  },
+              ],
+          },
+          options: {
+              indexAxis: 'x',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                  legend: { display: false },
+              },
+              scales: {
+                  x: {
+                      ticks: { color: textColor },
+                      grid: { display: false },
+                  },
+                  y: {
+                      beginAtZero: true,
+                      ticks: { color: textColor, precision: 0 },
+                      grid: { color: gridColor },
+                  },
+              },
+          },
+      });
+    });
+  </script>
 
 {% endblock %}

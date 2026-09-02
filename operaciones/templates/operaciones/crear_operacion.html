@@ -30,14 +30,14 @@
           <label for="id_descripcion" class="form-label">Descripción</label>
           {{ form.descripcion }}
           {% if form.descripcion.errors %}<div class="text-danger small">{{ form.descripcion.errors }}</div>{% endif %}
-        </div>
+      </div>
         <div class="col-12 col-lg-4">
           <label for="id_prioridad" class="form-label">Prioridad</label>
           {{ form.prioridad }}
           {% if form.prioridad.errors %}<div class="text-danger small">{{ form.prioridad.errors }}</div>{% endif %}
         </div>
         <div class="col-12 col-lg-4">
-          <label for="id_fecha_vencimiento" class="form-label">Vencimiento</label>
+          <label for="id_fecha_vencimiento" class="form-label">ETD</label>
           {{ form.fecha_vencimiento }}
           {% if form.fecha_vencimiento.errors %}<div class="text-danger small">{{ form.fecha_vencimiento.errors }}</div>{% endif %}
         </div>
@@ -46,7 +46,6 @@
           {{ form.asignados }}
           {% if form.asignados.errors %}<div class="text-danger small">{{ form.asignados.errors }}</div>{% endif %}
         </div>
-      </div>
 
       <hr class="my-4" />
 

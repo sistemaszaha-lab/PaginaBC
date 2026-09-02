@@ -79,8 +79,7 @@ COLUMNAS_INICIALES = (
 
 )
 
-INITIAL_CARDS_PER_COLUMN = 3
-CARDS_PAGE_SIZE = 10
+
 CUENTA_ORDERING = ("-fecha_creacion", "-id")
 REPOSITORIO_INITIAL_LIMIT = 5
 PDF_INVALID_MESSAGE = "EL FORMATO NO ES VÁLIDO"
@@ -149,11 +148,12 @@ def _column_context(*, columna: CuentaGastosColumna, items, count: int, loaded: 
         "nombre": columna.nombre,
         "titulo": columna.nombre,
         "estado_texto": columna.nombre,
+        "color_fondo": columna.color_fondo,
         "items": items,
         "count": count,
-        "loaded": loaded,
-        "has_more": count > loaded,
-        "remaining": max(0, count - loaded),
+        "loaded": count,
+        "has_more": False,
+        "remaining": 0,
         "load_url": reverse(
             "cuenta_gastos:tarjetas_columna",
             kwargs={"codigo": columna.codigo},
@@ -207,7 +207,6 @@ def _columnas_panel(usuario=None):
                 partition_by=[F("estado")],
             ),
         )
-        .filter(posicion_columna__lte=INITIAL_CARDS_PER_COLUMN)
     )
     cuentas_por_estado = {columna.codigo: [] for columna in columnas}
     totales = {columna.codigo: 0 for columna in columnas}
@@ -763,11 +762,10 @@ def tarjetas_columna(request, codigo):
     effective_offset = len(recognized_loaded_ids)
 
     siguientes_ids = list(
-        columna.exclude(pk__in=loaded_ids)
-        .values_list("pk", flat=True)[: CARDS_PAGE_SIZE + 1]
+        columna.exclude(pk__in=loaded_ids).values_list("pk", flat=True)
     )
-    has_more = len(siguientes_ids) > CARDS_PAGE_SIZE
-    page_ids = siguientes_ids[:CARDS_PAGE_SIZE]
+    has_more = False
+    page_ids = siguientes_ids
     cuentas_por_id = {
         cuenta.pk: cuenta
         for cuenta in _cuenta_queryset().filter(pk__in=page_ids)
@@ -1579,6 +1577,7 @@ def columna_crear(request):
             "columna_id": columna.pk,
             "columna_codigo": columna.codigo,
             "nombre": columna.nombre,
+            "color_fondo": columna.color_fondo,
             "html": html,
         },
         status=201,
@@ -1609,6 +1608,7 @@ def columna_editar(request, pk):
             "columna_id": columna.pk,
             "columna_codigo": columna.codigo,
             "nombre": columna.nombre,
+            "color_fondo": columna.color_fondo,
         }
     )
 

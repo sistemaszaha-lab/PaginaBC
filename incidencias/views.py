@@ -1,7 +1,7 @@
 import json
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
@@ -45,6 +45,26 @@ def _build_resumen_incidencias(queryset) -> dict:
     )
 
 
+def _build_resumen_por_usuario_mes(queryset) -> list:
+    hoy = timezone.localdate()
+    # If responsable is null, it might group under None. Let's filter out nulls if needed, or handle it.
+    qs = queryset.filter(
+        fecha_creacion__year=hoy.year, 
+        fecha_creacion__month=hoy.month,
+        responsable__isnull=False
+    ).values(
+        nombre=F("responsable__first_name")
+    ).annotate(
+        total=Count("id")
+    ).order_by("-total")
+    
+    # Fallback to username if first_name is empty
+    resultados = []
+    for row in qs:
+        nombre = row["nombre"] or "Sin nombre"
+        resultados.append({"nombre": nombre, "total": row["total"]})
+    return resultados
+
 @login_required
 def panel_incidencias(request):
     incidencias = _panel_incidencias_queryset()
@@ -60,6 +80,7 @@ def panel_incidencias(request):
             "incidencias_json": json.dumps(table_data, ensure_ascii=False),
             "incidencia_form": IncidenciaForm(),
             "resumen": resumen,
+            "resumen_usuarios": json.dumps(_build_resumen_por_usuario_mes(incidencias)),
             "q": (request.GET.get("q") or "").strip(),
         },
     )

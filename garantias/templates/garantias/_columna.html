@@ -93,25 +93,5 @@
       {% endfor %}
     </div>
 
-    <div class="px-3 pb-3 text-center">
-      <button
-        type="button"
-        class="btn btn-sm btn-outline-secondary"
-        data-garantia-load-more="1"
-        data-load-url="{{ columna.load_url }}"
-        {% if not columna.has_more %}hidden{% endif %}>
-        Cargar más{% if columna.remaining %} ({{ columna.remaining }}){% endif %}
-      </button>
-      <div
-        class="small text-muted mt-2 d-none"
-        data-garantia-load-indicator="1"
-        role="status">
-        Cargando...
-      </div>
-      <div
-        class="small text-danger mt-2 d-none"
-        data-garantia-load-error="1"
-        role="alert"></div>
-    </div>
   </section>
 </div>
