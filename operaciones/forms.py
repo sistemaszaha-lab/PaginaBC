@@ -92,6 +92,7 @@ class OperacionInlineCreateForm(forms.ModelForm):
             "descripcion",
             "cliente",
             "prioridad",
+            "fecha_vencimiento",
             "etd",
             "eta",
             "carga_lista",
@@ -114,6 +115,10 @@ class OperacionInlineCreateForm(forms.ModelForm):
             ),
             "cliente": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "fecha_vencimiento": forms.DateInput(
+                format='%Y-%m-%d',
+                attrs={"class": "form-control form-control-sm", "type": "date"}
+            ),
             "etd": forms.DateInput(
                 format='%Y-%m-%d',
                 attrs={"class": "form-control form-control-sm", "type": "date"}

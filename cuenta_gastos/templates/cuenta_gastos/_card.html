@@ -16,7 +16,9 @@
                     {% include "cuenta_gastos/_inline_field_titulo.html" with cuenta=cuenta only %}
                 </div>
 
-                <div data-cuenta-inline-slot="cliente"></div>
+                <div data-cuenta-inline-slot="cliente">
+                    {% include "cuenta_gastos/_inline_field_cliente.html" with cuenta=cuenta only %}
+                </div>
             </div>
 
             <div class="cuenta-card__header-actions">

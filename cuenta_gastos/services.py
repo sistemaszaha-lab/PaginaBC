@@ -10,7 +10,7 @@ def crear_cuenta_gastos_desde_operacion_si_corresponde(operacion, *, creado_por)
     if operacion.estado != Operacion.Estado.SOLICITUD_CUENTA_GASTOS:
         return None, False
     columna = CuentaGastosColumna.objects.filter(
-        codigo=CuentaGastos.Estado.SOLICITUD_PAGO
+        codigo=CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS
     ).only("id", "codigo").first()
     defaults = {
         "titulo": operacion.titulo, "descripcion": operacion.descripcion,
@@ -19,7 +19,7 @@ def crear_cuenta_gastos_desde_operacion_si_corresponde(operacion, *, creado_por)
         "estado": (
             columna.codigo
             if columna is not None
-            else CuentaGastos.Estado.SOLICITUD_PAGO
+            else CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS
         ),
         "columna": columna,
     }

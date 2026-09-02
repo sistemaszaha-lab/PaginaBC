@@ -1585,16 +1585,51 @@ def columna_eliminar(request, pk):
         Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo),
         eliminado_en__isnull=True,
     )
-    return JsonResponse({
-        "status": "ok",
-        "id": operacion.id,
-        "estado": operacion.estado,
-        "estado_label": columna.nombre,
-        "columna_id": columna.pk,
-        "columna_codigo": columna.codigo,
-        "cuenta_gastos_creada": cuenta_gastos_creada,
-        "cuenta_gastos_id": cuenta_gastos.pk if cuenta_gastos else None,
-    })
+    destino_id = (request.POST.get("columna_destino_id") or "").strip()
+    operaciones_qs = Operacion.objects.filter(
+        Q(columna=columna) | Q(columna__isnull=True, estado=columna.codigo),
+        eliminado_en__isnull=True,
+    )
+    total_operaciones = operaciones_qs.count()
+    if total_operaciones > 0:
+        if not destino_id.isdigit():
+            return JsonResponse(
+                {"ok": False, "error": "Debes seleccionar una columna destino."},
+                status=400,
+            )
+        if int(destino_id) == columna.pk:
+            return JsonResponse(
+                {"ok": False, "error": "La columna destino debe ser distinta."},
+                status=400,
+            )
+        destino = get_object_or_404(OperacionColumna, pk=int(destino_id), activa=True)
+    else:
+        destino = None
+    with transaction.atomic():
+        if destino is not None:
+            for operacion in operaciones_qs:
+                operacion.columna = destino
+                operacion.estado = destino.codigo
+                operacion.save(update_fields=["columna", "estado"])
+        columna.activa = False
+        columna.save(update_fields=["activa", "fecha_actualizacion"])
+        for orden, columna_id in enumerate(
+            OperacionColumna.objects.filter(activa=True)
+            .order_by("orden", "id")
+            .values_list("pk", flat=True),
+            start=1,
+        ):
+            OperacionColumna.objects.filter(pk=columna_id).update(orden=orden)
+    response_data = {"ok": True, "columna_id": columna.pk}
+    if destino is not None:
+        response_data.update(
+            {
+                "moved_count": total_operaciones,
+                "columna_destino_id": destino.pk,
+                "columna_destino_codigo": destino.codigo,
+            }
+        )
+    return JsonResponse(response_data)
 
 @login_required
 @require_POST

@@ -63,6 +63,16 @@
   </div>
 
   <div class="mb-2">
+    <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.fecha_pago.id_for_label }}">
+      Fecha de pago
+    </label>
+    {{ form.fecha_pago }}
+    {% if form.fecha_pago.errors %}
+      <div class="text-danger small mt-1">{{ form.fecha_pago.errors|join:", " }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mb-2">
     <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.asignados.id_for_label }}">
       Asignados
     </label>

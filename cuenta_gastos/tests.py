@@ -622,8 +622,8 @@ class CuentaGastosTests(TestCase):
         self.assertTrue(creada)
         self.assertEqual(cuenta.operacion_origen_id, operacion.pk)
         self.assertIsNotNone(cuenta.columna_id)
-        self.assertEqual(cuenta.estado, CuentaGastos.Estado.SOLICITUD_PAGO)
-        self.assertEqual(cuenta.columna.codigo, CuentaGastos.Estado.SOLICITUD_PAGO)
+        self.assertEqual(cuenta.estado, CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS)
+        self.assertEqual(cuenta.columna.codigo, CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS)
         self.assertEqual(list(cuenta.asignados.all()), [self.asignado])
 
         segunda, creada_segunda = crear_cuenta_gastos_desde_operacion_si_corresponde(

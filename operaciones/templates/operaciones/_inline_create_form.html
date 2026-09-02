@@ -49,12 +49,12 @@
 
     <div class="row g-2 mb-2">
       <div class="col-4">
-        <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.etd.id_for_label }}">
-          ETD
+        <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.fecha_vencimiento.id_for_label }}">
+          Vencimiento
         </label>
-        {{ form.etd }}
-        {% if form.etd.errors %}
-          <div class="text-danger small mt-1">{{ form.etd.errors|join:", " }}</div>
+        {{ form.fecha_vencimiento }}
+        {% if form.fecha_vencimiento.errors %}
+          <div class="text-danger small mt-1">{{ form.fecha_vencimiento.errors|join:", " }}</div>
         {% endif %}
       </div>
       <div class="col-4">

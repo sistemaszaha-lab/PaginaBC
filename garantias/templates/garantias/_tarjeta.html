@@ -50,9 +50,16 @@
       </div>
 
       <div class="garantia-card__meta-block garantia-card__meta-block--due">
-        <span class="garantia-card__label">Vencimiento</span>
+        <span class="garantia-card__label">Fecha de solicitud</span>
         <div data-garantia-inline-slot="fecha_vencimiento">
           {% include "garantias/_inline_field_vencimiento.html" with g=g today=today only %}
+        </div>
+      </div>
+
+      <div class="garantia-card__meta-block garantia-card__meta-block--due">
+        <span class="garantia-card__label">Fecha de pago</span>
+        <div data-garantia-inline-slot="fecha_pago">
+          {% include "garantias/_inline_field_pago.html" with g=g today=today only %}
         </div>
       </div>
     </div>

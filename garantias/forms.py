@@ -90,6 +90,7 @@ class GarantiaForm(forms.ModelForm):
             "cliente",
             "prioridad",
             "fecha_vencimiento",
+            "fecha_pago",
             "asignados",
             "etiquetas",
         ]
@@ -101,11 +102,15 @@ class GarantiaForm(forms.ModelForm):
                 format="%Y-%m-%d",
                 attrs={"class": "form-control", "type": "date"},
             ),
+            "fecha_pago": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"class": "form-control", "type": "date"},
+            ),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas"]:
+        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "fecha_pago", "asignados", "etiquetas"]:
             if name in self.fields:
                 self.fields[name].required = False
         self.fields["etiquetas"].label_from_instance = lambda obj: obj.nombre
@@ -128,6 +133,7 @@ class GarantiaInlineCreateForm(GarantiaForm):
             "cliente",
             "prioridad",
             "fecha_vencimiento",
+            "fecha_pago",
             "asignados",
             "etiquetas",
         ]
@@ -151,6 +157,10 @@ class GarantiaInlineCreateForm(GarantiaForm):
                 format="%Y-%m-%d",
                 attrs={"class": "form-control form-control-sm", "type": "date"},
             ),
+            "fecha_pago": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"class": "form-control form-control-sm", "type": "date"},
+            ),
             "etiquetas": forms.SelectMultiple(
                 attrs={
                     "class": "form-select form-select-sm",
@@ -167,6 +177,7 @@ class GarantiaInlineCreateForm(GarantiaForm):
             "cliente",
             "prioridad",
             "fecha_vencimiento",
+            "fecha_pago",
             "asignados",
             "etiquetas",
             "archivos",
@@ -286,6 +297,7 @@ class GarantiaEditarForm(forms.ModelForm):
             "cliente",
             "prioridad",
             "fecha_vencimiento",
+            "fecha_pago",
             "asignados",
         ]
         widgets = {
@@ -296,11 +308,15 @@ class GarantiaEditarForm(forms.ModelForm):
                 format="%Y-%m-%d",
                 attrs={"class": "form-control", "type": "date"},
             ),
+            "fecha_pago": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"class": "form-control", "type": "date"},
+            ),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados"]:
+        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "fecha_pago", "asignados"]:
             if name in self.fields:
                 self.fields[name].required = False
         self.fields["cliente"].queryset = (
@@ -315,11 +331,15 @@ class GarantiaQuickEditForm(GarantiaEditarForm):
     """Formulario completo y limitado para la edicion rapida de una tarjeta."""
 
     class Meta(GarantiaEditarForm.Meta):
-        fields = ["titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados"]
+        fields = ["titulo", "cliente", "prioridad", "fecha_vencimiento", "fecha_pago", "asignados"]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
             "fecha_vencimiento": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"class": "form-control form-control-sm", "type": "date"},
+            ),
+            "fecha_pago": forms.DateInput(
                 format="%Y-%m-%d",
                 attrs={"class": "form-control form-control-sm", "type": "date"},
             ),

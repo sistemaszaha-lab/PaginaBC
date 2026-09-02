@@ -1,0 +1,13 @@
+<div
+  class="garantia-inline-value"
+  data-garantia-quick-edit-open="1"
+  data-date-value="{% if g.fecha_pago %}{{ g.fecha_pago|date:'Y-m-d' }}{% endif %}"
+  data-garantia-quick-edit-url="{% url 'garantias:actualizar_garantia_inline' g.id %}">
+  {% if g.fecha_pago %}
+    <span class="garantia-card__due {% if g.fecha_pago < today %}garantia-card__due--late{% endif %}">
+      {{ g.fecha_pago|date:"d M Y" }}
+    </span>
+  {% else %}
+    <span class="garantia-card__placeholder">Sin fecha</span>
+  {% endif %}
+</div>

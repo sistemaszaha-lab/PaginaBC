@@ -31,35 +31,37 @@
         <nav class="sidebar-nav" aria-label="Menú principal">
             <a href="{% url 'inicio' %}"
                 class="sidebar-link {% if current == 'inicio' %}is-active{% endif %}">Inicio</a>
+            <a href="{% url 'cliente_lista' %}"
+                class="sidebar-link {% if current == 'cliente_lista' or current == 'cliente_crear' or current == 'cliente_editar' %}is-active{% endif %}">Clientes</a>
             <a href="{% url 'lista_solicitudes' %}"
                 class="sidebar-link {% if current == 'lista_solicitudes' or current == 'crear_solicitud' or current == 'editar_solicitud' %}is-active{% endif %}">Solicitudes</a>
             <a href="{% url 'lista_cotizaciones' %}"
                 class="sidebar-link {% if current == 'lista_cotizaciones' or current == 'crear_cotizacion' or current == 'editar_cotizacion' %}is-active{% endif %}">Cotizaciones-Ref</a>
-            <a href="{% url 'lista_referencias' %}"
-                class="sidebar-link {% if current == 'lista_referencias' or current == 'crear_referencia' or current == 'editar_referencia' %}is-active{% endif %}">Referencias</a>
-            <a href="{% url 'cliente_lista' %}"
-                class="sidebar-link {% if current == 'cliente_lista' or current == 'cliente_crear' or current == 'cliente_editar' %}is-active{% endif %}">Clientes</a>
-
-            {% if request.user.is_superuser %}
-            <a href="{% url 'lista_usuarios' %}"
-                class="sidebar-link {% if current == 'lista_usuarios' or current == 'crear_usuario' or current == 'editar_usuario' %}is-active{% endif %}">Usuarios</a>
-            {% endif %}
-
             {% if request.user.is_superuser or request.user.is_authenticated %}
-            <a href="{% url 'garantias:panel_garantias' %}"
-                class="sidebar-link {% if current == 'panel_garantias' or current == 'crear_garantia' %}is-active{% endif %}">Garantías</a>
-            <a href="{% url 'operaciones:panel_operaciones' %}"
-                class="sidebar-link {% if current == 'panel_operaciones' or current == 'crear_operacion' %}is-active{% endif %}">Operaciones</a>
             <a href="{% url 'panel_cotizaciones:panel_cotizaciones' %}"
                 class="sidebar-link {% if current == 'panel_cotizaciones' %}is-active{% endif %}">Panel Cotizaciones</a>
+            {% endif %}
+            <a href="{% url 'lista_referencias' %}"
+                class="sidebar-link {% if current == 'lista_referencias' or current == 'crear_referencia' or current == 'editar_referencia' %}is-active{% endif %}">Referencias</a>
+            {% if request.user.is_superuser or request.user.is_authenticated %}
+            <a href="{% url 'operaciones:panel_operaciones' %}"
+                class="sidebar-link {% if current == 'panel_operaciones' or current == 'crear_operacion' %}is-active{% endif %}">Operaciones</a>
             {% endif %}
             <a href="{% url 'cuenta_gastos:panel_cuenta_gastos' %}"
                 class="sidebar-link {% if current == 'panel_cuenta_gastos' or current == 'crear_cuenta_gastos' %}is-active{% endif %}">Cuenta
                 de Gastos</a>
+            {% if request.user.is_superuser or request.user.is_authenticated %}
+            <a href="{% url 'garantias:panel_garantias' %}"
+                class="sidebar-link {% if current == 'panel_garantias' or current == 'crear_garantia' %}is-active{% endif %}">Garantías</a>
+            {% endif %}
             <a href="{% url 'incidencias:panel_incidencias' %}"
                 class="sidebar-link {% if current == 'panel_incidencias' %}is-active{% endif %}">Incidencias</a>
             <a href="{% url 'papelera' %}"
                 class="sidebar-link {% if current == 'papelera' or current == 'papelera_restaurar' or current == 'papelera_eliminar_definitivamente' or current == 'papelera_restaurar_seleccion' or current == 'papelera_eliminar_seleccion' %}is-active{% endif %}">Papelera</a>
+            {% if request.user.is_superuser %}
+            <a href="{% url 'lista_usuarios' %}"
+                class="sidebar-link {% if current == 'lista_usuarios' or current == 'crear_usuario' or current == 'editar_usuario' %}is-active{% endif %}">Usuarios</a>
+            {% endif %}
         </nav>
 
         <form method="post" action="{% url 'logout' %}" class="sidebar-logout">

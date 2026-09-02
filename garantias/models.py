@@ -81,6 +81,7 @@ class Garantia(models.Model):
         related_name="garantias_creadas",
     )
     fecha_vencimiento = models.DateField(null=True, blank=True)
+    fecha_pago = models.DateField(null=True, blank=True)
     fecha_creacion = models.DateTimeField(default=timezone.now)
     etiquetas = models.ManyToManyField(
         "GarantiaEtiqueta",

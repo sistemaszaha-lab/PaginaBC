@@ -23,7 +23,8 @@
             {% endfor %}
           </div>
           <span class="small text-muted">{{ asignados_count }} asignados</span>
-          <span class="small text-muted">Vence: {% if garantia.fecha_vencimiento %}{{ garantia.fecha_vencimiento|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}</span>
+          <span class="small text-muted">Solicitud: {% if garantia.fecha_vencimiento %}{{ garantia.fecha_vencimiento|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}</span>
+          <span class="small text-muted">Pago: {% if garantia.fecha_pago %}{{ garantia.fecha_pago|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}</span>
         </div>
       </div>
       <button type="button" class="btn-close zaha-detail-modal__close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
