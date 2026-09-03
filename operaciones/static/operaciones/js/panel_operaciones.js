@@ -14,18 +14,18 @@
 
     const modalElement = document.getElementById('OperacionDetalleModal');
     const modalContent = document.getElementById('OperacionDetalleModalContent');
-    const modalInstance = modalElement && window.bootstrap ? new bootstrap.Modal(modalElement) : null;
+    const modalInstance = modalElement && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(modalElement) : null;
     const drawerElement = document.getElementById('OperacionDetalleDrawer');
     const drawerContent = document.getElementById('OperacionDetalleDrawerContent');
     const drawerSupported = Boolean(drawerElement && drawerContent);
     const confirmModalElement = document.getElementById('OperacionEliminarConfirmModal');
-    const confirmModalInstance = confirmModalElement && window.bootstrap ? new bootstrap.Modal(confirmModalElement) : null;
+    const confirmModalInstance = confirmModalElement && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(confirmModalElement) : null;
     const columnCreateModalElement = document.getElementById('OperacionColumnCreateModal');
-    const columnCreateModalInstance = columnCreateModalElement && window.bootstrap ? new bootstrap.Modal(columnCreateModalElement) : null;
+    const columnCreateModalInstance = columnCreateModalElement && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(columnCreateModalElement) : null;
     const columnEditModalElement = document.getElementById('OperacionColumnEditModal');
-    const columnEditModalInstance = columnEditModalElement && window.bootstrap ? new bootstrap.Modal(columnEditModalElement) : null;
+    const columnEditModalInstance = columnEditModalElement && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(columnEditModalElement) : null;
     const columnDeleteModalElement = document.getElementById('OperacionColumnDeleteModal');
-    const columnDeleteModalInstance = columnDeleteModalElement && window.bootstrap ? new bootstrap.Modal(columnDeleteModalElement) : null;
+    const columnDeleteModalInstance = columnDeleteModalElement && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(columnDeleteModalElement) : null;
     const columnCreateForm = columnCreateModalElement?.querySelector('form');
     const columnEditForm = columnEditModalElement?.querySelector('form');
     const columnDeleteForm = columnDeleteModalElement?.querySelector('form');
@@ -85,7 +85,6 @@
           lastServerSyncedUserId = selectedUserId;
           initSortable();
           syncCopyActions();
-          syncEnviarCuentaGastosControls();
           syncInlineCreateAccess();
           applyAssignedUserFilter();
         });
@@ -1569,15 +1568,13 @@
       }
     }
 
-    if (drawerElement) {
-      drawerElement.addEventListener('click', (e) => {
-        const detailCloseButton = e.target.closest('[data-operacion-drawer-close="1"], [data-operacion-detail-close="1"]');
-        if (!detailCloseButton) return;
-        e.preventDefault();
-        e.stopPropagation();
-        closeDetail();
-      });
-    }
+    document.addEventListener('click', (e) => {
+      const detailCloseButton = e.target.closest('[data-operacion-drawer-close="1"], [data-operacion-detail-close="1"]');
+      if (!detailCloseButton) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeDetail();
+    });
 
     function getDetailCardIdFromAction(action) {
       const match = (action || '').match(/\/(\d+)\/(?:editar|archivo|enlace|comentario|eliminar)\/?$/);
@@ -1934,7 +1931,7 @@
       }
     });
 
-    root.addEventListener('submit', (e) => {
+    document.addEventListener('submit', (e) => {
       const quickEditForm = e.target.closest('[data-operacion-quick-edit-form="1"]');
       if (quickEditForm) {
         e.preventDefault();

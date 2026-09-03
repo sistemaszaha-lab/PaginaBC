@@ -292,13 +292,14 @@ class OperacionQuickEditForm(forms.ModelForm):
 class OperacionEditarForm(forms.ModelForm):
     class Meta:
         model = Operacion
-        fields = ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "opciones"]
+        fields = ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "eta", "asignados", "etiquetas", "opciones"]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
             "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "cliente": forms.Select(attrs={"class": "form-select"}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
             "fecha_vencimiento": forms.DateInput(format='%Y-%m-%d', attrs={"class": "form-control", "type": "date"}),
+            "eta": forms.DateInput(format='%Y-%m-%d', attrs={"class": "form-control", "type": "date"}),
             "asignados": forms.SelectMultiple(attrs={"class": "form-select rounded garantia-asignados-select", "data-operacion-tags-select": "1"}),
             "etiquetas": forms.SelectMultiple(attrs={"class": "form-select rounded", "id": "id_etiquetas", "data-operacion-tags-select": "1"}),
             "opciones": forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"}),
@@ -306,7 +307,7 @@ class OperacionEditarForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "opciones"]:
+        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "eta", "asignados", "etiquetas", "opciones"]:
             if name in self.fields:
                 self.fields[name].required = False
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")

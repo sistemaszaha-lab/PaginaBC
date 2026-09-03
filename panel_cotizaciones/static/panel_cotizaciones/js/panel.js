@@ -258,20 +258,6 @@
       return column?.closest('[data-panel-cotizacion-column="1"]') || null;
     }
 
-    function getColumnTotal(column) {
-      const value = Number.parseInt(getColumnShell(column)?.dataset.total || '0', 10);
-      return Number.isInteger(value) && value >= 0 ? value : 0;
-    }
-
-    function syncColumnState(column, totalValue) {
-      if (!column) return;
-      const shell = getColumnShell(column);
-      if (!shell) return;
-      if (Number.isInteger(totalValue) && totalValue >= 0) {
-        shell.dataset.total = String(totalValue);
-      }
-      const total = getColumnTotal(column);
-      const loaded = column.querySelectorAll('[data-panel-cotizacion-card="1"]').length;
 
     function getHtml(url, options = {}) {
       return fetch(url, {
