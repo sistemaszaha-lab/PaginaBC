@@ -39,8 +39,10 @@ class OperacionColumna(models.Model):
 class Operacion(models.Model):
     class Estado(models.TextChoices):
         PENDIENTE = "PENDIENTE", "Pendientes"
+        REVALIDACIONES = "REVALIDACIONES", "Revalidaciones"
+        CONSULTORIA = "CONSULTORIA", "Consultoria"
         SEGUROS = "SEGUROS", "Seguros"
-        PRUEBA_VALOR = "PRUEBA_VALOR", "Prueba de valor"
+        PRUEBA_VALOR = "PRUEBA_VALOR", "MANIFESTACIÓN DE VALOR"
         EN_ADUANA = "EN_ADUANA", "En aduana"
         TRANSITO_NACIONAL = "TRANSITO_NACIONAL", "Tránsito nacional"
         COORDINAR_PICKUP = "COORDINAR_PICKUP", "Pick up"

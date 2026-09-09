@@ -61,8 +61,10 @@ logger = logging.getLogger(__name__)
 
 COLUMNAS_INICIALES = (
     (Operacion.Estado.PENDIENTE, "Pendientes"),
+    (Operacion.Estado.REVALIDACIONES, "Revalidaciones"),
+    (Operacion.Estado.CONSULTORIA, "Consultoria"),
     (Operacion.Estado.SEGUROS, "Seguros"),
-    (Operacion.Estado.PRUEBA_VALOR, "Prueba de valor"),
+    (Operacion.Estado.PRUEBA_VALOR, "MANIFESTACIÓN DE VALOR"),
     (Operacion.Estado.EN_ADUANA, "En aduana"),
     (Operacion.Estado.TRANSITO_NACIONAL, "Tránsito nacional"),
     (Operacion.Estado.COORDINAR_PICKUP, "Pick up"),

@@ -46,16 +46,18 @@ operaciones/
 ## 🎯 Características
 
 ### Panel Kanban
-- **9 columnas** con estados específicos:
+- **11 columnas** con estados específicos:
   1. Pendientes
-  2. Seguros
-  3. Prueba de valor
-  4. En aduana
-  5. Tránsito nacional
-  6. Por coordinar pickup
-  7. Tránsito internacional
-  8. Expediente CG
-  9. Solicitud de cuenta gastos
+  2. Revalidaciones
+  3. Consultoria
+  4. Seguros
+  5. MANIFESTACIÓN DE VALOR
+  6. En aduana
+  7. Tránsito nacional
+  8. Pick up
+  9. Tránsito internacional
+  10. Expediente CG
+  11. Solicitud de cuenta gastos
 
 ### Tarjetas
 Cada tarjeta muestra:

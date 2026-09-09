@@ -41,6 +41,16 @@ PANEL_JS_PATH = (
 )
 
 
+def asegurar_columnas_operaciones_actuales():
+    from .views import COLUMNAS_INICIALES
+
+    for orden, (codigo, nombre) in enumerate(COLUMNAS_INICIALES, start=1):
+        OperacionColumna.objects.update_or_create(
+            codigo=codigo,
+            defaults={"nombre": nombre, "orden": orden, "activa": True},
+        )
+
+
 @override_settings(
     STORAGES={"staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}}
 )
@@ -205,6 +215,7 @@ class OperacionACuentaGastosTests(TestCase):
 )
 class OperacionesPanelFiltroUsuariosTests(TestCase):
     def setUp(self):
+        asegurar_columnas_operaciones_actuales()
         User = get_user_model()
         self.user = User.objects.create_user(username="tester", password="pass", first_name="Tester")
         self.asignado = User.objects.create_user(username="asignado", password="pass", first_name="Asignado")
@@ -909,6 +920,7 @@ class OperacionesInlineCreateTests(TestCase):
         self.client.force_login(self.user)
         self.inline_url = reverse("operaciones:crear_operacion_inline")
         self.inline_form_url = reverse("operaciones:formulario_operacion_inline")
+        asegurar_columnas_operaciones_actuales()
         self.columna_inicial = OperacionColumna.objects.filter(
             activa=True
         ).order_by("orden", "id").first()
