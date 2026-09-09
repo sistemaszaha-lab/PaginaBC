@@ -1,10 +1,11 @@
 from __future__ import annotations
 from django.views.decorators.csrf import ensure_csrf_cookie
 
+from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Max, Q, Window
 from django.db.models.functions import RowNumber
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -42,7 +43,7 @@ from .models import (
     PanelCotizacionEnlace,
     PanelCotizacionEtiqueta,
 )
-from .services import copiar_cotizacion_a_columna
+from .services import copiar_cotizacion_a_columna, crear_referencia_desde_panel_cotizacion
 
 User = get_user_model()
 
@@ -200,7 +201,7 @@ def _board_queryset(usuarios):
         ).filter(
             Q(columna__activa=True) | Q(columna__isnull=True)
         )
-        .select_related("columna", "creado_por")
+        .select_related("columna", "creado_por", "referencia_generada")
         .prefetch_related("asignados", "etiquetas")
         .annotate(comentarios_count=Count("comentarios"))
     )
@@ -1392,6 +1393,56 @@ def eliminar_panel_cotizacion(request: HttpRequest, pk: int) -> JsonResponse:
             "id": pk,
             "message": "La tarjeta se envió a la papelera correctamente.",
         }
+    )
+
+
+@login_required
+@require_POST
+def enviar_a_referencias(request: HttpRequest, pk: int) -> JsonResponse:
+    obj = get_object_or_404(
+        PanelCotizacion.objects.filter(eliminado_en__isnull=True)
+        .select_related("columna", "creado_por", "solicitud_origen")
+        .prefetch_related("asignados"),
+        pk=pk,
+    )
+    if obj.estado != PanelCotizacion.Estado.ENVIADA:
+        if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+            messages.error(request, "Solo las tarjetas en Enviada pueden generar Referencia.")
+            return redirect("panel_cotizaciones:panel_cotizaciones")
+        return JsonResponse(
+            {"ok": False, "error": "Solo las tarjetas en Enviada pueden generar Referencia."},
+            status=400,
+        )
+    try:
+        referencia, creada = crear_referencia_desde_panel_cotizacion(obj)
+    except ValueError as exc:
+        if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+            messages.error(request, "No se pudo crear la Referencia desde la tarjeta.")
+            return redirect("panel_cotizaciones:panel_cotizaciones")
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    except IntegrityError:
+        referencia = getattr(obj, "referencia_generada", None)
+        if referencia is None:
+            raise
+        creada = False
+
+    obj = _get_cotizacion_detalle(pk)
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        messages.success(
+            request,
+            "Referencia creada correctamente." if creada else "Esta tarjeta ya fue enviada a Referencias.",
+        )
+        return redirect("lista_referencias")
+    return JsonResponse(
+        {
+            "ok": True,
+            "created": creada,
+            "referencia_id": referencia.pk,
+            "referencia": referencia.referencia,
+            "card_html": _render_card_html(request, obj),
+            "message": "Referencia creada correctamente." if creada else "Esta tarjeta ya fue enviada a Referencias.",
+        },
+        status=201 if creada else 200,
     )
 
 

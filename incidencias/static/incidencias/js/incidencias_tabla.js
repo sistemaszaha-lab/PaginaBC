@@ -155,7 +155,8 @@
 
     document.getElementById("incidenciasId").value = row?.id || "";
     document.getElementById("incidenciasCodigo").value = row?.incidencia || "";
-    document.getElementById("incidenciasTitulo").value = row?.titulo || "";
+    const tituloInput = document.getElementById("incidenciasTitulo");
+    if (tituloInput) tituloInput.value = row?.titulo || "";
     document.getElementById("incidenciasDescripcion").value = row?.descripcion || "";
     document.getElementById("incidenciasResponsable").value = row?.responsable_id || "";
     document.getElementById("incidenciasEstado").value = row?.estado || "abierto";

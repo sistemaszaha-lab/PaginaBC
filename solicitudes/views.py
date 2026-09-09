@@ -38,6 +38,7 @@ from .forms import (
 from .models import Cotizacion, Referencia, Solicitud
 from .services import (
     aplicar_estados_vigentes_cotizaciones,
+    obtener_datos_panel_desde_solicitud,
     obtener_initial_referencia_desde_solicitud,
 )
 
@@ -710,6 +711,7 @@ def lista_solicitudes(request):
         _solicitudes_activas().filter(anio=anio).select_related(
             "ejecutivo",
             "referencia_generada",
+            "panel_cotizacion_generada",
         )
         if anio
         else Solicitud.objects.none()
@@ -1561,31 +1563,51 @@ def crear_referencia(request):
 
 @login_required
 def enviar_solicitud_a_referencias(request, pk):
+    from panel_cotizaciones.models import PanelCotizacion, PanelCotizacionColumna
+
     solicitud = get_object_or_404(_solicitudes_activas(), pk=pk)
     if not _puede_convertir_solicitud(request.user, solicitud):
-        raise PermissionDenied("No tienes permisos para enviar esta solicitud a Referencias.")
+        raise PermissionDenied("No tienes permisos para enviar esta solicitud al Panel de cotizaciones.")
     if getattr(solicitud, "referencia_generada", None):
-        messages.info(request, "Esta solicitud ya fue enviada a Referencias.")
+        messages.info(request, "Esta solicitud ya tiene una Referencia historica.")
         return redirect("lista_referencias")
+    if getattr(solicitud, "panel_cotizacion_generada", None):
+        messages.info(request, "Esta solicitud ya fue enviada al Panel de cotizaciones.")
+        return redirect("panel_cotizaciones:panel_cotizaciones")
+    if request.method != "POST":
+        return redirect("lista_solicitudes")
 
-    if request.method == "POST":
-        form = ReferenciaForm(request.POST)
-        if form.is_valid():
-            try:
-                with transaction.atomic():
-                    form.instance.solicitud_origen = solicitud
-                    form.save()
-            except IntegrityError:
-                messages.error(request, "Esta solicitud ya fue enviada a Referencias.")
-                return redirect("lista_referencias")
-            messages.success(request, "Referencia creada desde la solicitud.")
-            return redirect("lista_referencias")
-    else:
-        form = ReferenciaForm(initial=obtener_initial_referencia_desde_solicitud(solicitud))
+    columna = PanelCotizacionColumna.objects.filter(
+        codigo=PanelCotizacion.Estado.REQUERIMIENTO,
+        activa=True,
+    ).first()
+    if columna is None:
+        raise PermissionDenied("No existe la columna Requerimiento en el Panel de cotizaciones.")
 
-    context = {"form": form, "next_url": reverse("lista_solicitudes"), "solicitud_origen": solicitud}
-    context.update(_contexto_clientes(request))
-    return render(request, "referencias/crear_referencia.html", context)
+    try:
+        with transaction.atomic():
+            existente = PanelCotizacion.objects.filter(solicitud_origen=solicitud).first()
+            if existente:
+                messages.info(request, "Esta solicitud ya fue enviada al Panel de cotizaciones.")
+                return redirect("panel_cotizaciones:panel_cotizaciones")
+            datos = obtener_datos_panel_desde_solicitud(solicitud)
+            asignados = datos.pop("asignados")
+            tarjeta = PanelCotizacion.objects.create(
+                **datos,
+                prioridad=PanelCotizacion.Prioridad.MEDIA,
+                estado=columna.codigo,
+                columna=columna,
+                creado_por=request.user,
+                solicitud_origen=solicitud,
+            )
+            if asignados:
+                tarjeta.asignados.set(asignados)
+    except IntegrityError:
+        messages.error(request, "Esta solicitud ya fue enviada al Panel de cotizaciones.")
+        return redirect("panel_cotizaciones:panel_cotizaciones")
+
+    messages.success(request, "Solicitud enviada al Panel de cotizaciones en Requerimiento.")
+    return redirect("panel_cotizaciones:panel_cotizaciones")
 
 
 @login_required

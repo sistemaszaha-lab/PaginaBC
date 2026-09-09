@@ -12,6 +12,7 @@ from django.urls import reverse
 
 from clientes.models import Cliente
 from operaciones.models import Operacion
+from panel_cotizaciones.models import PanelCotizacion, PanelCotizacionColumna
 from .forms import CLIENTE_NUEVO_LABEL, CLIENTE_NUEVO_VALUE, CotizacionForm, ReferenciaForm, SolicitudForm
 from .models import Cotizacion, Referencia, Solicitud, UserProfile
 from .services import actualizar_estados_cotizaciones
@@ -27,32 +28,35 @@ class SolicitudAReferenciaTests(TestCase):
             aerea=True, ejecutivo=self.usuario,
         )
 
-    def test_crea_referencia_vinculada_y_no_duplica(self):
+    def test_envia_solicitud_a_panel_requerimiento_y_no_duplica(self):
         self.client.force_login(self.usuario)
         url = reverse("enviar_solicitud_a_referencias", args=[self.solicitud.pk])
-        self.assertEqual(self.client.get(url).status_code, 200)
-        response = self.client.post(url, {
-            "ejecutivo": self.usuario.pk, "cliente": "cliente origen",
-            "servicio": "importacion", "medio_operacion": "aerea", "fecha": "2026-07-01",
-        })
-        self.assertRedirects(response, reverse("lista_referencias"))
-        referencia = Referencia.objects.get(solicitud_origen=self.solicitud)
-        self.assertEqual(referencia.cliente, "CLIENTE ORIGEN")
-        self.assertEqual(referencia.referencia, "BC261001")
-        self.assertEqual(Solicitud.objects.count(), 1)
         self.assertEqual(self.client.get(url).status_code, 302)
-        self.assertEqual(Referencia.objects.count(), 1)
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("panel_cotizaciones:panel_cotizaciones"))
+        tarjeta = PanelCotizacion.objects.get(solicitud_origen=self.solicitud)
+        requerimiento = PanelCotizacionColumna.objects.get(codigo=PanelCotizacion.Estado.REQUERIMIENTO)
+        self.assertEqual(tarjeta.estado, PanelCotizacion.Estado.REQUERIMIENTO)
+        self.assertEqual(tarjeta.columna_id, requerimiento.pk)
+        self.assertEqual(tarjeta.titulo, self.solicitud.sg)
+        self.assertEqual(tarjeta.cliente, "CLIENTE ORIGEN")
+        self.assertIn("Solicitud: SG26001", tarjeta.descripcion)
+        self.assertIn("Tipo: Importaci", tarjeta.descripcion)
+        self.assertEqual(list(tarjeta.asignados.values_list("pk", flat=True)), [self.usuario.pk])
+        self.assertEqual(Solicitud.objects.count(), 1)
+        self.client.post(url)
+        self.assertEqual(PanelCotizacion.objects.filter(solicitud_origen=self.solicitud).count(), 1)
+        self.assertEqual(Referencia.objects.count(), 0)
 
     def test_administrador_y_otro_ejecutivo_pueden_abrir_solicitud_ajena(self):
         admin = User.objects.create_user(username="admin-conv", password="pass", is_superuser=True)
         otro = User.objects.create_user(username="otro-conv", password="pass")
         url = reverse("enviar_solicitud_a_referencias", args=[self.solicitud.pk])
         self.client.force_login(admin)
-        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertEqual(self.client.post(url).status_code, 302)
         self.client.force_login(otro)
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Creando referencia desde la solicitud")
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 302)
 
     def test_conversion_requiere_autenticacion(self):
         self.client.logout()
@@ -63,7 +67,57 @@ class SolicitudAReferenciaTests(TestCase):
         otro = User.objects.create_user(username="otro-boton", password="pass")
         self.client.force_login(otro)
         response = self.client.get(reverse("lista_solicitudes"))
-        self.assertContains(response, "Enviar a Referencias")
+        self.assertContains(response, "Enviar a Panel")
+
+    def test_solicitud_historica_con_referencia_sigue_valida(self):
+        Referencia.objects.create(
+            referencia="BC261001",
+            consecutivo=1,
+            ejecutivo=self.usuario,
+            cliente=self.solicitud.cliente,
+            servicio="importacion",
+            medio_operacion="aerea",
+            fecha=date(2026, 7, 1),
+            solicitud_origen=self.solicitud,
+        )
+        self.client.force_login(self.usuario)
+        response = self.client.get(reverse("lista_solicitudes"))
+        self.assertContains(response, "Enviada a Referencias")
+        self.assertFalse(PanelCotizacion.objects.filter(solicitud_origen=self.solicitud).exists())
+
+    def test_nuevo_flujo_completo_llega_a_operaciones_pickup(self):
+        self.client.force_login(self.usuario)
+        response = self.client.post(
+            reverse("enviar_solicitud_a_referencias", args=[self.solicitud.pk])
+        )
+        self.assertRedirects(response, reverse("panel_cotizaciones:panel_cotizaciones"))
+        tarjeta = PanelCotizacion.objects.get(solicitud_origen=self.solicitud)
+        enviada = PanelCotizacionColumna.objects.get(codigo=PanelCotizacion.Estado.ENVIADA)
+        tarjeta.estado = enviada.codigo
+        tarjeta.columna = enviada
+        tarjeta.save(update_fields=["estado", "columna"])
+
+        response = self.client.post(
+            reverse("panel_cotizaciones:enviar_a_referencias", args=[tarjeta.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 201)
+        referencia = Referencia.objects.get(panel_cotizacion_origen=tarjeta)
+
+        response = self.client.post(
+            reverse("operaciones:enviar_referencia_a_operaciones", args=[referencia.pk]),
+            {
+                "titulo": f"Referencia {referencia.referencia}",
+                "descripcion": "Operacion desde nuevo flujo",
+                "estado": Operacion.Estado.PENDIENTE,
+            },
+        )
+
+        self.assertRedirects(response, reverse("operaciones:panel_operaciones"))
+        operacion = Operacion.objects.get(referencia_origen=referencia)
+        self.assertEqual(operacion.estado, Operacion.Estado.COORDINAR_PICKUP)
+        self.assertIsNotNone(operacion.columna)
+        self.assertEqual(operacion.columna.codigo, Operacion.Estado.COORDINAR_PICKUP)
 
 
 class SeguridadPermisosTests(TestCase):
@@ -1550,7 +1604,7 @@ class ListadosRendimientoFase3Tests(TestCase):
             {"anio": 2026, "q": "SG-F3-002"},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Enviar a Referencias")
+        self.assertContains(response, "Enviar a Panel")
 
         for indice in range(3, 27):
             self._crear_solicitud(indice)

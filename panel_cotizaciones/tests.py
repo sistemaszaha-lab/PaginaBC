@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection
+from django.db import IntegrityError, connection
 from django.test import Client, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.middleware.csrf import get_token
@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from clientes.models import Cliente
+from solicitudes.models import Referencia, Solicitud
 
 from .forms import PanelCotizacionCreateForm
 from .models import (
@@ -136,6 +137,162 @@ class PanelCotizacionAccessAndRenderingTests(TestCase):
         self.assertContains(response, "zaha-detail-modal__header")
         self.assertContains(response, "zaha-detail-modal__body")
         self.assertContains(response, "zaha-detail-modal__footer")
+
+
+class PanelCotizacionAReferenciaTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="panel_ref_user", password="panel123", first_name="Panel"
+        )
+        self.client.force_login(self.user)
+        self.requerimiento = PanelCotizacionColumna.objects.get(
+            codigo=PanelCotizacion.Estado.REQUERIMIENTO
+        )
+        self.enviada = PanelCotizacionColumna.objects.get(
+            codigo=PanelCotizacion.Estado.ENVIADA
+        )
+        self.solicitud = Solicitud.objects.create(
+            anio=2026,
+            sg="SG26077",
+            cliente="Cliente Nuevo Flujo",
+            fecha_recepcion=date(2026, 7, 1),
+            fecha_entrega=date(2026, 7, 9),
+            tipo="Importacion aerea",
+            ejecutivo=self.user,
+            aerea=True,
+            estado_aereo="Pendiente",
+        )
+        self.tarjeta = PanelCotizacion.objects.create(
+            titulo="SG26077",
+            descripcion="Solicitud: SG26077",
+            cliente=self.solicitud.cliente,
+            prioridad=PanelCotizacion.Prioridad.MEDIA,
+            estado=self.enviada.codigo,
+            columna=self.enviada,
+            fecha_vencimiento=self.solicitud.fecha_entrega,
+            creado_por=self.user,
+            solicitud_origen=self.solicitud,
+        )
+        self.tarjeta.asignados.add(self.user)
+
+    def test_accion_solo_aparece_en_enviada(self):
+        response = self.client.get(reverse("panel_cotizaciones:panel_cotizaciones"))
+        self.assertContains(response, reverse("panel_cotizaciones:enviar_a_referencias", args=[self.tarjeta.pk]))
+
+        self.tarjeta.estado = self.requerimiento.codigo
+        self.tarjeta.columna = self.requerimiento
+        self.tarjeta.save(update_fields=["estado", "columna"])
+        response = self.client.get(reverse("panel_cotizaciones:panel_cotizaciones"))
+        self.assertNotContains(response, reverse("panel_cotizaciones:enviar_a_referencias", args=[self.tarjeta.pk]))
+
+    def test_tarjeta_fuera_de_enviada_no_genera_referencia(self):
+        self.tarjeta.estado = self.requerimiento.codigo
+        self.tarjeta.columna = self.requerimiento
+        self.tarjeta.save(update_fields=["estado", "columna"])
+        response = self.client.post(
+            reverse("panel_cotizaciones:enviar_a_referencias", args=[self.tarjeta.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Referencia.objects.exists())
+
+    def test_tarjeta_en_progreso_no_genera_referencia(self):
+        en_progreso = PanelCotizacionColumna.objects.get(
+            codigo=PanelCotizacion.Estado.EN_PROGRESO
+        )
+        self.tarjeta.estado = en_progreso.codigo
+        self.tarjeta.columna = en_progreso
+        self.tarjeta.save(update_fields=["estado", "columna"])
+        response = self.client.post(
+            reverse("panel_cotizaciones:enviar_a_referencias", args=[self.tarjeta.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Referencia.objects.exists())
+
+    def test_enviada_crea_referencia_con_consecutivo_y_trazabilidad(self):
+        Referencia.objects.create(
+            referencia="BC261009",
+            consecutivo=9,
+            ejecutivo=self.user,
+            cliente="CLIENTE PREVIO",
+            servicio="importacion",
+            fecha=date(2026, 1, 1),
+        )
+        response = self.client.post(
+            reverse("panel_cotizaciones:enviar_a_referencias", args=[self.tarjeta.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 201)
+        referencia = Referencia.objects.get(panel_cotizacion_origen=self.tarjeta)
+        self.assertEqual(referencia.solicitud_origen, self.solicitud)
+        self.assertEqual(referencia.consecutivo, 10)
+        self.assertEqual(referencia.referencia, "BC261010")
+        self.assertEqual(referencia.cliente, "CLIENTE NUEVO FLUJO")
+        self.assertEqual(referencia.servicio, "importacion")
+        self.assertEqual(referencia.medio_operacion, "aerea")
+
+    def test_panel_directo_sin_solicitud_crea_referencia_valida(self):
+        tarjeta = PanelCotizacion.objects.create(
+            titulo="Importacion directa",
+            descripcion="Cotizacion directa de importacion",
+            cliente="Cliente Directo",
+            prioridad=PanelCotizacion.Prioridad.MEDIA,
+            estado=self.enviada.codigo,
+            columna=self.enviada,
+            creado_por=self.user,
+        )
+        tarjeta.asignados.add(self.user)
+
+        response = self.client.post(
+            reverse("panel_cotizaciones:enviar_a_referencias", args=[tarjeta.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        referencia = Referencia.objects.get(panel_cotizacion_origen=tarjeta)
+        self.assertIsNone(referencia.solicitud_origen)
+        self.assertEqual(referencia.cliente, "CLIENTE DIRECTO")
+        self.assertEqual(referencia.ejecutivo, self.user)
+        self.assertEqual(referencia.servicio, "importacion")
+        self.assertEqual(referencia.consecutivo, 1)
+        self.assertEqual(referencia.referencia, "BC261001")
+
+    def test_segundo_intento_no_duplica(self):
+        url = reverse("panel_cotizaciones:enviar_a_referencias", args=[self.tarjeta.pk])
+        self.client.post(url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Referencia.objects.filter(panel_cotizacion_origen=self.tarjeta).count(), 1)
+
+    def test_integrity_error_por_carrera_devuelve_ya_enviada(self):
+        def simular_carrera(_cotizacion):
+            Referencia.objects.create(
+                referencia="BC261001",
+                consecutivo=1,
+                ejecutivo=self.user,
+                cliente=self.tarjeta.cliente,
+                servicio="importacion",
+                medio_operacion="aerea",
+                fecha=date(2026, 7, 1),
+                solicitud_origen=self.solicitud,
+                panel_cotizacion_origen=self.tarjeta,
+            )
+            raise IntegrityError("duplicate panel reference")
+
+        with patch(
+            "panel_cotizaciones.views.crear_referencia_desde_panel_cotizacion",
+            side_effect=simular_carrera,
+        ):
+            response = self.client.post(
+                reverse("panel_cotizaciones:enviar_a_referencias", args=[self.tarjeta.pk]),
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["created"])
+        self.assertEqual(Referencia.objects.filter(panel_cotizacion_origen=self.tarjeta).count(), 1)
 
 
 class PanelCotizacionFiltroTests(TestCase):
@@ -366,8 +523,8 @@ class PanelCotizacionCopiarPegarTests(TestCase):
             field.name for field in PanelCotizacion._meta.fields
             if getattr(field, "unique", False) and not field.primary_key
         ]
-        self.assertEqual(one_to_one_fields, [])
-        self.assertEqual(unique_fields, [])
+        self.assertEqual(one_to_one_fields, ["solicitud_origen"])
+        self.assertEqual(unique_fields, ["solicitud_origen"])
         response = self._paste(self.admin)
         self.assertEqual(response.status_code, 201)
 

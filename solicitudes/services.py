@@ -81,6 +81,56 @@ def obtener_initial_referencia_desde_solicitud(solicitud):
     return initial
 
 
+def obtener_datos_panel_desde_solicitud(solicitud):
+    medios = [
+        etiqueta
+        for campo, etiqueta in (
+            ("aerea", "Aerea"),
+            ("maritima", "Maritima"),
+            ("terrestre", "Terrestre"),
+        )
+        if getattr(solicitud, campo, False)
+    ]
+    descripcion = "\n".join(
+        parte
+        for parte in (
+            f"Solicitud: {solicitud.sg}",
+            f"Tipo: {solicitud.tipo}" if solicitud.tipo else "",
+            f"Medio: {', '.join(medios)}" if medios else "",
+            f"Fecha de inicio: {solicitud.fecha_recepcion}" if solicitud.fecha_recepcion else "",
+            f"Fecha de entrega: {solicitud.fecha_entrega}" if solicitud.fecha_entrega else "",
+        )
+        if parte
+    )
+    return {
+        "titulo": solicitud.sg,
+        "descripcion": descripcion,
+        "cliente": solicitud.cliente,
+        "fecha_vencimiento": solicitud.fecha_entrega,
+        "asignados": [solicitud.ejecutivo_id] if solicitud.ejecutivo_id else [],
+    }
+
+
+def obtener_initial_referencia_desde_panel_cotizacion(cotizacion):
+    solicitud = getattr(cotizacion, "solicitud_origen", None)
+    if solicitud is not None:
+        initial = obtener_initial_referencia_desde_solicitud(solicitud)
+        if cotizacion.cliente:
+            initial["cliente"] = cotizacion.cliente
+        return initial
+
+    asignado = cotizacion.asignados.order_by("id").first()
+    initial = {
+        "cliente": cotizacion.cliente,
+        "ejecutivo": asignado.pk if asignado else cotizacion.creado_por_id,
+        "fecha": timezone.localdate(),
+    }
+    servicio = _servicio_desde_tipo(f"{cotizacion.titulo} {cotizacion.descripcion}")
+    if servicio:
+        initial["servicio"] = servicio
+    return initial
+
+
 def _servicio_desde_tipo(tipo):
     texto = (tipo or "").lower()
     if "export" in texto:

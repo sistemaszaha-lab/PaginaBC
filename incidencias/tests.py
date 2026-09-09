@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import Incidencia
+from .forms import IncidenciaCreateForm
 
 
 class PanelIncidenciasResumenTests(TestCase):
@@ -59,7 +60,6 @@ class PanelIncidenciasResumenTests(TestCase):
             reverse("incidencias:crear_incidencia"),
             {
                 "codigo": "INC-999",
-                "titulo": "Nueva",
                 "descripcion": "Creada por test",
                 "responsable": self.user.id,
                 "estado": Incidencia.Estado.ABIERTO,
@@ -76,6 +76,46 @@ class PanelIncidenciasResumenTests(TestCase):
         self.assertEqual(payload["resumen"]["en_proceso"], 1)
         self.assertEqual(payload["resumen"]["resueltas"], 0)
         self.assertEqual(payload["resumen"]["vencidas"], 1)
+        self.assertEqual(Incidencia.objects.get(codigo="INC-999").titulo, "INC-999")
+
+    def test_editar_sin_titulo_preserva_titulo_historico(self):
+        incidencia = self._crear_incidencia(
+            codigo="INC-001",
+            titulo="Titulo historico",
+            descripcion="Texto anterior",
+        )
+
+        response = self.client.post(
+            reverse("incidencias:editar_incidencia", args=[incidencia.pk]),
+            {
+                "codigo": "INC-001",
+                "descripcion": "Texto nuevo",
+                "responsable": self.user.id,
+                "estado": Incidencia.Estado.ABIERTO,
+                "prioridad": Incidencia.Prioridad.MEDIA,
+                "fecha_limite": "",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        incidencia.refresh_from_db()
+        self.assertEqual(incidencia.titulo, "Titulo historico")
+        self.assertEqual(incidencia.descripcion, "Texto nuevo")
+
+    def test_formulario_alta_no_requiere_titulo(self):
+        form = IncidenciaCreateForm(
+            data={
+                "codigo": "INC-1000",
+                "descripcion": "Sin titulo visible",
+                "responsable": self.user.id,
+                "estado": Incidencia.Estado.ABIERTO,
+                "prioridad": Incidencia.Prioridad.MEDIA,
+                "fecha_limite": "",
+            }
+        )
+        self.assertNotIn("titulo", form.fields)
+        self.assertTrue(form.is_valid(), form.errors)
 
     def test_editar_y_eliminar_recalcula_resumen(self):
         hoy = timezone.localdate()

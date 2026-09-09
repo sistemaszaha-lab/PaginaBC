@@ -283,6 +283,14 @@ class Referencia(models.Model):
         related_name="referencia_generada",
         editable=False,
     )
+    panel_cotizacion_origen = models.OneToOneField(
+        "panel_cotizaciones.PanelCotizacion",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="referencia_generada",
+        editable=False,
+    )
 
     SERVICIOS_LABELS = {
         "importacion": "Importacion",

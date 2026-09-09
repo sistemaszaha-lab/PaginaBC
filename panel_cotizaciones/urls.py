@@ -30,6 +30,7 @@ urlpatterns = [
     path("<int:pk>/enlaces/", views.enlace_agregar, name="enlace_agregar"),
     path("<int:pk>/enlaces/<int:enlace_id>/eliminar/", views.enlace_eliminar, name="enlace_eliminar"),
     path("<int:pk>/eliminar/", views.eliminar_panel_cotizacion, name="eliminar"),
+    path("<int:pk>/enviar-a-referencias/", views.enviar_a_referencias, name="enviar_a_referencias"),
     path("<int:pk>/comentario/", views.comentario_create, name="comentario_create"),
     path("<int:pk>/checklist/", views.checklist_item_create, name="checklist_item_create"),
     path("<int:pk>/checklist/<int:item_id>/update/", views.checklist_item_update, name="checklist_item_update"),

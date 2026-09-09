@@ -68,6 +68,14 @@ class PanelCotizacion(models.Model):
         on_delete=models.PROTECT,
         related_name="panel_cotizaciones_creadas",
     )
+    solicitud_origen = models.OneToOneField(
+        "solicitudes.Solicitud",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="panel_cotizacion_generada",
+        editable=False,
+    )
     asignados = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         blank=True,

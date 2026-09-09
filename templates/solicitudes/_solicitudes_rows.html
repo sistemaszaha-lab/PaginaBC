@@ -131,8 +131,13 @@
         <a href="{% url 'editar_solicitud' s.id %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-primary">Editar</a>
         {% if s.referencia_generada %}
             <a href="{% url 'editar_referencia' s.referencia_generada.id %}" class="btn btn-sm btn-outline-success">Enviada a Referencias</a>
+        {% elif s.panel_cotizacion_generada %}
+            <a href="{% url 'panel_cotizaciones:panel_cotizaciones' %}" class="btn btn-sm btn-outline-success">Enviada a Panel</a>
         {% else %}
-            <a href="{% url 'enviar_solicitud_a_referencias' s.id %}" class="btn btn-sm btn-success">Enviar a Referencias</a>
+            <form method="post" action="{% url 'enviar_solicitud_a_referencias' s.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-success">Enviar a Panel</button>
+            </form>
         {% endif %}
         {% if request.user.is_superuser %}
             <button

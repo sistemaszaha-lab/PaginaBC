@@ -8,7 +8,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .forms import IncidenciaForm
+from .forms import IncidenciaCreateForm, IncidenciaForm
 from .models import Incidencia
 
 
@@ -89,7 +89,7 @@ def panel_incidencias(request):
 @login_required
 @require_POST
 def crear_incidencia(request):
-    form = IncidenciaForm(request.POST)
+    form = IncidenciaCreateForm(request.POST)
     if not form.is_valid():
         return JsonResponse({"ok": False, "errors": form.errors}, status=400)
 

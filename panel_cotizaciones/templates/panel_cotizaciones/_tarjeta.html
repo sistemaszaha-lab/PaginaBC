@@ -66,6 +66,16 @@
         </svg>
         <span data-panel-cotizacion-comentarios-count="1">{{ c.comentarios_count|default:0 }}</span>
       </div>
+      {% if c.estado == "ENVIADA" %}
+        {% if c.referencia_generada %}
+          <a href="{% url 'editar_referencia' c.referencia_generada.id %}" class="btn btn-sm btn-outline-success">Enviada a Referencias</a>
+        {% else %}
+          <form method="post" action="{% url 'panel_cotizaciones:enviar_a_referencias' c.id %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-success">Enviar a Referencias</button>
+          </form>
+        {% endif %}
+      {% endif %}
       <button
         type="button"
         class="btn btn-sm btn-outline-danger"
