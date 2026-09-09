@@ -48,6 +48,7 @@ class Cliente(models.Model):
     telefono = models.CharField(max_length=20, blank=True, default="")
     celular = models.CharField(max_length=20, blank=True, default="")
     correo = models.CharField(max_length=255, blank=True, default="")
+    cuentas_por_cobrar = models.CharField(max_length=255, blank=True, default="")
     direccion = models.CharField(max_length=255, blank=True)
     rfc = models.CharField(max_length=20, blank=True)
     tipo_cliente = models.CharField(

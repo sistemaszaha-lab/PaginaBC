@@ -7,6 +7,13 @@ MENSAJE_CLIENTE_DUPLICADO = "Ya existe un cliente con el mismo nombre y empresa.
 
 
 class ClienteForm(forms.ModelForm):
+    def __init__(self, *args, requerir_datos_alta=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if requerir_datos_alta:
+            self.fields["nombre"].required = True
+            self.fields["correo"].required = True
+            self.fields["contacto"].required = True
+
     class Meta:
         model = Cliente
         fields = [
@@ -15,6 +22,7 @@ class ClienteForm(forms.ModelForm):
             "representante_legal",
             "contacto",
             "correo",
+            "cuentas_por_cobrar",
             "telefono",
             "celular",
             "estado",
@@ -25,6 +33,7 @@ class ClienteForm(forms.ModelForm):
             "representante_legal": "Representante legal",
             "contacto": "Contacto",
             "correo": "Correo",
+            "cuentas_por_cobrar": "Cuentas por cobrar",
             "telefono": "Teléfono",
             "celular": "Celular",
             "estado": "Status",
@@ -37,6 +46,7 @@ class ClienteForm(forms.ModelForm):
             "correo": forms.EmailInput(
                 attrs={"class": "form-control", "autocomplete": "email"}
             ),
+            "cuentas_por_cobrar": forms.TextInput(attrs={"class": "form-control"}),
             "telefono": forms.TextInput(
                 attrs={"class": "form-control", "inputmode": "tel", "autocomplete": "tel"}
             ),

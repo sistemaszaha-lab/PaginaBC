@@ -18,13 +18,84 @@ from solicitudes.models import Cotizacion
 
 class ClienteFormTests(TestCase):
     def test_permite_crear_cliente_normal(self):
-        form = ClienteForm(data={"nombre": "Empresa Vargas", "empresa": "Logistica", "estado": Cliente.ESTADO_ACTIVO})
+        form = ClienteForm(
+            data={
+                "nombre": "Empresa Vargas",
+                "empresa": "Logistica",
+                "contacto": "Ana",
+                "correo": "ana@example.com",
+                "cuentas_por_cobrar": "Credito 30 dias",
+                "estado": Cliente.ESTADO_ACTIVO,
+            },
+            requerir_datos_alta=True,
+        )
 
         self.assertTrue(form.is_valid(), form.errors)
         cliente = form.save()
 
         self.assertEqual(cliente.nombre, "EMPRESA VARGAS")
         self.assertEqual(cliente.empresa, "LOGISTICA")
+        self.assertEqual(cliente.contacto, "Ana")
+        self.assertEqual(cliente.correo, "ana@example.com")
+        self.assertEqual(cliente.cuentas_por_cobrar, "Credito 30 dias")
+
+    def test_crear_cliente_nuevo_sin_nombre_es_invalido(self):
+        form = ClienteForm(
+            data={
+                "nombre": "",
+                "contacto": "Ana",
+                "correo": "ana@example.com",
+                "estado": Cliente.ESTADO_ACTIVO,
+            },
+            requerir_datos_alta=True,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("nombre", form.errors)
+
+    def test_crear_cliente_nuevo_sin_correo_es_invalido(self):
+        form = ClienteForm(
+            data={
+                "nombre": "Empresa Vargas",
+                "contacto": "Ana",
+                "correo": "",
+                "estado": Cliente.ESTADO_ACTIVO,
+            },
+            requerir_datos_alta=True,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("correo", form.errors)
+
+    def test_crear_cliente_nuevo_sin_contacto_es_invalido(self):
+        form = ClienteForm(
+            data={
+                "nombre": "Empresa Vargas",
+                "contacto": "",
+                "correo": "ana@example.com",
+                "estado": Cliente.ESTADO_ACTIVO,
+            },
+            requerir_datos_alta=True,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("contacto", form.errors)
+
+    def test_cuentas_por_cobrar_sigue_siendo_opcional_al_crear(self):
+        form = ClienteForm(
+            data={
+                "nombre": "Empresa Vargas",
+                "contacto": "Ana",
+                "correo": "ana@example.com",
+                "cuentas_por_cobrar": "",
+                "estado": Cliente.ESTADO_ACTIVO,
+            },
+            requerir_datos_alta=True,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        cliente = form.save()
+        self.assertEqual(cliente.cuentas_por_cobrar, "")
 
     def test_rechaza_duplicado_exacto(self):
         Cliente.objects.create(nombre="EMPRESA VARGAS", empresa="LOGISTICA")
@@ -74,6 +145,24 @@ class ClienteFormTests(TestCase):
 
         self.assertTrue(form.is_valid(), form.errors)
 
+    def test_editar_cliente_historico_sin_correo_ni_contacto_no_falla(self):
+        cliente = Cliente.objects.create(nombre="EMPRESA VARGAS", empresa="LOGISTICA")
+
+        form = ClienteForm(
+            data={
+                "nombre": "Empresa Vargas Editada",
+                "empresa": "Logistica",
+                "contacto": "",
+                "correo": "",
+                "estado": Cliente.ESTADO_ACTIVO,
+            },
+            instance=cliente,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        cliente = form.save()
+        self.assertEqual(cliente.nombre, "EMPRESA VARGAS EDITADA")
+
     def test_editar_para_convertir_en_duplicado_es_rechazado(self):
         Cliente.objects.create(nombre="EMPRESA VARGAS", empresa="LOGISTICA")
         cliente = Cliente.objects.create(nombre="TRANSPORTES VARGAS", empresa="ADUANAS")
@@ -110,6 +199,7 @@ class ClienteConstraintTests(TestCase):
 
         self.assertEqual(cliente.representante_legal, "ALDO")
         self.assertEqual(cliente.contacto, "ANA")
+        self.assertEqual(cliente.cuentas_por_cobrar, "")
 
 
 class ClienteViewsTests(TestCase):
@@ -128,7 +218,13 @@ class ClienteViewsTests(TestCase):
             with patch("clientes.views.render", side_effect=fake_render):
                 response = self.client.post(
                     reverse("cliente_crear"),
-                    {"nombre": "Empresa Vargas", "empresa": "Logistica", "estado": Cliente.ESTADO_ACTIVO},
+                    {
+                        "nombre": "Empresa Vargas",
+                        "empresa": "Logistica",
+                        "contacto": "Ana",
+                        "correo": "ana@example.com",
+                        "estado": Cliente.ESTADO_ACTIVO,
+                    },
                 )
 
         self.assertEqual(response.status_code, 200)
@@ -160,6 +256,8 @@ class ClienteViewsTests(TestCase):
             {
                 "nombre": "Empresa Vargas",
                 "empresa": "Logistica",
+                "contacto": "Ana",
+                "correo": "ana@example.com",
                 "estado": Cliente.ESTADO_ACTIVO,
                 "next": "/solicitudes/editar/1/?next=/solicitudes/?page=2",
             },
@@ -177,6 +275,8 @@ class ClienteViewsTests(TestCase):
             {
                 "nombre": "Empresa Vargas",
                 "empresa": "Logistica",
+                "contacto": "Ana",
+                "correo": "ana@example.com",
                 "estado": Cliente.ESTADO_ACTIVO,
                 "next": "//evil.test/phishing",
             },
@@ -529,16 +629,21 @@ class ClientePaginationTests(TestCase):
             {
                 "nombre": "Cliente creado",
                 "empresa": "Empresa",
+                "contacto": "Ana",
+                "correo": "ana@example.com",
+                "cuentas_por_cobrar": "Saldo inicial",
                 "estado": Cliente.ESTADO_ACTIVO,
                 "next": retorno,
             },
         )
         cliente = Cliente.objects.get(nombre="CLIENTE CREADO")
+        self.assertEqual(cliente.cuentas_por_cobrar, "Saldo inicial")
         editar = self.client.post(
             reverse("cliente_editar", args=[cliente.pk]),
             {
                 "nombre": "Cliente editado",
                 "empresa": "Empresa",
+                "cuentas_por_cobrar": "Saldo actualizado",
                 "estado": Cliente.ESTADO_ACTIVO,
                 "next": retorno,
             },
@@ -546,7 +651,36 @@ class ClientePaginationTests(TestCase):
 
         self.assertRedirects(crear, retorno, fetch_redirect_response=False)
         self.assertRedirects(editar, retorno, fetch_redirect_response=False)
-        self.assertTrue(Cliente.objects.filter(nombre="CLIENTE EDITADO").exists())
+        cliente.refresh_from_db()
+        self.assertEqual(cliente.nombre, "CLIENTE EDITADO")
+        self.assertEqual(cliente.cuentas_por_cobrar, "Saldo actualizado")
+
+    def test_listado_muestra_cuentas_por_cobrar_entre_correo_y_telefono(self):
+        Cliente.objects.create(
+            nombre="CLIENTE CUENTAS",
+            correo="cuentas@example.com",
+            cuentas_por_cobrar="Factura 123",
+            telefono="5551234",
+        )
+
+        response = self.client.get(reverse("cliente_lista"))
+
+        self.assertContains(response, "<th>Correo</th>", html=True)
+        self.assertContains(response, "<th>Cuentas por cobrar</th>", html=True)
+        self.assertContains(response, "<th>Teléfono</th>", html=True)
+        contenido = response.content.decode()
+        self.assertLess(contenido.index("<th>Correo</th>"), contenido.index("<th>Cuentas por cobrar</th>"))
+        self.assertLess(contenido.index("<th>Cuentas por cobrar</th>"), contenido.index("<th>Tel"))
+        self.assertContains(response, "Factura 123")
+
+    def test_busqueda_incluye_cuentas_por_cobrar(self):
+        Cliente.objects.create(nombre="CLIENTE BUSQUEDA", cuentas_por_cobrar="Pendiente convenio")
+        Cliente.objects.create(nombre="CLIENTE OCULTO", cuentas_por_cobrar="Sin saldo")
+
+        response = self.client.get(reverse("cliente_lista"), {"q": "convenio"})
+
+        self.assertContains(response, "CLIENTE BUSQUEDA")
+        self.assertNotContains(response, "CLIENTE OCULTO")
 
     def test_estado_convertir_y_eliminar_regresan_a_pagina(self):
         retorno = "/clientes/?q=PAGINACION&page=2"

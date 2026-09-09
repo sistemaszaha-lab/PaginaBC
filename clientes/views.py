@@ -148,6 +148,7 @@ def cliente_lista(request):
                 | Q(telefono__icontains=query)
                 | Q(celular__icontains=query)
                 | Q(correo__icontains=query)
+                | Q(cuentas_por_cobrar__icontains=query)
             )
         clientes = clientes.order_by("nombre", "pk")
         paginator = Paginator(clientes, CLIENTES_POR_PAGINA)
@@ -185,7 +186,7 @@ def cliente_crear(request):
         request, request.GET.get("next")
     ) or _next_url_valida(request, request.POST.get("next"))
     if request.method == "POST":
-        form = ClienteForm(request.POST)
+        form = ClienteForm(request.POST, requerir_datos_alta=True)
         if form.is_valid():
             try:
                 cliente = form.save()
@@ -200,7 +201,7 @@ def cliente_crear(request):
                     return redirect(_agregar_parametros_url(next_url, cliente=str(cliente)))
                 return redirect("cliente_lista")
     else:
-        form = ClienteForm()
+        form = ClienteForm(requerir_datos_alta=True)
     return render(
         request,
         "clientes/cliente_form.html",

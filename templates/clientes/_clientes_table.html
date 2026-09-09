@@ -7,6 +7,7 @@
                 <th>Representante legal</th>
                 <th>Contacto</th>
                 <th>Correo</th>
+                <th>Cuentas por cobrar</th>
                 <th>Teléfono</th>
                 <th>Celular</th>
                 <th>Status</th>
@@ -23,6 +24,7 @@
                 <td>{{ cliente.representante_legal|default:"-" }}</td>
                 <td>{{ cliente.contacto|default:"-" }}</td>
                 <td>{{ cliente.correo|default:"-" }}</td>
+                <td>{{ cliente.cuentas_por_cobrar|default:"-" }}</td>
                 <td>{{ cliente.telefono|default:"-" }}</td>
                 <td>{{ cliente.celular|default:"-" }}</td>
                 <td>
@@ -54,7 +56,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="9" class="text-center">No hay clientes registrados.</td>
+                <td colspan="10" class="text-center">No hay clientes registrados.</td>
             </tr>
             {% endfor %}
         </tbody>
