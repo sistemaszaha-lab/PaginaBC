@@ -1294,6 +1294,44 @@
         return;
       }
 
+      const enviarReferenciasForm = e.target.closest('[data-panel-cotizacion-enviar-referencias-form="1"]');
+      if (enviarReferenciasForm) {
+        e.preventDefault();
+        const submitButton = enviarReferenciasForm.querySelector('button[type="submit"]');
+        if (submitButton?.disabled) return;
+        const fd = new FormData(enviarReferenciasForm);
+        if (submitButton) submitButton.disabled = true;
+        postForm(enviarReferenciasForm.getAttribute('action'), fd, enviarReferenciasForm)
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) throw data;
+            return data;
+          })
+          .then((data) => {
+            if (data.card_html) {
+              const card = enviarReferenciasForm.closest('[data-panel-cotizacion-card="1"]');
+              const wrapper = document.createElement('div');
+              wrapper.innerHTML = data.card_html;
+              const nextCard = wrapper.firstElementChild;
+              if (card && nextCard) card.replaceWith(nextCard);
+            } else {
+              refreshBoard();
+            }
+            showInlineNotification(
+              data.message || 'La tarjeta fue enviada a Referencias.',
+              'success'
+            );
+          })
+          .catch((error) => {
+            if (submitButton) submitButton.disabled = false;
+            showInlineNotification(
+              error?.error || error?.message || 'No se pudo enviar la tarjeta a Referencias.',
+              'danger'
+            );
+          });
+        return;
+      }
+
       const deleteChecklistButton = e.target.closest('[data-panel-cotizacion-checklist-delete="1"]');
       if (deleteChecklistButton) {
         e.preventDefault();

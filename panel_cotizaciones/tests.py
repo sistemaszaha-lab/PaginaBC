@@ -265,6 +265,46 @@ class PanelCotizacionAReferenciaTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Referencia.objects.filter(panel_cotizacion_origen=self.tarjeta).count(), 1)
 
+    def test_enviar_a_referencias_requiere_csrf_real(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+        url = reverse("panel_cotizaciones:enviar_a_referencias", args=[self.tarjeta.pk])
+
+        response = csrf_client.post(url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Referencia.objects.filter(panel_cotizacion_origen=self.tarjeta).exists())
+
+        panel_response = csrf_client.get(reverse("panel_cotizaciones:panel_cotizaciones"))
+        self.assertContains(panel_response, 'data-panel-cotizacion-enviar-referencias-form="1"')
+        panel_html = panel_response.content.decode()
+        self.assertRegex(
+            panel_html,
+            rf'<form[^>]+action="{re.escape(url)}"[^>]*>[\s\S]*name="csrfmiddlewaretoken"',
+        )
+        csrf_token = csrf_client.cookies["csrftoken"].value
+
+        response = csrf_client.post(
+            url,
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Referencia.objects.filter(panel_cotizacion_origen=self.tarjeta).exists())
+
+    def test_tablero_partial_incluye_csrf_en_formulario_enviar_referencias(self):
+        response = self.client.get(
+            reverse("panel_cotizaciones:tablero_partial"),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        url = reverse("panel_cotizaciones:enviar_a_referencias", args=[self.tarjeta.pk])
+        self.assertRegex(
+            html,
+            rf'<form[^>]+action="{re.escape(url)}"[^>]*>[\s\S]*name="csrfmiddlewaretoken"',
+        )
+
     def test_integrity_error_por_carrera_devuelve_ya_enviada(self):
         def simular_carrera(_cotizacion):
             Referencia.objects.create(

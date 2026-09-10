@@ -9,6 +9,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Max, Q, Window
 from django.db.models.functions import RowNumber
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -303,7 +304,7 @@ def _crear_panel_desde_form(*, form, creado_por, columna: PanelCotizacionColumna
 def _render_card_html(request: HttpRequest, obj: PanelCotizacion) -> str:
     return render_to_string(
         "panel_cotizaciones/_card.html",
-        {"c": obj, "columnas_estado": _columnas_estado_choices()},
+        {"c": obj, "columnas_estado": _columnas_estado_choices(), "csrf_token": get_token(request)},
         request=request,
     )
 
@@ -498,6 +499,7 @@ def panel_cotizaciones(request: HttpRequest) -> HttpResponse:
         "columnas_kanban": _columnas_kanban(usuarios),
         "columnas_activas": columnas_activas,
         "columnas_estado": _columnas_estado_choices(),
+        "csrf_token": get_token(request),
         "columna_create_form": PanelCotizacionColumnaCreateForm(),
         "panel_config": {
             "estadoUpdateUrl": reverse("panel_cotizaciones:estado_update"),
@@ -521,6 +523,7 @@ def tablero_partial(request: HttpRequest) -> HttpResponse:
         {
             "columnas_kanban": _columnas_kanban(usuarios),
             "columnas_estado": _columnas_estado_choices(),
+            "csrf_token": get_token(request),
         },
     )
 
@@ -569,7 +572,7 @@ def tarjetas_columna(request: HttpRequest, codigo: str) -> JsonResponse:
     html = "".join(
         render_to_string(
             "panel_cotizaciones/_tarjeta.html",
-            {"c": obj, "columnas_estado": columnas_estado},
+            {"c": obj, "columnas_estado": columnas_estado, "csrf_token": get_token(request)},
             request=request,
         )
         for obj in objetos

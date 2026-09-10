@@ -34,7 +34,7 @@
 </div>
 
 <div id="panelCotizacionesBoard" class="panel-cotizaciones-board">
-  {% include "panel_cotizaciones/_tablero.html" with columnas_kanban=columnas_kanban columnas_estado=columnas_estado only %}
+  {% include "panel_cotizaciones/_tablero.html" with columnas_kanban=columnas_kanban columnas_estado=columnas_estado csrf_token=csrf_token only %}
 </div>
 <div data-panel-cotizacion-inline-slot-home="1">
   <div class="px-3 pt-3 d-none" data-panel-cotizacion-inline-container="1" data-panel-cotizacion-inline-shared-slot="1"></div>
@@ -160,5 +160,5 @@
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 {{ panel_config|json_script:"panel-cotizaciones-config" }}
 <script src="{% static 'js/kanban_status_control.js' %}"></script>
-<script src="{% static 'panel_cotizaciones/js/panel.js' %}?v=20260810-1"></script>
+<script src="{% static 'panel_cotizaciones/js/panel.js' %}?v=20260909-1"></script>
 {% endblock %}

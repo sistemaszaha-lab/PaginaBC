@@ -87,7 +87,7 @@
       data-columna-nombre="{{ columna.nombre }}"
       data-estado="{{ columna.estado }}">
       {% for c in columna.items %}
-        {% include "panel_cotizaciones/_tarjeta.html" with c=c columnas_estado=columnas_estado only %}
+        {% include "panel_cotizaciones/_tarjeta.html" with c=c columnas_estado=columnas_estado csrf_token=csrf_token only %}
       {% empty %}
         <div class="panel-cotizacion-empty">Sin cotizaciones.</div>
       {% endfor %}
