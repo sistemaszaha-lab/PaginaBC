@@ -35,6 +35,19 @@
 <div class="stat-card mt-4">
     <div class="p-3 p-md-4">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <h5 class="mb-0 fw-bold">Clientes con mÃ¡s utilidades</h5>
+            <span class="text-muted small">Top 5</span>
+        </div>
+
+        <div style="position: relative; height: 300px;">
+            <canvas id="clientesUtilidadesChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="stat-card mt-4">
+    <div class="p-3 p-md-4">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
             <h5 class="mb-0 fw-bold">Top clientes con más operaciones</h5>
             <span class="text-muted small">Top 5</span>
         </div>
@@ -113,5 +126,74 @@
         </script>
     </div>
 </div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const labels = {{ clientes_utilidades_labels|safe }};
+        const values = {{ clientes_utilidades_data|safe }};
+        const chartEl = document.getElementById("clientesUtilidadesChart");
+        if (!chartEl) return;
+
+        if (!labels || !labels.length) {
+            chartEl.parentNode.innerHTML = '<div class="text-muted mt-3">No hay datos disponibles</div>';
+            return;
+        }
+
+        const root = document.documentElement;
+        const isDark =
+            (root.getAttribute("data-bs-theme") || "").toLowerCase() === "dark" ||
+            root.classList.contains("dark");
+        const textColor = isDark ? "rgba(255, 255, 255, 0.85)" : "rgba(15, 23, 42, 0.8)";
+        const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
+        const currencyFormatter = new Intl.NumberFormat("es-MX", {
+            style: "currency",
+            currency: "MXN",
+        });
+
+        new Chart(chartEl, {
+            type: "bar",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: "Utilidad",
+                        data: values,
+                        backgroundColor: "rgba(25, 135, 84, 0.75)",
+                        borderColor: "rgba(25, 135, 84, 1)",
+                        borderWidth: 1,
+                        borderRadius: 10,
+                        maxBarThickness: 46,
+                    },
+                ],
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `Utilidad: ${currencyFormatter.format(ctx.parsed.x)}`,
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: textColor,
+                            callback: (value) => currencyFormatter.format(value),
+                        },
+                        grid: { color: gridColor },
+                    },
+                    y: {
+                        ticks: { color: textColor },
+                        grid: { display: false },
+                    },
+                },
+            },
+        });
+    });
+</script>
 
 {% endblock %}

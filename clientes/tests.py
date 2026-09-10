@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 from unittest.mock import Mock, patch
 
 from django.contrib.messages import get_messages
@@ -17,6 +18,31 @@ from solicitudes.models import Cotizacion
 
 
 class ClienteFormTests(TestCase):
+    def test_utilidad_calcula_ingresos_menos_gastos(self):
+        cliente = Cliente.objects.create(
+            nombre="CLIENTE UTILIDAD",
+            ingresos=1000,
+            gastos=400,
+        )
+
+        self.assertEqual(cliente.utilidad, Decimal("600.00"))
+
+    def test_utilidad_permite_resultado_negativo(self):
+        cliente = Cliente.objects.create(
+            nombre="CLIENTE UTILIDAD NEGATIVA",
+            ingresos=400,
+            gastos=1000,
+        )
+
+        self.assertEqual(cliente.utilidad, Decimal("-600.00"))
+
+    def test_utilidad_default_es_cero_para_cliente_historico(self):
+        cliente = Cliente.objects.create(nombre="CLIENTE HISTORICO")
+
+        self.assertEqual(cliente.ingresos, 0)
+        self.assertEqual(cliente.gastos, 0)
+        self.assertEqual(cliente.utilidad, 0)
+
     def test_permite_crear_cliente_normal(self):
         form = ClienteForm(
             data={
@@ -96,6 +122,30 @@ class ClienteFormTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         cliente = form.save()
         self.assertEqual(cliente.cuentas_por_cobrar, "")
+
+    def test_permite_crear_cliente_con_ingresos_y_gastos_validos(self):
+        form = ClienteForm(
+            data={
+                "nombre": "Empresa Vargas",
+                "contacto": "Ana",
+                "correo": "ana@example.com",
+                "ingresos": "1000.50",
+                "gastos": "400.25",
+                "estado": Cliente.ESTADO_ACTIVO,
+            },
+            requerir_datos_alta=True,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        cliente = form.save()
+        self.assertEqual(cliente.ingresos, Decimal("1000.50"))
+        self.assertEqual(cliente.gastos, Decimal("400.25"))
+        self.assertEqual(cliente.utilidad, Decimal("600.25"))
+
+    def test_utilidad_no_es_editable_directamente(self):
+        form = ClienteForm()
+
+        self.assertNotIn("utilidad", form.fields)
 
     def test_rechaza_duplicado_exacto(self):
         Cliente.objects.create(nombre="EMPRESA VARGAS", empresa="LOGISTICA")
@@ -632,18 +682,23 @@ class ClientePaginationTests(TestCase):
                 "contacto": "Ana",
                 "correo": "ana@example.com",
                 "cuentas_por_cobrar": "Saldo inicial",
+                "ingresos": "1000.00",
+                "gastos": "250.00",
                 "estado": Cliente.ESTADO_ACTIVO,
                 "next": retorno,
             },
         )
         cliente = Cliente.objects.get(nombre="CLIENTE CREADO")
         self.assertEqual(cliente.cuentas_por_cobrar, "Saldo inicial")
+        self.assertEqual(cliente.utilidad, Decimal("750.00"))
         editar = self.client.post(
             reverse("cliente_editar", args=[cliente.pk]),
             {
                 "nombre": "Cliente editado",
                 "empresa": "Empresa",
                 "cuentas_por_cobrar": "Saldo actualizado",
+                "ingresos": "500.00",
+                "gastos": "800.00",
                 "estado": Cliente.ESTADO_ACTIVO,
                 "next": retorno,
             },
@@ -654,6 +709,27 @@ class ClientePaginationTests(TestCase):
         cliente.refresh_from_db()
         self.assertEqual(cliente.nombre, "CLIENTE EDITADO")
         self.assertEqual(cliente.cuentas_por_cobrar, "Saldo actualizado")
+        self.assertEqual(cliente.utilidad, Decimal("-300.00"))
+
+    def test_listado_muestra_utilidades_entre_celular_y_status(self):
+        Cliente.objects.create(
+            nombre="CLIENTE UTILIDADES",
+            celular="5551234",
+            ingresos=100000,
+            gastos=60000,
+        )
+
+        response = self.client.get(reverse("cliente_lista"))
+
+        self.assertContains(response, "<th>Celular</th>", html=True)
+        self.assertContains(response, "<th>Utilidades</th>", html=True)
+        self.assertContains(response, "<th>Status</th>", html=True)
+        contenido = response.content.decode()
+        self.assertLess(contenido.index("<th>Celular</th>"), contenido.index("<th>Utilidades</th>"))
+        self.assertLess(contenido.index("<th>Utilidades</th>"), contenido.index("<th>Status</th>"))
+        self.assertContains(response, "Ingresos: $100000.00")
+        self.assertContains(response, "Gastos: $60000.00")
+        self.assertContains(response, "Utilidad: $40000.00")
 
     def test_listado_muestra_cuentas_por_cobrar_entre_correo_y_telefono(self):
         Cliente.objects.create(

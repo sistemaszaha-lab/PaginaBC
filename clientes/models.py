@@ -1,3 +1,4 @@
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -49,6 +50,18 @@ class Cliente(models.Model):
     celular = models.CharField(max_length=20, blank=True, default="")
     correo = models.CharField(max_length=255, blank=True, default="")
     cuentas_por_cobrar = models.CharField(max_length=255, blank=True, default="")
+    ingresos = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0)],
+    )
+    gastos = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0)],
+    )
     direccion = models.CharField(max_length=255, blank=True)
     rfc = models.CharField(max_length=20, blank=True)
     tipo_cliente = models.CharField(
@@ -77,6 +90,10 @@ class Cliente(models.Model):
         self.nombre = normalizar_texto_cliente(self.nombre)
         self.empresa = normalizar_texto_cliente(self.empresa)
         super().save(*args, **kwargs)
+
+    @property
+    def utilidad(self):
+        return (self.ingresos or 0) - (self.gastos or 0)
 
     def __str__(self):
         return f"{self.nombre} ({self.empresa})" if self.empresa else self.nombre

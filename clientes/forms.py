@@ -9,6 +9,8 @@ MENSAJE_CLIENTE_DUPLICADO = "Ya existe un cliente con el mismo nombre y empresa.
 class ClienteForm(forms.ModelForm):
     def __init__(self, *args, requerir_datos_alta=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["ingresos"].required = False
+        self.fields["gastos"].required = False
         if requerir_datos_alta:
             self.fields["nombre"].required = True
             self.fields["correo"].required = True
@@ -23,6 +25,8 @@ class ClienteForm(forms.ModelForm):
             "contacto",
             "correo",
             "cuentas_por_cobrar",
+            "ingresos",
+            "gastos",
             "telefono",
             "celular",
             "estado",
@@ -34,6 +38,8 @@ class ClienteForm(forms.ModelForm):
             "contacto": "Contacto",
             "correo": "Correo",
             "cuentas_por_cobrar": "Cuentas por cobrar",
+            "ingresos": "Ingresos",
+            "gastos": "Gastos",
             "telefono": "Teléfono",
             "celular": "Celular",
             "estado": "Status",
@@ -47,6 +53,12 @@ class ClienteForm(forms.ModelForm):
                 attrs={"class": "form-control", "autocomplete": "email"}
             ),
             "cuentas_por_cobrar": forms.TextInput(attrs={"class": "form-control"}),
+            "ingresos": forms.NumberInput(
+                attrs={"class": "form-control", "min": "0", "step": "0.01"}
+            ),
+            "gastos": forms.NumberInput(
+                attrs={"class": "form-control", "min": "0", "step": "0.01"}
+            ),
             "telefono": forms.TextInput(
                 attrs={"class": "form-control", "inputmode": "tel", "autocomplete": "tel"}
             ),
@@ -62,6 +74,8 @@ class ClienteForm(forms.ModelForm):
         empresa = normalizar_texto_cliente(cleaned_data.get("empresa"))
         cleaned_data["nombre"] = nombre
         cleaned_data["empresa"] = empresa
+        cleaned_data["ingresos"] = cleaned_data.get("ingresos") or 0
+        cleaned_data["gastos"] = cleaned_data.get("gastos") or 0
         if nombre:
             duplicado = Cliente.objects.filter(nombre__iexact=nombre, empresa__iexact=empresa)
             if self.instance.pk:

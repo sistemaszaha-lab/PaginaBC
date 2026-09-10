@@ -10,6 +10,7 @@
                 <th>Cuentas por cobrar</th>
                 <th>Teléfono</th>
                 <th>Celular</th>
+                <th>Utilidades</th>
                 <th>Status</th>
                 <th>Acciones</th>
             </tr>
@@ -27,6 +28,11 @@
                 <td>{{ cliente.cuentas_por_cobrar|default:"-" }}</td>
                 <td>{{ cliente.telefono|default:"-" }}</td>
                 <td>{{ cliente.celular|default:"-" }}</td>
+                <td class="small">
+                    <div>Ingresos: ${{ cliente.ingresos|floatformat:2 }}</div>
+                    <div>Gastos: ${{ cliente.gastos|floatformat:2 }}</div>
+                    <div><strong>Utilidad: ${{ cliente.utilidad|floatformat:2 }}</strong></div>
+                </td>
                 <td>
                     <form method="post" action="{% url 'cliente_cambiar_estado' cliente.pk %}">
                         {% csrf_token %}
@@ -56,7 +62,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="10" class="text-center">No hay clientes registrados.</td>
+                <td colspan="11" class="text-center">No hay clientes registrados.</td>
             </tr>
             {% endfor %}
         </tbody>

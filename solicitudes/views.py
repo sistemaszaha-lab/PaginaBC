@@ -2,6 +2,7 @@ import csv
 import json
 import re
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from io import BytesIO
 from unicodedata import normalize
 
@@ -10,8 +11,9 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
-from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery, Value
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value
 from django.db.models.functions import Cast, Coalesce, Length, Substr
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -672,6 +674,25 @@ def inicio(request):
 
     labels = [c['cliente'] for c in top_clientes]
     data = [c['total'] for c in top_clientes]
+    top_clientes_utilidades = (
+        Cliente.objects.annotate(
+            utilidad_calculada=ExpressionWrapper(
+                Coalesce(
+                    F("ingresos"),
+                    Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, decimal_places=2)),
+                )
+                - Coalesce(
+                    F("gastos"),
+                    Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, decimal_places=2)),
+                ),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        )
+        .order_by("-utilidad_calculada", "nombre", "pk")
+        .values("nombre", "utilidad_calculada")[:5]
+    )
+    utilidades_labels = [cliente["nombre"] for cliente in top_clientes_utilidades]
+    utilidades_data = [cliente["utilidad_calculada"] or Decimal("0.00") for cliente in top_clientes_utilidades]
 
     return render(
         request,
@@ -692,6 +713,8 @@ def inicio(request):
             "ultimo_consecutivo_referencia": ultimo_consecutivo_referencia,
             "clientes_labels": json.dumps(labels),
             "clientes_data": json.dumps(data),
+            "clientes_utilidades_labels": json.dumps(utilidades_labels),
+            "clientes_utilidades_data": json.dumps(utilidades_data, cls=DjangoJSONEncoder),
         },
     )
 
