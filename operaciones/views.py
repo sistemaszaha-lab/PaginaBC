@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
@@ -73,6 +74,10 @@ COLUMNAS_INICIALES = (
     (Operacion.Estado.SOLICITUD_CUENTA_GASTOS, "Solicitud de cuenta gastos"),
 )
 OPERACION_ORDERING = ("posicion", "-fecha_creacion", "-id")
+SPECIAL_COLUMN_DATE_ORDERING = {
+    Operacion.Estado.COORDINAR_PICKUP: "fecha_vencimiento",
+    Operacion.Estado.TRANSITO_INTERNACIONAL: "eta",
+}
 
 
 def _columnas_activas_queryset():
@@ -153,6 +158,22 @@ def _column_context(*, columna: OperacionColumna, items, count: int, loaded: int
     }
 
 
+def _ordenar_items_columna(codigo, items):
+    date_field = SPECIAL_COLUMN_DATE_ORDERING.get(codigo)
+    if date_field is None:
+        return items
+    return sorted(
+        items,
+        key=lambda operacion: (
+            getattr(operacion, date_field) is None,
+            getattr(operacion, date_field) or date.max,
+            operacion.posicion,
+            -operacion.fecha_creacion.timestamp(),
+            -operacion.id,
+        ),
+    )
+
+
 def _nombre_corto_usuario(usuario):
     return (usuario.first_name or "").strip()
 
@@ -231,6 +252,11 @@ def _columnas_kanban(usuario=None):
         if operacion.estado in items_por_estado:
             items_por_estado[operacion.estado].append(operacion)
             totales[operacion.estado] = operacion.total_columna
+    for columna in columnas:
+        items_por_estado[columna.codigo] = _ordenar_items_columna(
+            columna.codigo,
+            items_por_estado[columna.codigo],
+        )
 
     return [
         _column_context(
@@ -701,7 +727,7 @@ def crear_operacion(request):
     if columna_inicial is None:
         raise PermissionDenied("No hay columnas disponibles en operaciones.")
     if request.method == "POST":
-        form = OperacionForm(request.POST)
+        form = OperacionForm(request.POST, require_assigned=True)
         archivos_form = OperacionArchivosForm(request.POST, request.FILES)
         enlace_form = OperacionEnlaceForm(request.POST, prefix="enlace")
         if form.is_valid():
@@ -731,7 +757,7 @@ def crear_operacion(request):
                 return redirect(next_url)
             return redirect("operaciones:panel_operaciones")
     else:
-        form = OperacionForm()
+        form = OperacionForm(require_assigned=True)
         archivos_form = OperacionArchivosForm()
         enlace_form = OperacionEnlaceForm(prefix="enlace")
     

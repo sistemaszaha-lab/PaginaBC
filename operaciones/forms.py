@@ -68,15 +68,25 @@ class OperacionForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        require_assigned = kwargs.pop("require_assigned", False)
         super().__init__(*args, **kwargs)
         for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "opciones"]:
             if name in self.fields:
                 self.fields[name].required = False
+        if require_assigned:
+            self.fields["titulo"].required = True
+            self.fields["asignados"].required = True
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
         User = get_user_model()
         self.fields["asignados"].queryset = User.objects.all().order_by("first_name", "last_name", "username", "id")
         self.fields["asignados"].label_from_instance = lambda obj: obj.first_name
         self.fields["etiquetas"].label_from_instance = lambda obj: obj.nombre
+
+    def clean_titulo(self):
+        titulo = (self.cleaned_data.get("titulo") or "").strip()
+        if self.fields["titulo"].required and not titulo:
+            raise forms.ValidationError("Este campo es obligatorio.")
+        return titulo
 
 
 class OperacionInlineCreateForm(forms.ModelForm):
@@ -138,13 +148,13 @@ class OperacionInlineCreateForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["titulo"].required = True
+        self.fields["asignados"].required = True
         for field_name in [
             "descripcion",
             "cliente",
             "prioridad",
             "fecha_vencimiento",
             "eta",
-            "asignados",
             "etiquetas",
             "archivos",
             "enlaces",

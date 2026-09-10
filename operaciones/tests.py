@@ -294,6 +294,80 @@ class OperacionesPanelFiltroUsuariosTests(TestCase):
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
 )
+class OperacionesPanelOrdenTarjetasTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="orden_ops", password="pass")
+        asegurar_columnas_operaciones_actuales()
+
+    def _columna(self, codigo):
+        from .views import _columnas_kanban
+
+        columnas = _columnas_kanban(self.user)
+        return next(columna for columna in columnas if columna["codigo"] == codigo)
+
+    def _crear_operacion(self, titulo, estado, *, posicion=0, etd=None, eta=None):
+        columna = OperacionColumna.objects.get(codigo=estado)
+        operacion = Operacion.objects.create(
+            titulo=titulo,
+            estado=estado,
+            columna=columna,
+            posicion=posicion,
+            fecha_vencimiento=etd,
+            eta=eta,
+            creado_por=self.user,
+        )
+        operacion.asignados.add(self.user)
+        return operacion
+
+    def test_pickup_ordena_por_etd_ascendente(self):
+        self._crear_operacion("ETD 20", Operacion.Estado.COORDINAR_PICKUP, posicion=1, etd="2026-09-20")
+        self._crear_operacion("ETD 10", Operacion.Estado.COORDINAR_PICKUP, posicion=2, etd="2026-09-10")
+        self._crear_operacion("ETD 12", Operacion.Estado.COORDINAR_PICKUP, posicion=3, etd="2026-09-12")
+
+        titulos = [operacion.titulo for operacion in self._columna(Operacion.Estado.COORDINAR_PICKUP)["items"]]
+
+        self.assertEqual(titulos, ["ETD 10", "ETD 12", "ETD 20"])
+
+    def test_pickup_deja_etd_vacio_al_final(self):
+        self._crear_operacion("Sin ETD", Operacion.Estado.COORDINAR_PICKUP, posicion=1)
+        self._crear_operacion("Con ETD", Operacion.Estado.COORDINAR_PICKUP, posicion=2, etd="2026-09-10")
+
+        titulos = [operacion.titulo for operacion in self._columna(Operacion.Estado.COORDINAR_PICKUP)["items"]]
+
+        self.assertEqual(titulos, ["Con ETD", "Sin ETD"])
+
+    def test_transito_internacional_ordena_por_eta_ascendente(self):
+        self._crear_operacion("ETA 20", Operacion.Estado.TRANSITO_INTERNACIONAL, posicion=1, eta="2026-09-20")
+        self._crear_operacion("ETA 10", Operacion.Estado.TRANSITO_INTERNACIONAL, posicion=2, eta="2026-09-10")
+        self._crear_operacion("ETA 12", Operacion.Estado.TRANSITO_INTERNACIONAL, posicion=3, eta="2026-09-12")
+
+        titulos = [operacion.titulo for operacion in self._columna(Operacion.Estado.TRANSITO_INTERNACIONAL)["items"]]
+
+        self.assertEqual(titulos, ["ETA 10", "ETA 12", "ETA 20"])
+
+    def test_transito_internacional_deja_eta_vacia_al_final(self):
+        self._crear_operacion("Sin ETA", Operacion.Estado.TRANSITO_INTERNACIONAL, posicion=1)
+        self._crear_operacion("Con ETA", Operacion.Estado.TRANSITO_INTERNACIONAL, posicion=2, eta="2026-09-10")
+
+        titulos = [operacion.titulo for operacion in self._columna(Operacion.Estado.TRANSITO_INTERNACIONAL)["items"]]
+
+        self.assertEqual(titulos, ["Con ETA", "Sin ETA"])
+
+    def test_otras_columnas_conservan_orden_por_posicion(self):
+        self._crear_operacion("Posicion 2 ETD temprano", Operacion.Estado.PENDIENTE, posicion=2, etd="2026-09-01")
+        self._crear_operacion("Posicion 1 ETD tarde", Operacion.Estado.PENDIENTE, posicion=1, etd="2026-12-01")
+
+        titulos = [operacion.titulo for operacion in self._columna(Operacion.Estado.PENDIENTE)["items"]]
+
+        self.assertEqual(titulos, ["Posicion 1 ETD tarde", "Posicion 2 ETD temprano"])
+
+
+@override_settings(
+    STORAGES={
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
 class OperacionesDetalleModalTests(TestCase):
     def setUp(self):
         User = get_user_model()
@@ -475,6 +549,7 @@ class OperacionesCrearOperacionTests(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
         self.url = reverse("operaciones:crear_operacion")
+        asegurar_columnas_operaciones_actuales()
 
     def test_formulario_separa_ids_y_nombres_del_enlace_opcional(self):
         response = self.client.get(self.url)
@@ -489,6 +564,7 @@ class OperacionesCrearOperacionTests(TestCase):
             self.url,
             {
                 "titulo": "Operacion principal",
+                "asignados": [self.user.pk],
                 "enlace-titulo": "Factura comercial",
                 "enlace-url": "https://example.com/factura",
             },
@@ -499,6 +575,16 @@ class OperacionesCrearOperacionTests(TestCase):
         enlace = OperacionEnlace.objects.get(operacion=operacion)
         self.assertEqual(enlace.titulo, "Factura comercial")
         self.assertEqual(enlace.url, "https://example.com/factura")
+
+    def test_creacion_manual_sin_asignado_se_rechaza(self):
+        response = self.client.post(
+            self.url,
+            {"titulo": "Operacion sin asignado"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Este campo es obligatorio")
+        self.assertFalse(Operacion.objects.filter(titulo="Operacion sin asignado").exists())
 
 
 @override_settings(
@@ -966,6 +1052,7 @@ class OperacionesInlineCreateTests(TestCase):
             {
                 "titulo": "Operacion inline",
                 "prioridad": Operacion.Prioridad.ALTA,
+                "asignados": [self.user.pk],
                 "estado": self.columna_inicial.codigo,
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
@@ -996,7 +1083,7 @@ class OperacionesInlineCreateTests(TestCase):
 
         response = self.client.post(
             self.inline_url,
-            {"titulo": "Operacion permitida", "estado": permitida.codigo},
+            {"titulo": "Operacion permitida", "estado": permitida.codigo, "asignados": [self.user.pk]},
         )
         self.assertEqual(response.status_code, 201)
 
@@ -1044,6 +1131,7 @@ class OperacionesInlineCreateTests(TestCase):
                 "titulo": "Operacion inline completa",
                 "cliente": cliente.pk,
                 "prioridad": Operacion.Prioridad.ALTA,
+                "asignados": [self.user.pk],
                 "estado": self.columna_inicial.codigo,
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
@@ -1070,6 +1158,7 @@ class OperacionesInlineCreateTests(TestCase):
                 "titulo": "Operacion con soporte",
                 "descripcion": "Descripcion extensa",
                 "estado": self.columna_inicial.codigo,
+                "asignados": [self.user.pk],
                 "enlace_titulo": ["Factura"],
                 "enlace_url": ["https://example.com/factura"],
                 "archivos": [archivo],
@@ -1103,6 +1192,20 @@ class OperacionesInlineCreateTests(TestCase):
             f'name="estado" value="{self.columna_inicial.codigo}"',
             data["html_form"],
         )
+        self.assertFalse(Operacion.objects.exists())
+
+    def test_creacion_inline_sin_asignado_se_rechaza(self):
+        response = self.client.post(
+            self.inline_url,
+            {"titulo": "Operacion sin asignado", "estado": self.columna_inicial.codigo},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("asignados", data["errors"])
+        self.assertIn("Este campo es obligatorio", data["html_form"])
         self.assertFalse(Operacion.objects.exists())
 
     def test_enlaces_invalidos_devuelven_error_y_mantienen_formulario_abierto(self):
@@ -1293,7 +1396,11 @@ class OperacionesInlineCreateTests(TestCase):
 
         response = self.client.post(
             self.inline_url,
-            {"titulo": "Operacion sin AJAX", "estado": Operacion.Estado.PENDIENTE},
+            {
+                "titulo": "Operacion sin AJAX",
+                "estado": Operacion.Estado.PENDIENTE,
+                "asignados": [self.user.pk],
+            },
         )
 
         self.assertEqual(response.status_code, 201)
