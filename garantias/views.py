@@ -748,7 +748,8 @@ def actualizar_garantia_inline(request, pk):
     if request.method == "GET":
         return JsonResponse({"ok": True, "html": _render_quick_edit_form(request, garantia)})
 
-    form = GarantiaQuickEditForm(request.POST, instance=garantia)
+    form_data = _post_edicion_garantia(request, garantia)
+    form = GarantiaQuickEditForm(form_data, instance=garantia)
     if not form.is_valid():
         return JsonResponse(
             {
@@ -1112,6 +1113,22 @@ def detalle_garantia_parcial(request, pk):
     return render(request, _detalle_template_name(layout), contexto)
 
 
+def _post_edicion_garantia(request, garantia):
+    data = request.POST.copy()
+    valores_actuales = {
+        "titulo": garantia.titulo,
+        "descripcion": garantia.descripcion,
+        "cliente": garantia.cliente_id or "",
+        "prioridad": garantia.prioridad,
+        "fecha_vencimiento": garantia.fecha_vencimiento.isoformat() if garantia.fecha_vencimiento else "",
+        "fecha_pago": garantia.fecha_pago.isoformat() if garantia.fecha_pago else "",
+    }
+    for campo, valor in valores_actuales.items():
+        if campo not in data:
+            data[campo] = valor
+    return data
+
+
 def _preservar_vacios_garantia(form, objeto):
     """
     Antes de guardar, si un campo no-m2m llega vacío/None en el POST
@@ -1134,14 +1151,12 @@ def editar_garantia(request, pk):
     garantia = get_object_or_404(_garantia_queryset(), pk=pk)
     layout = (request.POST.get("layout") or request.GET.get("layout") or "modal").strip()
     if request.method == "POST":
-        form = GarantiaEditarForm(request.POST, instance=garantia)
+        form_data = _post_edicion_garantia(request, garantia)
+        form = GarantiaEditarForm(form_data, instance=garantia)
         archivos_form = GarantiaArchivosForm(request.POST, request.FILES)
         enlace_form = GarantiaEnlaceForm(request.POST)
         if form.is_valid() and archivos_form.is_valid() and enlace_form.is_valid():
             with transaction.atomic():
-                # Preservar campos no-m2m que llegan vacíos
-                _preservar_vacios_garantia(form, garantia)
-
                 obj = form.save(commit=False)
                 obj.save()
 

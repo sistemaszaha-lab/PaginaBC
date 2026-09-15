@@ -179,7 +179,7 @@ class GarantiasInlineCreateTests(TestCase):
         javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
 
         self.assertIn('id="panel-garantias-config"', html)
-        self.assertIn("/static/garantias/js/panel_garantias.js", html)
+        self.assertIn("/static/garantias/js/panel_garantias.js?v=20260915-1", html)
         self.assertNotIn("let inlineFormLoadPromise = null", html)
         self.assertEqual(javascript.count("let inlineFormLoadPromise = null"), 1)
         self.assertIn("if (inlineFormLoadPromise) return inlineFormLoadPromise", javascript)
@@ -187,6 +187,16 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertIn("inlineFormLoadPromise = null", javascript)
         self.assertIn("redirect: 'error'", javascript)
         self.assertIn("if (inlineForm.dataset.submitting === 'true') return", javascript)
+        self.assertIn("function getCsrfToken(rootElement)", javascript)
+        self.assertIn("function postInlineCreateForm(form, formData)", javascript)
+        self.assertIn("rootElement?.querySelector?.('input[name=\"csrfmiddlewaretoken\"]')?.value", javascript)
+        self.assertIn("Promise.resolve()", javascript)
+        self.assertIn(".then(() => postInlineCreateForm(inlineForm, fd))", javascript)
+        self.assertNotIn("window.csrfFetch(inlineCreateUrl", javascript)
+        self.assertIn("console.error('[Garantias] Error creando garantia inline:', error)", javascript)
+        self.assertIn("console.error('[Garantias] Error actualizando UI tras crear garantia inline:', uiError)", javascript)
+        self.assertIn("function reloadAfterInlineCreateSuccess(message)", javascript)
+        self.assertIn("console.error('[Garantias] Error cargando edicion rapida:', error)", javascript)
         self.assertIn("if (select.tomselect) return", javascript)
         self.assertIn("select.tomselect.destroy()", javascript)
         self.assertIn("function showToast(message, level)", javascript)
@@ -216,12 +226,18 @@ class GarantiasInlineCreateTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 201)
+        self.assertIn("application/json", response["Content-Type"])
         data = response.json()
         self.assertTrue(data["ok"])
         self.assertEqual(data["message"], "Garantia creada correctamente.")
         self.assertEqual(data["estado"], Garantia.Estado.SOLICITUD_NAVIERA)
         self.assertEqual(data["column_count"], 1)
         self.assertEqual(data["garantia_id"], data["id"])
+        self.assertEqual(data["html"], data["card_html"])
+        self.assertIn(f'data-garantia-id="{data["id"]}"', data["html"])
+        self.assertIn('data-garantia-card="1"', data["html"])
+        self.assertIn(f'data-garantia-column-id="{data["columna_id"]}"', data["html"])
+        self.assertEqual(data["columna_codigo"], Garantia.Estado.SOLICITUD_NAVIERA)
         self.assertIn("Nueva garantia inline", data["card_html"])
 
         garantia = Garantia.objects.get(pk=data["id"])
@@ -1082,7 +1098,16 @@ class GarantiasInlineUpdateTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn('data-garantia-quick-edit-form="1"', response.json()["html"])
+        self.assertIn("application/json", response["Content-Type"])
+        data = response.json()
+        self.assertTrue(data["ok"])
+        html = data["html"]
+        self.assertIn('<div class="card-body p-3">', html)
+        self.assertIn('data-garantia-quick-edit-form="1"', html)
+        self.assertIn(f'action="{reverse("garantias:actualizar_garantia_inline", args=[self.garantia.pk])}"', html)
+        self.assertIn('name="csrfmiddlewaretoken"', html)
+        for field_name in ("titulo", "cliente", "prioridad", "fecha_vencimiento", "fecha_pago", "asignados"):
+            self.assertIn(f'name="{field_name}"', html)
 
     def test_inline_update_invalido_devuelve_formulario_con_errores(self):
         response = self.client.post(
@@ -1093,6 +1118,37 @@ class GarantiasInlineUpdateTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json()["ok"])
         self.assertIn('data-garantia-quick-edit-form="1"', response.json()["html"])
+
+    def test_inline_update_campo_ausente_conserva_valor(self):
+        response = self.client.post(
+            reverse("garantias:actualizar_garantia_inline", args=[self.garantia.pk]),
+            {
+                "titulo": "Sin fecha en POST",
+                "cliente": self.cliente.pk,
+                "prioridad": Garantia.Prioridad.BAJA,
+                "asignados": [self.asignado.pk],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.garantia.refresh_from_db()
+        self.assertEqual(self.garantia.titulo, "Sin fecha en POST")
+        self.assertEqual(self.garantia.fecha_vencimiento, date(2026, 2, 20))
+        self.assertEqual(self.garantia.prioridad, Garantia.Prioridad.BAJA)
+        self.assertEqual(list(self.garantia.asignados.all()), [self.asignado])
+
+    def test_inline_update_campo_enviado_vacio_limpia_valor(self):
+        response = self.client.post(
+            reverse("garantias:actualizar_garantia_inline", args=[self.garantia.pk]),
+            self.quick_edit_data(fecha_vencimiento="", fecha_pago=""),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.garantia.refresh_from_db()
+        self.assertIsNone(self.garantia.fecha_vencimiento)
+        self.assertIsNone(self.garantia.fecha_pago)
 
 
 class GarantiasComentarioTests(TestCase):
@@ -1264,6 +1320,200 @@ class GarantiaDetalleEdicionTests(TestCase):
         self.assertEqual(self.garantia.cliente, self.cliente)
         self.assertEqual(self.garantia.prioridad, Garantia.Prioridad.MEDIA)
         self.assertEqual(list(self.garantia.asignados.all()), [self.asignado])
+
+
+class GarantiaFlujosFuncionalesTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username="admin_flujos_garantias",
+            password="pass123",
+            is_superuser=True,
+            is_staff=True,
+        )
+        self.asignado = User.objects.create_user(
+            username="asignado_flujos_garantias",
+            password="pass123",
+            first_name="Asignado",
+        )
+        self.otro_asignado = User.objects.create_user(
+            username="otro_asignado_flujos_garantias",
+            password="pass123",
+            first_name="Otro",
+        )
+        self.cliente = Cliente.objects.create(nombre="Cliente flujos")
+        self.columna, _created = GarantiaColumna.objects.get_or_create(
+            codigo=Garantia.Estado.SOLICITUD_NAVIERA,
+            defaults={"nombre": "Entrada", "orden": 1, "activa": True},
+        )
+        if not self.columna.activa:
+            self.columna.activa = True
+            self.columna.orden = 1
+            self.columna.save(update_fields=["activa", "orden", "fecha_actualizacion"])
+        self.client.force_login(self.admin)
+
+    def test_crear_garantia_inline_valida_persiste_en_primera_columna(self):
+        response = self.client.post(
+            reverse("garantias:crear_garantia_inline"),
+            {
+                "estado": self.columna.codigo,
+                "titulo": "Garantia nueva funcional",
+                "descripcion": "Descripcion nueva",
+                "cliente": self.cliente.pk,
+                "prioridad": Garantia.Prioridad.ALTA,
+                "fecha_vencimiento": "2026-09-30",
+                "asignados": [self.asignado.pk],
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        nueva = Garantia.objects.get(pk=data["id"])
+        self.assertEqual(nueva.titulo, "Garantia nueva funcional")
+        self.assertEqual(nueva.descripcion, "Descripcion nueva")
+        self.assertEqual(nueva.cliente, self.cliente)
+        self.assertEqual(nueva.columna, self.columna)
+        self.assertEqual(nueva.estado, self.columna.codigo)
+        self.assertEqual(list(nueva.asignados.all()), [self.asignado])
+
+    def test_crear_garantia_inline_invalida_no_crea_registro(self):
+        before = Garantia.objects.count()
+
+        response = self.client.post(
+            reverse("garantias:crear_garantia_inline"),
+            {
+                "estado": self.columna.codigo,
+                "titulo": "",
+                "prioridad": Garantia.Prioridad.MEDIA,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertIn("titulo", response.json()["errors"])
+        self.assertEqual(Garantia.objects.count(), before)
+
+    def test_editar_garantia_persiste_campo_normal(self):
+        garantia = Garantia.objects.create(
+            titulo="Garantia editable",
+            descripcion="Antes",
+            cliente=self.cliente,
+            prioridad=Garantia.Prioridad.MEDIA,
+            creado_por=self.admin,
+            columna=self.columna,
+            estado=self.columna.codigo,
+        )
+
+        response = self.client.post(
+            reverse("garantias:editar_garantia", args=[garantia.pk]),
+            {
+                "titulo": "Garantia editada",
+                "descripcion": "Despues",
+                "cliente": self.cliente.pk,
+                "prioridad": Garantia.Prioridad.URGENTE,
+                "fecha_vencimiento": "2026-10-15",
+                "layout": "modal",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        garantia.refresh_from_db()
+        self.assertEqual(garantia.titulo, "Garantia editada")
+        self.assertEqual(garantia.descripcion, "Despues")
+        self.assertEqual(garantia.prioridad, Garantia.Prioridad.URGENTE)
+        self.assertEqual(garantia.fecha_vencimiento, date(2026, 10, 15))
+
+    def test_detalles_permite_limpiar_campos_enviados_vacios(self):
+        garantia = Garantia.objects.create(
+            titulo="Garantia detalle limpia",
+            descripcion="Descripcion a borrar",
+            cliente=self.cliente,
+            prioridad=Garantia.Prioridad.ALTA,
+            fecha_vencimiento=date(2026, 10, 20),
+            fecha_pago=date(2026, 10, 25),
+            creado_por=self.admin,
+            columna=self.columna,
+            estado=self.columna.codigo,
+        )
+
+        response = self.client.post(
+            reverse("garantias:editar_garantia", args=[garantia.pk]),
+            {
+                "titulo": "Garantia detalle limpia",
+                "descripcion": "",
+                "cliente": "",
+                "prioridad": Garantia.Prioridad.ALTA,
+                "fecha_vencimiento": "",
+                "fecha_pago": "",
+                "layout": "drawer",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        garantia.refresh_from_db()
+        self.assertEqual(garantia.descripcion, "")
+        self.assertIsNone(garantia.cliente)
+        self.assertIsNone(garantia.fecha_vencimiento)
+        self.assertIsNone(garantia.fecha_pago)
+
+    def test_detalles_actualiza_asignados_cuando_el_campo_llega_en_post(self):
+        garantia = Garantia.objects.create(
+            titulo="Garantia detalle asignados",
+            creado_por=self.admin,
+            columna=self.columna,
+            estado=self.columna.codigo,
+        )
+        garantia.asignados.add(self.asignado)
+
+        response = self.client.post(
+            reverse("garantias:editar_garantia", args=[garantia.pk]),
+            {
+                "titulo": garantia.titulo,
+                "prioridad": Garantia.Prioridad.MEDIA,
+                "asignados": [self.otro_asignado.pk],
+                "layout": "modal",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        garantia.refresh_from_db()
+        self.assertEqual(list(garantia.asignados.all()), [self.otro_asignado])
+
+    def test_crear_garantia_inline_exige_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="admin_flujos_garantias", password="pass123")
+        url = reverse("garantias:crear_garantia_inline")
+
+        response_sin_csrf = client.post(
+            url,
+            {"estado": self.columna.codigo, "titulo": "Sin CSRF"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response_sin_csrf.status_code, 403)
+        self.assertFalse(Garantia.objects.filter(titulo="Sin CSRF").exists())
+
+        request = HttpRequest()
+        csrftoken = get_token(request)
+        client.cookies.load({"csrftoken": csrftoken})
+        response_con_csrf = client.post(
+            url,
+            {
+                "estado": self.columna.codigo,
+                "titulo": "Con CSRF",
+                "csrfmiddlewaretoken": csrftoken,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_X_CSRFTOKEN=csrftoken,
+        )
+
+        self.assertEqual(response_con_csrf.status_code, 201)
+        self.assertTrue(Garantia.objects.filter(titulo="Con CSRF").exists())
 
 
 class GarantiasArchivosAjaxTests(TestCase):

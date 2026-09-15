@@ -123,6 +123,38 @@
       return 'No se pudo completar la accion. Verifica tu conexion e intenta de nuevo.';
     }
 
+    function getCsrfToken(rootElement) {
+      const formToken = rootElement?.querySelector?.('input[name="csrfmiddlewaretoken"]')?.value;
+      if (formToken) return formToken;
+      if (typeof window.getCSRFToken === 'function') return window.getCSRFToken(rootElement || document);
+      const documentToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value;
+      if (documentToken) return documentToken;
+      const cookieToken = document.cookie
+        .split('; ')
+        .find((row) => row.startsWith('csrftoken='))
+        ?.split('=')[1];
+      return cookieToken ? decodeURIComponent(cookieToken) : null;
+    }
+
+    function postInlineCreateForm(form, formData) {
+      const token = getCsrfToken(form);
+      if (!token) {
+        const error = new Error('CSRF token not found in garantia inline form');
+        error.status = 403;
+        throw error;
+      }
+      return fetch(inlineCreateUrl, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': token,
+        },
+      });
+    }
+
     function getHtml(url, options = {}) {
       const controller = options.controller || new AbortController();
       let timeoutReached = false;
@@ -909,6 +941,13 @@
       return data;
     }
 
+    function reloadAfterInlineCreateSuccess(message) {
+      showToast(message || 'Garantia creada correctamente. Actualizando tablero...', 'success');
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 350);
+    }
+
     function insertCardAt(column, card, index) {
       if (!column || !card) return;
       const cards = Array.from(column.querySelectorAll('[data-garantia-card="1"]')).filter((node) => node !== card);
@@ -1466,51 +1505,55 @@
           control.disabled = true;
         });
         setInlineCreateButtonsDisabled(true);
-        window.csrfFetch(inlineCreateUrl, {
-          method: 'POST',
-          body: fd,
-          headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-          }
-        })
+        Promise.resolve()
+          .then(() => postInlineCreateForm(inlineForm, fd))
           .then((response) => readInlineCreateResponse(response))
           .then((data) => {
             if (!data.ok) return;
 
-            const activeFilter = document.getElementById('GarantiasUserFilter')?.value || '';
-            if (!activeFilter) {
-              const wrapper = document.createElement('div');
-              wrapper.innerHTML = data.html;
-              const card = wrapper.firstElementChild;
-              if (!card) return;
-              invalidateColumnLoads();
-              const duplicate = document.querySelector(
-                `[data-garantia-id="${data.id}"]`
-              );
-              if (duplicate) {
-                const duplicateColumn = duplicate.closest('.kanban-col');
-                duplicate.remove();
-                syncColumnState(duplicateColumn);
+            try {
+              const activeFilter = document.getElementById('GarantiasUserFilter')?.value || '';
+              if (!activeFilter) {
+                if (typeof data.html !== 'string') {
+                  throw new Error('Respuesta de tarjeta invalida.');
+                }
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = data.html;
+                const card = wrapper.querySelector('[data-garantia-card="1"]');
+                if (!card) {
+                  throw new Error('No se pudo renderizar la tarjeta creada.');
+                }
+                invalidateColumnLoads();
+                const duplicate = document.querySelector(
+                  `[data-garantia-id="${data.id}"]`
+                );
+                if (duplicate) {
+                  const duplicateColumn = duplicate.closest('.kanban-col');
+                  duplicate.remove();
+                  syncColumnState(duplicateColumn);
+                }
+                column.querySelector('.garantia-empty')?.remove();
+                column.prepend(card);
+                updateColumnCount(column, data.column_count);
+                window.initGarantiaSelects?.(card);
               }
-              const emptyState = column.querySelector('.garantia-empty');
-              if (emptyState) emptyState.remove();
-              column.prepend(card);
-              updateColumnCount(column, data.column_count);
-            }
 
-            destroyInlineCreateSelects(inlineForm);
-            inlineForm.reset();
-            initInlineCreateSelects(inlineForm);
-            closeInlineCreateForm();
-            showToast(data.message || 'Garantia creada correctamente.', 'success');
+              destroyInlineCreateSelects(inlineForm);
+              inlineForm.reset();
+              initInlineCreateSelects(inlineForm);
+              closeInlineCreateForm();
+              showToast(data.message || 'Garantia creada correctamente.', 'success');
+            } catch (uiError) {
+              console.error('[Garantias] Error actualizando UI tras crear garantia inline:', uiError);
+              reloadAfterInlineCreateSuccess(data.message);
+            }
           })
           .catch((error) => {
             if (error?.data?.html) {
               replaceInlineCreateForm(error.data.html, submittedTarget);
               return;
             }
-            console.error('No se pudo crear la garantia:', error);
+            console.error('[Garantias] Error creando garantia inline:', error);
             showToast(
               error?.data?.message || extractJsonErrors(error) || requestErrorMessage(error),
               'danger'
@@ -1955,9 +1998,13 @@
       isPending: isCardPending,
       setPending: setCardPending,
       initComponents: (card) => {
-        invalidateColumnLoads();
-        window.initGarantiaSelects?.(card);
-        syncColumnState(card?.closest('.kanban-col'));
+        try {
+          invalidateColumnLoads();
+          window.initGarantiaSelects?.(card);
+          syncColumnState(card?.closest('.kanban-col'));
+        } catch (error) {
+          console.error('[Garantias] Error cargando edicion rapida:', error);
+        }
       },
       showError: (card, message) => {
         const body = card.querySelector('.card-body');
