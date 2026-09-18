@@ -268,6 +268,19 @@
       return element?.closest('[data-garantia-column="1"]')?.dataset.columnaNombre || element?.dataset.columnaNombre || '';
     }
 
+    // These helpers are local board-state primitives.  Several card/column
+    // mutations can invalidate an in-flight lazy-load response; advancing the
+    // version makes that response stale without requiring a reload.
+    function invalidateColumnLoads() {
+      boardVersion += 1;
+    }
+
+    // Garantias has no per-column error node (unlike Operaciones). Keep the
+    // same call contract and surface failures through the board toast.
+    function showColumnLoadError(_shell, message) {
+      if (message) showToast(message, 'danger');
+    }
+
     function getColumnTotal(column) {
       const shell = getColumnShell(column);
       const value = Number.parseInt(shell?.dataset.total || '', 10);
@@ -1281,10 +1294,10 @@
           },
           onEnd: function (evt) {
             const card = evt.item;
-            const target = evt.to;
-            const source = evt.from;
+            const target = evt.to?.closest('.kanban-col[data-estado]') || evt.to;
+            const source = evt.from?.closest('.kanban-col[data-estado]') || evt.from;
             const garantiaId = card.getAttribute('data-garantia-id');
-            const nuevoEstado = target.getAttribute('data-estado');
+            const nuevoEstado = target?.getAttribute('data-estado') || '';
             const sourceIndex = evt.oldIndex;
             const targetIndex = evt.newIndex;
             if (!garantiaId || !nuevoEstado || source === target || isCardPending(card)) {
@@ -1423,7 +1436,7 @@
         return;
       }
 
-      const targetColumn = document.querySelector(`.kanban-col[data-estado="${nuevoEstado}"]`);
+      const targetColumn = root.querySelector(`.kanban-col[data-estado="${CSS.escape(nuevoEstado)}"]`);
       if (!targetColumn) {
         syncCardStateUI(card, previousState, getEstadoLabel(previousState));
         return;
