@@ -21,7 +21,7 @@
   </header>
 
   <div class="garantia-drawer__content zaha-detail-modal__body">
-    {% include "garantias/_detalle_panel_content.html" with garantia=garantia form=form archivos_form=archivos_form enlace_form=enlace_form comentario_form=comentario_form layout="drawer" only %}
+    {% include "garantias/_detalle_panel_content.html" with garantia=garantia form=form archivos_form=archivos_form enlace_form=enlace_form comentario_form=comentario_form etiquetas=etiquetas etiquetas_count=etiquetas_count etiquetas_form=etiquetas_form etiqueta_create_form=etiqueta_create_form layout="drawer" only %}
   </div>
 
   <footer class="garantia-drawer__footer zaha-detail-modal__footer p-3 border-top d-flex justify-content-between bg-white">

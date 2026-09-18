@@ -8,7 +8,21 @@
 <form method="post" enctype="multipart/form-data">
   {% csrf_token %}
   <input type="hidden" name="next" value="{{ next_url }}">
-  {{ form.as_p }}
+  {% for field in form %}
+    {% if field.name != "etiquetas" %}
+      <p>
+        {{ field.label_tag }}
+        {{ field }}
+        {% if field.help_text %}
+          <span class="helptext">{{ field.help_text }}</span>
+        {% endif %}
+        {% for error in field.errors %}
+          <span class="text-danger d-block">{{ error }}</span>
+        {% endfor %}
+      </p>
+    {% endif %}
+  {% endfor %}
+  {{ form.non_field_errors }}
 
   <div class="card mt-3">
     <div class="card-body">

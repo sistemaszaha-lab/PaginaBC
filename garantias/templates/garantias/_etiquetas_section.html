@@ -6,47 +6,13 @@
   </div>
   <div class="visually-hidden" role="status">{{ etiquetas_count }} etiquetas asignadas.</div>
 
-  <div class="garantia-tags-section__list mb-3" data-garantia-tags-list="1">
+  <div class="garantia-tags-section__list" data-garantia-tags-list="1">
     {% for etiqueta in etiquetas %}
     <div class="garantia-tags-section__chip" style="--garantia-tag-bg: {{ etiqueta.color }}; --garantia-tag-color: {{ etiqueta.color|contrast_color }};">
       <span>{{ etiqueta.nombre }}</span>
-      <form method="post" action="{% url 'garantias:quitar_etiqueta_garantia' garantia.id etiqueta.id %}"
-        data-garantia-tag-remove-form="1" data-garantia-id="{{ garantia.id }}" class="d-inline">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-sm p-0" aria-label="Quitar etiqueta {{ etiqueta.nombre }}">&times;</button>
-      </form>
     </div>
     {% empty %}
     <div class="text-muted small">Sin etiquetas.</div>
     {% endfor %}
   </div>
-
-  <form method="post" action="{% url 'garantias:agregar_etiqueta_garantia' garantia.id %}"
-    data-garantia-tag-assign-form="1" data-garantia-id="{{ garantia.id }}" class="mb-3">
-    {% csrf_token %}
-    <label class="visually-hidden" for="{{ etiquetas_form.etiquetas.id_for_label }}">Asignar etiqueta existente</label>
-    <div class="input-group">
-      {{ etiquetas_form.etiquetas }}
-      <button type="submit" class="btn btn-outline-primary">Asignar</button>
-    </div>
-    {% if etiquetas_form.etiquetas.errors %}
-      <div class="invalid-feedback d-block" role="alert">{{ etiquetas_form.etiquetas.errors }}</div>
-    {% endif %}
-  </form>
-
-  <form method="post" action="{% url 'garantias:crear_etiqueta_garantia' garantia.id %}"
-    data-garantia-tag-create-form="1" data-garantia-id="{{ garantia.id }}">
-    {% csrf_token %}
-    <label class="form-label small fw-semibold" for="{{ etiqueta_create_form.nombre.id_for_label }}">Crear y asignar etiqueta</label>
-    <div class="row g-2">
-      <div class="col-8">{{ etiqueta_create_form.nombre }}</div>
-      <div class="col-4">{{ etiqueta_create_form.color }}</div>
-    </div>
-    {% if etiqueta_create_form.nombre.errors or etiqueta_create_form.color.errors %}
-      <div class="invalid-feedback d-block" role="alert">{{ etiqueta_create_form.nombre.errors }}{{ etiqueta_create_form.color.errors }}</div>
-    {% endif %}
-    <div class="mt-2 d-flex justify-content-end">
-      <button type="submit" class="btn btn-outline-secondary btn-sm">Crear y asignar</button>
-    </div>
-  </form>
 </section>

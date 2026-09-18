@@ -6,7 +6,21 @@
         action="{% url 'garantias:editar_garantia' garantia.id %}" data-garantia-modal-form="1">
         {% csrf_token %}
         <input type="hidden" name="layout" value="{{ layout|default:'modal' }}">
-        {{ form.as_p }}
+        {% for field in form %}
+          {% if field.name != "etiquetas" %}
+            <p>
+              {{ field.label_tag }}
+              {{ field }}
+              {% if field.help_text %}
+                <span class="helptext">{{ field.help_text }}</span>
+              {% endif %}
+              {% for error in field.errors %}
+                <span class="text-danger d-block">{{ error }}</span>
+              {% endfor %}
+            </p>
+          {% endif %}
+        {% endfor %}
+        {{ form.non_field_errors }}
 
         <div class="mt-4 mb-4">
           {% include "garantias/_etiquetas_section.html" with garantia=garantia etiquetas=etiquetas etiquetas_count=etiquetas_count etiquetas_form=etiquetas_form etiqueta_create_form=etiqueta_create_form only %}

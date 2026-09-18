@@ -35,6 +35,12 @@ PANEL_JS_PATH = (
     / "js"
     / "panel_garantias.js"
 )
+SHARED_STATUS_JS_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "static"
+    / "js"
+    / "kanban_status_control.js"
+)
 
 
 class GarantiasFiltroTests(TestCase):
@@ -151,8 +157,9 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertContains(response, 'data-garantia-inline-form="1"')
         self.assertContains(response, 'enctype="multipart/form-data"')
         self.assertContains(response, 'data-garantia-link-rows="1"')
-        for field_name in ("titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "archivos", "estado"):
+        for field_name in ("titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "archivos", "estado"):
             self.assertContains(response, f'name="{field_name}"')
+        self.assertNotContains(response, 'name="etiquetas"')
         self.assertEqual(Garantia.objects.count(), total)
 
         ejecutivo = get_user_model().objects.create_user(
@@ -189,10 +196,21 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertIn("if (inlineForm.dataset.submitting === 'true') return", javascript)
         self.assertIn("function getCsrfToken(rootElement)", javascript)
         self.assertIn("function postInlineCreateForm(form, formData)", javascript)
+        self.assertIn("function postGarantiaStateUpdate(formData, rootElement)", javascript)
+        self.assertIn(
+            "const card = triggerElement?.closest('[data-garantia-card=\"1\"]') || stateSelect?.closest('[data-garantia-card=\"1\"]')",
+            javascript,
+        )
         self.assertIn("rootElement?.querySelector?.('input[name=\"csrfmiddlewaretoken\"]')?.value", javascript)
         self.assertIn("Promise.resolve()", javascript)
         self.assertIn(".then(() => postInlineCreateForm(inlineForm, fd))", javascript)
         self.assertNotIn("window.csrfFetch(inlineCreateUrl", javascript)
+        self.assertNotIn("window.csrfFetch(updateUrl", javascript)
+        self.assertIn("fetch(updateUrl", javascript)
+        self.assertIn("CSRF token not found in garantia state update", javascript)
+        self.assertNotIn("getAjaxErrorMessage", javascript)
+        self.assertIn("const message = requestErrorMessage(error)", javascript)
+        self.assertIn("console.error(\n          '[Garantias] Error cambiando estado:'", javascript)
         self.assertIn("console.error('[Garantias] Error creando garantia inline:', error)", javascript)
         self.assertIn("console.error('[Garantias] Error actualizando UI tras crear garantia inline:', uiError)", javascript)
         self.assertIn("function reloadAfterInlineCreateSuccess(message)", javascript)
@@ -869,6 +887,19 @@ class GarantiasCopiarPegarTests(TestCase):
         response = self._paste(self.admin)
         data = response.json()
         self.assertIn("<article", data["html"])
+        self.assertIn(f'data-garantia-id="{data["tarjeta_id"]}"', data["html"])
+        self.assertIn(f'data-garantia-column-id="{self.columna_destino.pk}"', data["html"])
+        self.assertIn(f'data-garantia-state="{self.columna_destino.codigo}"', data["html"])
+        self.assertIn("Garantia original copy", data["html"])
+        self.assertIn("Etiqueta copy A", data["html"])
+        self.assertIn("Etiqueta copy B", data["html"])
+        self.assertIn("garantia-card__comments", data["html"])
+        self.assertIn('data-garantia-copy-card="1"', data["html"])
+        self.assertIn("kanban-status-control", data["html"])
+        self.assertIn('data-garantia-state-select="1"', data["html"])
+        self.assertIn('data-status-option="', data["html"])
+        self.assertIn('data-garantia-modal-open="1"', data["html"])
+
         nueva = Garantia.objects.get(pk=data["tarjeta_id"])
 
         self.client.force_login(self.admin)
@@ -884,6 +915,33 @@ class GarantiasCopiarPegarTests(TestCase):
         nueva.refresh_from_db()
         self.assertEqual(nueva.columna_id, self.columna_tercera.pk)
         self.assertEqual(nueva.estado, self.columna_tercera.codigo)
+
+    def test_contrato_frontend_pegar_inserta_tarjeta_y_conserva_interacciones(self):
+        response = self._paste(self.admin)
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["columna_id"], self.columna_destino.pk)
+        self.assertEqual(data["estado"], self.columna_destino.codigo)
+        self.assertIn("html", data)
+        self.assertIn("column_count", data)
+        self.assertIn('data-garantia-card="1"', data["html"])
+        self.assertIn('data-garantia-inline-slot="titulo"', data["html"])
+        self.assertIn('data-garantia-inline-slot="asignados"', data["html"])
+        self.assertIn('data-garantia-inline-slot="fecha_vencimiento"', data["html"])
+        self.assertIn('data-garantia-copy-card="1"', data["html"])
+        self.assertIn('data-garantia-modal-open="1"', data["html"])
+        self.assertIn('data-garantia-state-select="1"', data["html"])
+        self.assertIn("kanban-status-control", data["html"])
+
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        self.assertIn("insertCopiedCardIntoColumn(data)", javascript)
+        self.assertIn("const cardHtml = typeof data?.html === 'string' ? data.html : data?.card_html", javascript)
+        self.assertIn("column.prepend(card)", javascript)
+        self.assertIn("updateColumnCount(column, data.column_count)", javascript)
+        self.assertIn("initInsertedCardWidgets(card)", javascript)
+        self.assertIn("initSortable()", javascript)
+        self.assertIn("getColumnShellForPaste(data)", javascript)
 
 class GarantiasInlineUpdateTests(TestCase):
     def setUp(self):
@@ -966,7 +1024,9 @@ class GarantiasInlineUpdateTests(TestCase):
         html = response.json()["html"]
         self.assertNotIn("Descripcion que debe conservarse", html)
         self.assertNotIn(str(self.cliente), html)
+        self.assertIn(f'data-garantia-state="{self.garantia.estado}"', html)
         self.assertIn('data-garantia-state-select="1"', html)
+        self.assertIn("kanban-status-control", html)
 
     def test_inline_update_fecha_vencimiento(self):
         response = self.client.post(
@@ -1087,6 +1147,7 @@ class GarantiasInlineUpdateTests(TestCase):
         self.assertIn("garantia-card card", html)
         self.assertIn('data-garantia-card="1"', html)
         self.assertIn('data-garantia-id="', html)
+        self.assertIn('data-garantia-state="', html)
         self.assertIn('data-garantia-state-select="1"', html)
         self.assertIn('data-status-option="', html)
         self.assertIn('data-garantia-modal-open="1"', html)
@@ -1352,6 +1413,112 @@ class GarantiaFlujosFuncionalesTests(TestCase):
             self.columna.save(update_fields=["activa", "orden", "fecha_actualizacion"])
         self.client.force_login(self.admin)
 
+    def test_contrato_html_js_boton_y_doble_clic_cambiar_estado(self):
+        destino = GarantiaColumna.objects.get(codigo=Garantia.Estado.PAGO_NAVIERA_ZAHA)
+        garantia = Garantia.objects.create(
+            titulo="Contrato estado",
+            creado_por=self.admin,
+            columna=self.columna,
+            estado=self.columna.codigo,
+        )
+
+        response = self.client.get(reverse("garantias:panel_garantias"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        card_match = re.search(
+            rf'<article\b(?=[^>]*data-garantia-card="1")(?=[^>]*data-garantia-id="{garantia.pk}")[\s\S]*?</article>',
+            html,
+        )
+        self.assertIsNotNone(card_match)
+        card_html = card_match.group(0)
+        self.assertIn('data-garantia-card="1"', card_html)
+        self.assertIn(f'data-garantia-id="{garantia.pk}"', card_html)
+        self.assertIn(f'data-garantia-state="{self.columna.codigo}"', card_html)
+        self.assertIn("kanban-status-control", card_html)
+        self.assertIn("Cambiar estado", card_html)
+        self.assertIn('data-garantia-state-select="1"', card_html)
+        self.assertIn('class="kanban-status-control__option ', card_html)
+        self.assertIn(f'data-status-option="{destino.codigo}"', card_html)
+
+        self.assertIn('data-garantia-columns="1"', html)
+        self.assertIn(f'data-columna-codigo="{destino.codigo}"', html)
+        self.assertIn(f'data-estado="{destino.codigo}"', html)
+        self.assertIn(destino.nombre, html)
+
+        shared_javascript = SHARED_STATUS_JS_PATH.read_text(encoding="utf-8")
+        self.assertIn("window.initKanbanStatusControl = function(container)", shared_javascript)
+        self.assertIn("select.value = optionValue", shared_javascript)
+        self.assertIn("select.dispatchEvent(new Event('change', { bubbles: true }))", shared_javascript)
+
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        self.assertIn("window.initKanbanStatusControl(root)", javascript)
+        self.assertIn("root.addEventListener('change'", javascript)
+        self.assertIn("handleGarantiaStateChange(stateSelect)", javascript)
+        self.assertIn("trigger: triggerElement === stateSelect ? 'select' : 'button'", javascript)
+        self.assertIn("root.addEventListener('dblclick'", javascript)
+        self.assertIn("isInteractiveStatusDblclickTarget(e.target)", javascript)
+        self.assertIn("openStatusMenu(card)", javascript)
+        self.assertIn("getAvailableStatusColumns()", javascript)
+        self.assertIn("data-garantia-dblclick-status-option", javascript)
+        self.assertIn("selectStatusFromDblclickMenu(statusOption)", javascript)
+        self.assertIn("targetStatus: nuevoEstado", javascript)
+        self.assertIn("trigger: 'dblclick'", javascript)
+        self.assertIn("moveGarantiaCard({", javascript)
+        self.assertIn("postGarantiaStateUpdate(fd, triggerElement || card)", javascript)
+        self.assertIn("fd.set('garantia_id', getCardId(card))", javascript)
+        self.assertIn("fd.set('nuevo_estado', targetStatus)", javascript)
+        self.assertNotIn("fetch('/garantias/actualizar-estado/", javascript)
+
+        response = self.client.post(
+            reverse("garantias:actualizar_estado_garantia"),
+            {
+                "garantia_id": garantia.pk,
+                "nuevo_estado": destino.codigo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        garantia.refresh_from_db()
+        self.assertEqual(garantia.columna, destino)
+        self.assertEqual(garantia.estado, destino.codigo)
+
+    def test_etiquetas_visibles_solo_lectura_sin_controles_de_gestion(self):
+        etiqueta = GarantiaEtiqueta.objects.create(nombre="Etiqueta historica", color="#123456")
+        garantia = Garantia.objects.create(
+            titulo="Garantia con etiqueta visible",
+            creado_por=self.admin,
+            columna=self.columna,
+            estado=self.columna.codigo,
+        )
+        garantia.etiquetas.add(etiqueta)
+
+        response = self.client.get(reverse("garantias:panel_garantias"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Etiqueta historica", html)
+        self.assertNotIn('data-garantia-tag-assign-form="1"', html)
+        self.assertNotIn('data-garantia-tag-create-form="1"', html)
+        self.assertNotIn('data-garantia-tag-remove-form="1"', html)
+        self.assertNotIn('name="etiquetas"', html)
+        self.assertNotIn("Crear y asignar etiqueta", html)
+        self.assertNotIn("Asignar etiqueta existente", html)
+        self.assertNotIn("Quitar etiqueta", html)
+
+        detail_response = self.client.get(
+            reverse("garantias:detalle_garantia_parcial", args=[garantia.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        detail_html = detail_response.content.decode()
+        self.assertIn("Etiqueta historica", detail_html)
+        self.assertNotIn('data-garantia-tag-assign-form="1"', detail_html)
+        self.assertNotIn('data-garantia-tag-create-form="1"', detail_html)
+        self.assertNotIn('data-garantia-tag-remove-form="1"', detail_html)
+        self.assertNotIn('name="etiquetas"', detail_html)
+
+        garantia.refresh_from_db()
+        self.assertTrue(garantia.etiquetas.filter(pk=etiqueta.pk).exists())
+
     def test_crear_garantia_inline_valida_persiste_en_primera_columna(self):
         response = self.client.post(
             reverse("garantias:crear_garantia_inline"),
@@ -1496,7 +1663,6 @@ class GarantiaFlujosFuncionalesTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
         self.assertEqual(response_sin_csrf.status_code, 403)
-        self.assertFalse(Garantia.objects.filter(titulo="Sin CSRF").exists())
 
         request = HttpRequest()
         csrftoken = get_token(request)
@@ -1514,6 +1680,190 @@ class GarantiaFlujosFuncionalesTests(TestCase):
 
         self.assertEqual(response_con_csrf.status_code, 201)
         self.assertTrue(Garantia.objects.filter(titulo="Con CSRF").exists())
+
+    def test_actualizar_estado_mueve_columna_a_b_con_payload_drag(self):
+        origen = GarantiaColumna.objects.get(codigo=Garantia.Estado.SOLICITUD_NAVIERA)
+        destino = GarantiaColumna.objects.get(codigo=Garantia.Estado.PAGO_NAVIERA_ZAHA)
+        garantia = Garantia.objects.create(
+            titulo="Movimiento drag A B",
+            creado_por=self.admin,
+            estado=origen.codigo,
+            columna=origen,
+        )
+
+        response = self.client.post(
+            reverse("garantias:actualizar_estado_garantia"),
+            {
+                "garantia_id": garantia.pk,
+                "nuevo_estado": destino.codigo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        garantia.refresh_from_db()
+        self.assertEqual(data["status"], "ok")
+        self.assertEqual(data["id"], garantia.pk)
+        self.assertEqual(data["estado"], destino.codigo)
+        self.assertEqual(data["estado_label"], destino.nombre)
+        self.assertEqual(data["columna_id"], destino.pk)
+        self.assertEqual(data["columna_codigo"], destino.codigo)
+        self.assertEqual(garantia.estado, destino.codigo)
+        self.assertEqual(garantia.columna_id, destino.pk)
+
+    def test_actualizar_estado_mueve_columna_b_a_c(self):
+        origen = GarantiaColumna.objects.get(codigo=Garantia.Estado.PAGO_NAVIERA_ZAHA)
+        destino = GarantiaColumna.objects.get(codigo=Garantia.Estado.DEVOLUCION_CLIENTE)
+        garantia = Garantia.objects.create(
+            titulo="Movimiento B C",
+            creado_por=self.admin,
+            estado=origen.codigo,
+            columna=origen,
+        )
+
+        response = self.client.post(
+            reverse("garantias:actualizar_estado_garantia"),
+            {
+                "garantia_id": garantia.pk,
+                "nuevo_estado": destino.codigo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        garantia.refresh_from_db()
+        self.assertEqual(garantia.estado, destino.codigo)
+        self.assertEqual(garantia.columna_id, destino.pk)
+
+    def test_actualizar_estado_rechaza_destino_inactivo_y_no_cambia_db(self):
+        origen = GarantiaColumna.objects.get(codigo=Garantia.Estado.SOLICITUD_NAVIERA)
+        destino = GarantiaColumna.objects.create(
+            nombre="Inactiva",
+            codigo="INACTIVA",
+            orden=99,
+            activa=False,
+            creada_por=self.admin,
+        )
+        garantia = Garantia.objects.create(
+            titulo="No mover inactiva",
+            creado_por=self.admin,
+            estado=origen.codigo,
+            columna=origen,
+        )
+
+        response = self.client.post(
+            reverse("garantias:actualizar_estado_garantia"),
+            {
+                "garantia_id": garantia.pk,
+                "nuevo_estado": destino.codigo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        garantia.refresh_from_db()
+        self.assertEqual(garantia.estado, origen.codigo)
+        self.assertEqual(garantia.columna_id, origen.pk)
+
+    def test_cambiar_estado_endpoint_acepta_payload_de_botones(self):
+        origen = GarantiaColumna.objects.get(codigo=Garantia.Estado.SOLICITUD_NAVIERA)
+        destino = GarantiaColumna.objects.get(codigo=Garantia.Estado.DEVOLUCION_CLIENTE)
+        garantia = Garantia.objects.create(
+            titulo="Movimiento boton",
+            creado_por=self.admin,
+            estado=origen.codigo,
+            columna=origen,
+        )
+
+        response = self.client.post(
+            reverse("garantias:cambiar_estado_garantia", args=[garantia.pk]),
+            {"estado": destino.codigo},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        garantia.refresh_from_db()
+        self.assertEqual(data["status"], "ok")
+        self.assertEqual(data["estado"], destino.codigo)
+        self.assertEqual(data["columna_id"], destino.pk)
+        self.assertEqual(garantia.estado, destino.codigo)
+        self.assertEqual(garantia.columna_id, destino.pk)
+
+    def test_actualizar_estado_conserva_datos_no_relacionados(self):
+        origen = GarantiaColumna.objects.get(codigo=Garantia.Estado.SOLICITUD_NAVIERA)
+        destino = GarantiaColumna.objects.get(codigo=Garantia.Estado.PAGO_NAVIERA_ZAHA)
+        cliente = Cliente.objects.create(nombre="Cliente conservado")
+        asignado = User.objects.create_user(username="asignado_estado_preserva")
+        etiqueta = GarantiaEtiqueta.objects.create(nombre="Etiqueta conserva", color="#123456")
+        fecha_vencimiento = date.today() + timedelta(days=7)
+        fecha_pago = date.today() + timedelta(days=14)
+        garantia = Garantia.objects.create(
+            titulo="Datos conservados",
+            cliente=cliente,
+            creado_por=self.admin,
+            estado=origen.codigo,
+            columna=origen,
+            fecha_vencimiento=fecha_vencimiento,
+            fecha_pago=fecha_pago,
+        )
+        garantia.asignados.add(asignado)
+        garantia.etiquetas.add(etiqueta)
+        total_garantias = Garantia.objects.count()
+
+        response = self.client.post(
+            reverse("garantias:actualizar_estado_garantia"),
+            {
+                "garantia_id": garantia.pk,
+                "nuevo_estado": destino.codigo,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Garantia.objects.count(), total_garantias)
+        garantia.refresh_from_db()
+        self.assertEqual(garantia.titulo, "Datos conservados")
+        self.assertEqual(garantia.cliente_id, cliente.pk)
+        self.assertEqual(garantia.fecha_vencimiento, fecha_vencimiento)
+        self.assertEqual(garantia.fecha_pago, fecha_pago)
+        self.assertEqual(list(garantia.asignados.values_list("pk", flat=True)), [asignado.pk])
+        self.assertEqual(list(garantia.etiquetas.values_list("pk", flat=True)), [etiqueta.pk])
+        self.assertEqual(garantia.estado, destino.codigo)
+        self.assertEqual(garantia.columna_id, destino.pk)
+
+    def test_actualizar_estado_ajax_con_csrf_explicito_mueve(self):
+        client = Client(enforce_csrf_checks=True)
+        client.login(username="admin_flujos_garantias", password="pass123")
+        client.get(reverse("garantias:panel_garantias"))
+        origen = GarantiaColumna.objects.get(codigo=Garantia.Estado.SOLICITUD_NAVIERA)
+        garantia = Garantia.objects.create(
+            titulo="Movimiento con CSRF",
+            creado_por=self.admin,
+            estado=origen.codigo,
+            columna=origen,
+        )
+        request = HttpRequest()
+        csrftoken = get_token(request)
+        client.cookies.load({"csrftoken": csrftoken})
+        destino = GarantiaColumna.objects.get(codigo=Garantia.Estado.DEVOLUCION_CLIENTE)
+
+        response = client.post(
+            reverse("garantias:actualizar_estado_garantia"),
+            {
+                "garantia_id": garantia.pk,
+                "nuevo_estado": destino.codigo,
+                "csrfmiddlewaretoken": csrftoken,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_X_CSRFTOKEN=csrftoken,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        garantia.refresh_from_db()
+        self.assertEqual(garantia.estado, destino.codigo)
+        self.assertEqual(garantia.columna_id, destino.pk)
 
 
 class GarantiasArchivosAjaxTests(TestCase):

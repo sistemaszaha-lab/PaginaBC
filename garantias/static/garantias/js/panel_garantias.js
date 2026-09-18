@@ -13,6 +13,10 @@
     if (typeof window.createKanbanQuickEditController !== 'function') return;
     root.dataset.panelJsInitialized = '1';
 
+    if (typeof window.initKanbanStatusControl === 'function') {
+      window.initKanbanStatusControl(root);
+    }
+
     const updateUrl = config.estadoUpdateUrl;
     const boardUrl = config.boardUrl || '';
     const inlineCreateUrl = config.inlineCreateUrl;
@@ -48,6 +52,7 @@
     let latestInlineTarget = null;
     const columnLoadRequests = new Map();
     let boardVersion = 0;
+    let activeStatusMenu = null;
 
     if (drawerRoot) {
       drawerRoot.addEventListener('click', (e) => {
@@ -144,6 +149,25 @@
         throw error;
       }
       return fetch(inlineCreateUrl, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': token,
+        },
+      });
+    }
+
+    function postGarantiaStateUpdate(formData, rootElement) {
+      const token = getCsrfToken(rootElement);
+      if (!token) {
+        const error = new Error('CSRF token not found in garantia state update');
+        error.status = 403;
+        throw error;
+      }
+      return fetch(updateUrl, {
         method: 'POST',
         body: formData,
         credentials: 'same-origin',
@@ -299,6 +323,156 @@
         const isActive = button.dataset.statusOption === estado;
         button.classList.toggle('active', isActive);
         button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+    }
+
+    function escapeHtml(value) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      };
+      return String(value || '').replace(/[&<>"']/g, (char) => map[char]);
+    }
+
+    function getAvailableStatusColumns() {
+      return Array.from(root.querySelectorAll('[data-garantia-column="1"]'))
+        .map((shell) => {
+          const body = shell.querySelector('.kanban-col[data-estado]');
+          const estado = body?.dataset.estado || shell.dataset.estado || shell.dataset.columnaCodigo || '';
+          const nombre = shell.dataset.columnaNombre || shell.querySelector('[data-garantia-column-title="1"]')?.textContent?.trim() || estado;
+          return {
+            shell,
+            body,
+            estado,
+            nombre,
+          };
+        })
+        .filter((column) => column.body && column.estado);
+    }
+
+    function isInteractiveStatusDblclickTarget(target) {
+      return Boolean(target?.closest([
+        'button',
+        'a',
+        'input',
+        'textarea',
+        'select',
+        'label',
+        'form',
+        '[role="button"]',
+        '[data-interactive]',
+        '[data-bs-toggle]',
+        '[data-garantia-modal-open]',
+        '[data-garantia-copy-card]',
+        '[data-trash-send]',
+        '[data-garantia-quick-edit-open]',
+        '[data-garantia-quick-edit-form]',
+        '[data-garantia-inline-editor]',
+        '[data-garantia-inline-slot]',
+        '[data-garantia-tags-section]',
+        '.dropdown',
+        '.dropdown-menu',
+        '.garantia-card__comments',
+        '.garantia-card__footer',
+      ].join(',')));
+    }
+
+    function closeStatusMenu() {
+      if (!activeStatusMenu) return;
+      activeStatusMenu.remove();
+      activeStatusMenu = null;
+    }
+
+    function openStatusMenu(card) {
+      closeStatusMenu();
+      if (!card || isCardPending(card)) return;
+      const columns = getAvailableStatusColumns();
+      const currentState = card.dataset.garantiaState || card.closest('.kanban-col')?.dataset.estado || '';
+      if (!columns.length) return;
+
+      const menu = document.createElement('div');
+      menu.className = 'dropdown-menu show shadow-sm';
+      menu.dataset.garantiaDblclickStatusMenu = '1';
+      menu.dataset.garantiaId = getCardId(card);
+      menu.style.position = 'fixed';
+      menu.style.zIndex = '1080';
+      menu.style.minWidth = '220px';
+      menu.innerHTML = `
+        <h6 class="dropdown-header">Cambiar estado</h6>
+        ${columns.map((column) => {
+          const active = column.estado === currentState;
+          return `
+            <button
+              type="button"
+              class="dropdown-item d-flex align-items-center gap-2${active ? ' active' : ''}"
+              data-garantia-dblclick-status-option="1"
+              data-status-option="${escapeHtml(column.estado)}"
+              ${active ? 'aria-current="true"' : ''}>
+              <span aria-hidden="true">${active ? '&check;' : ''}</span>
+              <span>${escapeHtml(column.nombre)}</span>
+            </button>`;
+        }).join('')}
+      `;
+
+      document.body.appendChild(menu);
+      const rect = card.getBoundingClientRect();
+      const left = Math.min(rect.left + 12, window.innerWidth - menu.offsetWidth - 12);
+      const top = Math.min(rect.top + 12, window.innerHeight - menu.offsetHeight - 12);
+      menu.style.left = `${Math.max(12, left)}px`;
+      menu.style.top = `${Math.max(12, top)}px`;
+      activeStatusMenu = menu;
+      menu.querySelector('[data-garantia-dblclick-status-option="1"]')?.focus();
+    }
+
+    function selectStatusFromDblclickMenu(option) {
+      const menu = option?.closest('[data-garantia-dblclick-status-menu="1"]');
+      const cardId = menu?.dataset.garantiaId || '';
+      const card = cardId ? root.querySelector(`[data-garantia-card="1"][data-garantia-id="${cardId}"]`) : null;
+      const sourceColumn = card?.closest('.kanban-col');
+      const nuevoEstado = option?.dataset.statusOption || '';
+      const targetColumn = nuevoEstado ? root.querySelector(`.kanban-col[data-estado="${nuevoEstado}"]`) : null;
+      if (!card || !sourceColumn || !targetColumn || !nuevoEstado) {
+        closeStatusMenu();
+        return;
+      }
+
+      const previousState = card.dataset.garantiaState || sourceColumn.dataset.estado || '';
+      closeStatusMenu();
+      if (previousState === nuevoEstado || isCardPending(card)) {
+        syncCardStateUI(card, previousState, getEstadoLabel(previousState));
+        return;
+      }
+
+      showColumnLoadError(getColumnShell(sourceColumn), '');
+      showColumnLoadError(getColumnShell(targetColumn), '');
+
+      const sourceIndex = Array.from(sourceColumn.querySelectorAll('[data-garantia-card="1"]')).indexOf(card);
+      const targetIndex = 0;
+      if (sourceColumn !== targetColumn) {
+        const emptyState = targetColumn.querySelector('.garantia-empty');
+        if (emptyState) emptyState.remove();
+        targetColumn.prepend(card);
+      }
+
+      moveGarantiaCard({
+        card,
+        targetStatus: nuevoEstado,
+        targetColumn,
+        sourceColumn,
+        sourceIndex,
+        targetIndex,
+        trigger: 'dblclick',
+        triggerElement: option,
+      }).catch((error) => {
+        const message = requestErrorMessage(error);
+        showColumnLoadError(getColumnShell(sourceColumn), message);
+        if (sourceColumn !== targetColumn) {
+          showColumnLoadError(getColumnShell(targetColumn), message);
+        }
+        console.error('[Garantias] Error cambiando estado por doble clic:', error);
       });
     }
 
@@ -748,14 +922,31 @@
       targetActions.innerHTML = buildInlineOpenButtonMarkup(firstShell);
     }
 
+    function getColumnShellForPaste(data) {
+      const byId = getColumnShellById(String(data?.columna_id || ''));
+      if (byId) return byId;
+      const estado = data?.estado || data?.columna_codigo || '';
+      if (!estado) return null;
+      return root.querySelector(`[data-garantia-column="1"][data-columna-codigo="${estado}"], [data-garantia-column="1"][data-estado="${estado}"]`);
+    }
+
+    function initInsertedCardWidgets(card) {
+      try {
+        window.initGarantiaSelects?.(card);
+      } catch (error) {
+        console.error('[Garantias] Error inicializando tarjeta pegada:', error);
+      }
+    }
+
     function insertCopiedCardIntoColumn(data) {
-      const columnShell = getColumnShellById(String(data.columna_id));
+      const columnShell = getColumnShellForPaste(data);
       const column = columnShell?.querySelector('.kanban-col');
-      if (!column || typeof data.html !== 'string') {
+      const cardHtml = typeof data?.html === 'string' ? data.html : data?.card_html;
+      if (!column || typeof cardHtml !== 'string') {
         throw new Error('Respuesta de tarjeta invalida.');
       }
       const wrapper = document.createElement('div');
-      wrapper.innerHTML = data.html;
+      wrapper.innerHTML = cardHtml;
       const card = wrapper.querySelector('[data-garantia-card="1"]');
       if (!card) {
         throw new Error('No se pudo renderizar la tarjeta copiada.');
@@ -764,7 +955,10 @@
       column.querySelector('.garantia-empty')?.remove();
       column.prepend(card);
       updateColumnCount(column, data.column_count);
-      window.initGarantiaSelects?.(card);
+      initInsertedCardWidgets(card);
+      syncCopyActions();
+      initSortable();
+      return card;
     }
 
     function addInlineLinkRow(root) {
@@ -1215,7 +1409,7 @@
     }
 
     function handleGarantiaStateChange(stateSelect, triggerElement = stateSelect) {
-      const card = stateSelect?.closest('[data-garantia-card="1"]');
+      const card = triggerElement?.closest('[data-garantia-card="1"]') || stateSelect?.closest('[data-garantia-card="1"]');
       const sourceColumn = card?.closest('.kanban-col');
       const previousState = card?.dataset.garantiaState || sourceColumn?.dataset.estado || stateSelect?.dataset.previousValue || stateSelect?.value;
       const nuevoEstado = stateSelect?.value || '';
@@ -1256,12 +1450,15 @@
         trigger: triggerElement === stateSelect ? 'select' : 'button',
         triggerElement,
       }).catch((error) => {
-        const message = getAjaxErrorMessage(error);
+        const message = requestErrorMessage(error);
         showColumnLoadError(getColumnShell(sourceColumn), message);
         if (sourceColumn !== targetColumn) {
           showColumnLoadError(getColumnShell(targetColumn), message);
         }
-        console.error('No se pudo actualizar el estado de la garantia:', error);
+        console.error(
+          '[Garantias] Error cambiando estado:',
+          error
+        );
       });
     }
 
@@ -1277,28 +1474,16 @@
       handleGarantiaStateChange(stateSelect);
     });
 
+    root.addEventListener('dblclick', (e) => {
+      const card = e.target.closest('[data-garantia-card="1"]');
+      if (!card || !root.contains(card)) return;
+      if (isInteractiveStatusDblclickTarget(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openStatusMenu(card);
+    });
+
     root.addEventListener('click', (e) => {
-      const statusButton = e.target.closest('.kanban-status-control__option[data-status-option]');
-      if (statusButton) {
-        e.preventDefault();
-        // El flujo de cambio por botones conserva a statusButton como disparador
-        // original para CSRF y para el seguimiento del origen del movimiento:
-        // triggerElement: statusButton,
-        const control = statusButton.closest('.kanban-status-control');
-        const stateSelect = control?.querySelector('[data-garantia-state-select="1"]');
-        const card = statusButton.closest('[data-garantia-card="1"]');
-        const previousState = card?.dataset.garantiaState || stateSelect?.value || '';
-        const nextState = statusButton.dataset.statusOption || '';
-        if (!stateSelect || !nextState) return;
-        if (stateSelect.disabled) {
-          syncCardStateUI(card, previousState, getEstadoLabel(previousState));
-          return;
-        }
-        stateSelect.dataset.previousValue = previousState;
-        stateSelect.value = nextState;
-        handleGarantiaStateChange(stateSelect, statusButton);
-        return;
-      }
 
       const inlineOpenButton = e.target.closest('[data-garantia-inline-open="1"]');
       if (inlineOpenButton) {
@@ -1986,6 +2171,26 @@
         if (modalForm.isConnected) setFormPending(modalForm, false);
         setDrawerBusy(false);
       });
+    });
+
+    document.addEventListener('click', (e) => {
+      const statusOption = e.target.closest('[data-garantia-dblclick-status-option="1"]');
+      if (statusOption) {
+        e.preventDefault();
+        e.stopPropagation();
+        selectStatusFromDblclickMenu(statusOption);
+        return;
+      }
+
+      if (activeStatusMenu && !e.target.closest('[data-garantia-dblclick-status-menu="1"]')) {
+        closeStatusMenu();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeStatusMenu();
+      }
     });
 
     window.createKanbanQuickEditController({
