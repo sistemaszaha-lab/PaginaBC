@@ -925,27 +925,6 @@ def crear_cuenta_gastos_inline(request):
             {"ok": False, "errors": {"estado": ["Estado invalido."]}},
             status=400,
         )
-    columna_permitida = _columna_manual_permitida()
-    if (
-        columna_permitida is None
-        or columna.pk != columna_permitida.pk
-    ):
-        return JsonResponse(
-            {
-                "ok": False,
-                "message": "Solo se pueden crear tarjetas desde la primera columna activa.",
-                "errors": {
-                    "estado": [
-                        {
-                            "message": "Solo se pueden crear tarjetas desde la primera columna activa.",
-                            "code": "invalid",
-                        }
-                    ]
-                },
-            },
-            status=400,
-        )
-
     form = CuentaGastosInlineCreateForm(request.POST, request.FILES)
     if not form.is_valid():
         return JsonResponse(

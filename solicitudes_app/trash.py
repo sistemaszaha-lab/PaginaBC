@@ -38,6 +38,7 @@ class TrashModelConfig:
 
 
 TRASH_MODELS: dict[str, TrashModelConfig] = {
+    "operacion_etiqueta": TrashModelConfig(tipo="operacion_etiqueta", app_label="operaciones", model_name="OperacionEtiqueta", modulo_label="Etiquetas de Operaciones", titulo_attr="nombre", fecha_attr="fecha_creacion", responsable_attr="eliminado_por", select_related=("eliminado_por",)),
     "operacion": TrashModelConfig(
         tipo="operacion",
         app_label="operaciones",

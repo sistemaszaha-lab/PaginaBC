@@ -18,16 +18,6 @@
     </div>
 
     <div class="mb-2">
-      <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.descripcion.id_for_label }}">
-        Descripcion
-      </label>
-      {{ form.descripcion }}
-      {% if form.descripcion.errors %}
-        <div class="text-danger small mt-1">{{ form.descripcion.errors|join:", " }}</div>
-      {% endif %}
-    </div>
-
-    <div class="mb-2">
       <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.cliente.id_for_label }}">
         Cliente
       </label>

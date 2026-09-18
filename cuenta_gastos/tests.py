@@ -134,7 +134,7 @@ class CuentaGastosTests(TestCase):
         )
         self.assertEqual(
             len(re.findall(r'<button\b[^>]*data-cuenta-inline-open="1"', html)),
-            1,
+            len(self.columnas_base),
         )
         self.assertEqual(
             len(re.findall(r'<section\b[^>]*data-cuenta-column="1"', html)),
@@ -520,7 +520,26 @@ class CuentaGastosTests(TestCase):
         self.assertEqual(cuenta.columna_id, self.columna_inicial.pk)
         self.assertEqual(cuenta.estado, self.columna_inicial.codigo)
 
-    def test_crear_inline_en_columna_personalizada_se_rechaza(self):
+    def test_editar_color_columna_persiste_en_bd(self):
+        response = self.client.post(
+            reverse("cuenta_gastos:columna_editar", args=[self.columna_inicial.pk]),
+            {"nombre": self.columna_inicial.nombre, "color_fondo": "#123456"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.columna_inicial.refresh_from_db()
+        self.assertEqual(self.columna_inicial.color_fondo, "#123456")
+
+    def test_panel_renderiza_color_columna_persistido(self):
+        self.columna_inicial.color_fondo = "#654321"
+        self.columna_inicial.save(update_fields=["color_fondo"])
+        response = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
+        self.assertContains(
+            response,
+            'style="--cuenta-column-bg: #654321;"',
+        )
+
+    def test_crear_inline_en_columna_personalizada_se_persiste_en_destino(self):
         columna = CuentaGastosColumna.objects.create(
             nombre="Revision documental",
             codigo="REVISION_DOCUMENTAL",
@@ -536,20 +555,15 @@ class CuentaGastosTests(TestCase):
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
-        self.assertEqual(response.status_code, 400)
-        data = response.json()
-        self.assertEqual(
-            data["message"],
-            "Solo se pueden crear tarjetas desde la primera columna activa.",
-        )
-        self.assertFalse(
-            CuentaGastos.objects.filter(titulo="En columna nueva").exists()
-        )
+        self.assertEqual(response.status_code, 201)
+        cuenta = CuentaGastos.objects.get(titulo="En columna nueva")
+        self.assertEqual(cuenta.columna_id, columna.pk)
+        self.assertEqual(cuenta.estado, columna.codigo)
 
-    def test_panel_solo_muestra_alta_manual_en_primera_columna_y_cambia_con_reorden(self):
+    def test_panel_muestra_alta_manual_en_todas_las_columnas(self):
         response = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
         html = response.content.decode()
-        self.assertEqual(html.count('data-cuenta-inline-open="1"'), 1)
+        self.assertEqual(html.count('data-cuenta-inline-open="1"'), len(self.columnas_base))
 
         columnas = list(CuentaGastosColumna.objects.order_by("orden", "id"))
         nuevo_orden = [str(columna.pk) for columna in reversed(columnas)]
@@ -563,7 +577,7 @@ class CuentaGastosTests(TestCase):
         nuevo_primero = CuentaGastosColumna.objects.order_by("orden", "id").first()
         response = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
         html = response.content.decode()
-        self.assertEqual(html.count('data-cuenta-inline-open="1"'), 1)
+        self.assertEqual(html.count('data-cuenta-inline-open="1"'), len(columnas))
         self.assertIn(f'data-columna-id="{nuevo_primero.pk}"', html)
 
     def test_mover_cuenta_a_columna_personalizada_sincroniza_estado_y_columna(self):

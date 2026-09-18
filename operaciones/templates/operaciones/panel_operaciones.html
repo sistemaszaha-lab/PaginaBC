@@ -23,6 +23,7 @@
     data-operacion-column-create-open="1">
     + Agregar columna
   </button>
+  <button type="button" class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#OperacionEtiquetasModal">Etiquetas generadas</button>
   <div class="operaciones-toolbar__filter">
     <label class="form-label small text-muted mb-1">Filtro por usuario</label>
     <div class="d-flex gap-2 align-items-center">
@@ -40,6 +41,12 @@
       </button>
     </div>
   </div>
+</div>
+
+<div class="modal fade" id="OperacionEtiquetasModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Etiquetas generadas</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">{% for etiqueta in etiquetas_generadas %}<form method="post" action="{% url 'operaciones:editar_etiqueta' etiqueta.id %}" class="d-flex align-items-center gap-2 mb-2">{% csrf_token %}<input name="nombre" value="{{ etiqueta.nombre }}" class="form-control form-control-sm"><input name="color" type="color" value="{{ etiqueta.color }}" class="form-control form-control-color"><button class="btn btn-sm btn-outline-primary">Guardar</button></form><form method="post" action="{% url 'operaciones:eliminar_etiqueta' etiqueta.id %}" class="mb-2">{% csrf_token %}<button class="btn btn-sm btn-outline-danger">Enviar a papelera</button></form>{% empty %}<p class="text-muted">No hay etiquetas activas.</p>{% endfor %}</div>
+  </div></div>
 </div>
 
 {% include "operaciones/_tablero.html" with columnas=columnas estados=estados only %}

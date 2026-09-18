@@ -498,7 +498,7 @@ def _render_enlaces_section(request, operacion, enlace_form=None, return_count=F
 
 
 def _etiquetas_queryset(operacion):
-    return operacion.etiquetas.order_by("nombre", "id")
+    return operacion.etiquetas.filter(eliminado_en__isnull=True).order_by("nombre", "id")
 
 
 def _etiquetas_data(etiquetas):
@@ -689,6 +689,7 @@ def panel_operaciones(request):
         "columnas_activas": _columnas_activas(),
         "columna_create_form": OperacionColumnaCreateForm(),
         "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
+        "etiquetas_generadas": OperacionEtiqueta.objects.filter(eliminado_en__isnull=True).order_by("nombre", "id"),
         "current": "panel_operaciones",
         "today": timezone.localdate(),
         "panel_config": {
@@ -967,7 +968,6 @@ def detalle_operacion_modal(request, operacion_id):
             form,
             request.POST,
             "titulo",
-            "descripcion",
             "cliente",
             "prioridad",
             "fecha_vencimiento",
@@ -1009,7 +1009,6 @@ def editar_operacion(request, operacion_id):
         form,
         request.POST,
         "titulo",
-        "descripcion",
         "cliente",
         "prioridad",
         "fecha_vencimiento",
@@ -1754,9 +1753,33 @@ def tarjeta_pegar(request, columna_id):
 
 
 def crear_opcion(*args, **kwargs): pass
-def crear_etiqueta(*args, **kwargs): pass
-def editar_etiqueta(*args, **kwargs): pass
-def eliminar_etiqueta(*args, **kwargs): pass
+
+@login_required
+@require_POST
+def crear_etiqueta(request):
+    form = OperacionEtiquetaCreateForm(request.POST)
+    if not form.is_valid(): return JsonResponse({"ok": False, "errors": form.errors}, status=400)
+    etiqueta = OperacionEtiqueta.objects.create(**form.cleaned_data)
+    return JsonResponse({"ok": True, "id": etiqueta.pk, "nombre": etiqueta.nombre, "color": etiqueta.color})
+
+@login_required
+@require_POST
+def editar_etiqueta(request, etiqueta_id):
+    if not request.user.is_staff: raise PermissionDenied("No tienes permisos para administrar etiquetas.")
+    etiqueta = get_object_or_404(OperacionEtiqueta, pk=etiqueta_id, eliminado_en__isnull=True)
+    form = OperacionEtiquetaCreateForm(request.POST)
+    if not form.is_valid(): return JsonResponse({"ok": False, "errors": form.errors}, status=400)
+    for field, value in form.cleaned_data.items(): setattr(etiqueta, field, value)
+    etiqueta.save(update_fields=["nombre", "color"])
+    return JsonResponse({"ok": True, "id": etiqueta.pk, "nombre": etiqueta.nombre, "color": etiqueta.color})
+
+@login_required
+@require_POST
+def eliminar_etiqueta(request, etiqueta_id):
+    if not request.user.is_staff: raise PermissionDenied("No tienes permisos para administrar etiquetas.")
+    etiqueta = get_object_or_404(OperacionEtiqueta, pk=etiqueta_id, eliminado_en__isnull=True)
+    enviar_a_papelera(etiqueta, request.user)
+    return JsonResponse({"ok": True, "id": etiqueta.pk})
 
 @login_required
 @require_POST

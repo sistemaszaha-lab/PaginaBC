@@ -2,6 +2,7 @@
 <section
   class="cuenta-column card border-0 shadow-sm flex-shrink-0"
   data-cuenta-column="1"
+  style="--cuenta-column-bg: {{ columna.color_fondo|default:'#F8F9FA' }};"
   data-columna-id="{{ columna.columna_id|default:columna.id }}"
   data-columna-codigo="{{ columna.codigo|default:columna.estado }}"
   data-columna-nombre="{{ columna.nombre|default:columna.titulo }}"
@@ -75,7 +76,6 @@
     </div>
   </header>
 
-    {% if es_primera_columna %}
     <div class="cuenta-column__actions px-3 pt-3">
       <button
         type="button"
@@ -88,7 +88,6 @@
         + Nueva cuenta
       </button>
     </div>
-    {% endif %}
 
   <div
     class="cuenta-column__body columna-drop d-flex flex-column gap-3"

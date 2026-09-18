@@ -39,6 +39,7 @@ FILTER_CHOICES = (
     ("garantia", "Garantías"),
     ("cotizacion", "Panel de cotizaciones"),
     ("cuenta_gastos", "Cuenta de gastos"),
+    ("operacion_etiqueta", "Etiquetas de Operaciones"),
 )
 FILTER_LABELS = {value: label for value, label in FILTER_CHOICES if value}
 

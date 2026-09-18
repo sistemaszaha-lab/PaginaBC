@@ -172,6 +172,8 @@ class OperacionEtiqueta(models.Model):
         help_text="Color en formato hexadecimal (ej: #3E9FA2)"
     )
     fecha_creacion = models.DateTimeField(default=timezone.now)
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
+    eliminado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="operaciones_etiquetas_eliminadas")
 
     class Meta:
         ordering = ["nombre"]

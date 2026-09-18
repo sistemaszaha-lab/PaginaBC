@@ -55,10 +55,9 @@ class MultipleFileField(forms.FileField):
 class OperacionForm(forms.ModelForm):
     class Meta:
         model = Operacion
-        fields = ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "opciones"]
+        fields = ["titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "opciones"]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
-            "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "cliente": forms.Select(attrs={"class": "form-select"}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
             "fecha_vencimiento": forms.DateInput(format='%Y-%m-%d', attrs={"class": "form-control", "type": "date"}),
@@ -70,7 +69,7 @@ class OperacionForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         require_assigned = kwargs.pop("require_assigned", False)
         super().__init__(*args, **kwargs)
-        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "opciones"]:
+        for name in ["titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "opciones"]:
             if name in self.fields:
                 self.fields[name].required = False
         if require_assigned:
@@ -99,7 +98,6 @@ class OperacionInlineCreateForm(forms.ModelForm):
         model = Operacion
         fields = [
             "titulo",
-            "descripcion",
             "cliente",
             "prioridad",
             "fecha_vencimiento",
@@ -112,13 +110,6 @@ class OperacionInlineCreateForm(forms.ModelForm):
                 attrs={
                     "class": "form-control form-control-sm",
                     "placeholder": "Nombre de la operacion",
-                }
-            ),
-            "descripcion": forms.Textarea(
-                attrs={
-                    "class": "form-control form-control-sm",
-                    "placeholder": "Descripcion",
-                    "rows": 2,
                 }
             ),
             "cliente": forms.Select(attrs={"class": "form-select form-select-sm"}),
@@ -150,7 +141,6 @@ class OperacionInlineCreateForm(forms.ModelForm):
         self.fields["titulo"].required = True
         self.fields["asignados"].required = True
         for field_name in [
-            "descripcion",
             "cliente",
             "prioridad",
             "fecha_vencimiento",
@@ -169,7 +159,7 @@ class OperacionInlineCreateForm(forms.ModelForm):
             "id", "first_name", "last_name", "username"
         ).order_by("first_name", "last_name", "username", "id")
         self.fields["asignados"].label_from_instance = lambda obj: obj.first_name or obj.username
-        self.fields["etiquetas"].queryset = OperacionEtiqueta.objects.only(
+        self.fields["etiquetas"].queryset = OperacionEtiqueta.objects.filter(eliminado_en__isnull=True).only(
             "id", "nombre"
         ).order_by("nombre", "id")
         self.fields["etiquetas"].label_from_instance = lambda obj: obj.nombre
@@ -302,10 +292,9 @@ class OperacionQuickEditForm(forms.ModelForm):
 class OperacionEditarForm(forms.ModelForm):
     class Meta:
         model = Operacion
-        fields = ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "eta", "asignados", "etiquetas", "opciones"]
+        fields = ["titulo", "cliente", "prioridad", "fecha_vencimiento", "eta", "asignados", "etiquetas", "opciones"]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
-            "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "cliente": forms.Select(attrs={"class": "form-select"}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
             "fecha_vencimiento": forms.DateInput(format='%Y-%m-%d', attrs={"class": "form-control", "type": "date"}),
@@ -317,7 +306,7 @@ class OperacionEditarForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "eta", "asignados", "etiquetas", "opciones"]:
+        for name in ["titulo", "cliente", "prioridad", "fecha_vencimiento", "eta", "asignados", "etiquetas", "opciones"]:
             if name in self.fields:
                 self.fields[name].required = False
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
@@ -420,7 +409,7 @@ class OperacionEtiquetaAssignForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["etiqueta"].queryset = OperacionEtiqueta.objects.order_by("nombre", "id")
+        self.fields["etiqueta"].queryset = OperacionEtiqueta.objects.filter(eliminado_en__isnull=True).order_by("nombre", "id")
         self.fields["etiqueta"].label_from_instance = lambda etiqueta: etiqueta.nombre
 
 

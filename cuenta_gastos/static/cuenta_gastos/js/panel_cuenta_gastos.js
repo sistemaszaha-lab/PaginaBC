@@ -778,7 +778,7 @@
       }
       if (data.color_fondo) {
         columnShell.dataset.columnaColorFondo = data.color_fondo;
-        columnShell.style.background = data.color_fondo;
+        columnShell.style.setProperty('--cuenta-column-bg', data.color_fondo);
       }
     }
 
@@ -2169,6 +2169,13 @@
         const url = getColumnShellById(columnId)?.dataset.editUrl;
         if (!url) return;
         const fd = new FormData(columnEditForm);
+        const columnShell = getColumnShellById(columnId);
+        const previousColor = columnShell?.dataset.columnaColorFondo || '';
+        const nextColor = fd.get('color_fondo');
+        if (columnShell && nextColor) {
+          columnShell.dataset.columnaColorFondo = nextColor;
+          columnShell.style.setProperty('--cuenta-column-bg', nextColor);
+        }
         fetch(url, {
           method: 'POST',
           credentials: 'same-origin',
@@ -2189,6 +2196,10 @@
             columnEditModal?.hide();
           })
           .catch((error) => {
+            if (columnShell && previousColor) {
+              columnShell.dataset.columnaColorFondo = previousColor;
+              columnShell.style.setProperty('--cuenta-column-bg', previousColor);
+            }
             const message = error?.errors?.nombre?.map((item) => item.message).join(' ') || error?.error || 'No se pudo editar la columna.';
             setColumnFormError(columnEditForm, message);
           });
