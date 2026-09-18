@@ -147,6 +147,12 @@ class ClienteFormTests(TestCase):
 
         self.assertNotIn("utilidad", form.fields)
 
+    def test_numero_no_es_campo_editable(self):
+        form = ClienteForm()
+
+        self.assertNotIn("numero", form.fields)
+        self.assertNotIn("numero_cliente", form.fields)
+
     def test_rechaza_duplicado_exacto(self):
         Cliente.objects.create(nombre="EMPRESA VARGAS", empresa="LOGISTICA")
 
@@ -551,6 +557,62 @@ class ClientePaginationTests(TestCase):
             4,
         )
 
+    def test_numero_es_primera_columna_y_sigue_orden_alfabetico(self):
+        Cliente.objects.bulk_create(
+            [
+                Cliente(nombre="ALFA"),
+                Cliente(nombre="COMERCIALIZADORA"),
+                Cliente(nombre="TRANSPORTES"),
+            ]
+        )
+
+        response = self.client.get(reverse("cliente_lista"))
+        html = response.content.decode()
+
+        self.assertContains(response, "<th>Número</th>", html=True)
+        self.assertLess(html.index("<th>Número</th>"), html.index("<th>Cliente</th>"))
+        self.assertContains(response, "CL-001")
+        self.assertContains(response, "CL-002")
+        self.assertContains(response, "CL-003")
+        self.assertLess(html.index("CL-001"), html.index("ALFA"))
+        self.assertLess(html.index("ALFA"), html.index("COMERCIALIZADORA"))
+        self.assertEqual(self._clientes_renderizados(response)[0].numero_cliente, "CL-001")
+
+    def test_numero_se_recorre_si_entra_cliente_antes_alfabeticamente(self):
+        alfa = Cliente.objects.create(nombre="ALFA")
+        comercializadora = Cliente.objects.create(nombre="COMERCIALIZADORA")
+        Cliente.objects.create(nombre="TRANSPORTES")
+
+        inicial = self.client.get(reverse("cliente_lista"))
+        self.assertEqual(self._clientes_renderizados(inicial)[0].pk, alfa.pk)
+        self.assertEqual(self._clientes_renderizados(inicial)[1].pk, comercializadora.pk)
+        self.assertEqual(self._clientes_renderizados(inicial)[0].numero_cliente, "CL-001")
+
+        aduanas = Cliente.objects.create(nombre="ADUANAS")
+        actualizado = self.client.get(reverse("cliente_lista"))
+        resultados = self._clientes_renderizados(actualizado)
+
+        self.assertEqual(resultados[0].pk, aduanas.pk)
+        self.assertEqual(resultados[1].pk, alfa.pk)
+        self.assertEqual(resultados[2].pk, comercializadora.pk)
+        self.assertEqual(resultados[0].numero_cliente, "CL-001")
+        self.assertEqual(resultados[1].numero_cliente, "CL-002")
+        self.assertEqual(resultados[2].numero_cliente, "CL-003")
+
+    def test_numero_se_recalcula_al_renombrar_cliente(self):
+        alfa = Cliente.objects.create(nombre="ALFA")
+        beta = Cliente.objects.create(nombre="BETA")
+
+        beta.nombre = "AARON"
+        beta.save()
+        response = self.client.get(reverse("cliente_lista"))
+        resultados = self._clientes_renderizados(response)
+
+        self.assertEqual(resultados[0].pk, beta.pk)
+        self.assertEqual(resultados[1].pk, alfa.pk)
+        self.assertEqual(resultados[0].numero_cliente, "CL-001")
+        self.assertEqual(resultados[1].numero_cliente, "CL-002")
+
     def test_busqueda_se_aplica_antes_de_paginar_y_conserva_q(self):
         self._crear_clientes(30, prefijo="COINCIDE")
         self._crear_clientes(20, prefijo="OTRO")
@@ -613,6 +675,20 @@ class ClientePaginationTests(TestCase):
         self.assertContains(response, "Siguiente")
         self.assertContains(response, "&hellip;", html=True)
         self.assertNotContains(response, "?page=8")
+
+    def test_numero_continua_entre_paginas_y_no_limita_tres_digitos(self):
+        self._crear_clientes(1000)
+
+        primera = self.client.get(reverse("cliente_lista"))
+        pagina_dos = self.client.get(reverse("cliente_lista"), {"page": 2})
+        pagina_cuatro = self.client.get(reverse("cliente_lista"), {"page": 4})
+        pagina_cuarenta = self.client.get(reverse("cliente_lista"), {"page": 40})
+
+        self.assertEqual(self._clientes_renderizados(primera)[0].numero_cliente, "CL-001")
+        self.assertEqual(self._clientes_renderizados(primera)[9].numero_cliente, "CL-010")
+        self.assertEqual(self._clientes_renderizados(pagina_dos)[0].numero_cliente, "CL-026")
+        self.assertEqual(self._clientes_renderizados(pagina_cuatro)[24].numero_cliente, "CL-100")
+        self.assertEqual(self._clientes_renderizados(pagina_cuarenta)[24].numero_cliente, "CL-1000")
 
     def test_consultas_del_get_son_constantes_entre_25_y_250(self):
         self._crear_clientes(25)

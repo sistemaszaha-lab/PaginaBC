@@ -6,7 +6,6 @@
   data-columna-codigo="{{ columna.codigo|default:columna.estado }}"
   data-columna-nombre="{{ columna.nombre|default:columna.titulo }}"
   data-columna-color-fondo="{{ columna.color_fondo|default:'#F8F9FA' }}"
-  style="background: {{ columna.color_fondo|default:'#F8F9FA' }};"
   data-modulo="cuenta_gastos"
   data-edit-url="{% url 'cuenta_gastos:columna_editar' columna.columna_id|default:columna.id %}"
   data-delete-url="{% url 'cuenta_gastos:columna_eliminar' columna.columna_id|default:columna.id %}"
@@ -76,7 +75,7 @@
     </div>
   </header>
 
-    {% if forloop.first %}
+    {% if es_primera_columna %}
     <div class="cuenta-column__actions px-3 pt-3">
       <button
         type="button"

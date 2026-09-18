@@ -1206,6 +1206,8 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertFalse(data["ok"])
         self.assertIn("asignados", data["errors"])
         self.assertIn("Este campo es obligatorio", data["html_form"])
+        self.assertIn('Titulo <span class="text-danger">*</span>', data["html_form"])
+        self.assertIn('Asignados <span class="text-danger">*</span>', data["html_form"])
         self.assertFalse(Operacion.objects.exists())
 
     def test_enlaces_invalidos_devuelven_error_y_mantienen_formulario_abierto(self):

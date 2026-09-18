@@ -30,6 +30,13 @@ PANEL_JS_PATH = (
     / "js"
     / "panel_cuenta_gastos.js"
 )
+PANEL_CSS_PATH = (
+    Path(__file__).resolve().parent
+    / "static"
+    / "cuenta_gastos"
+    / "css"
+    / "panel_cuenta_gastos.css"
+)
 
 
 @override_settings(
@@ -87,11 +94,22 @@ class CuentaGastosTests(TestCase):
         resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
         self.assertEqual(resp.status_code, 200)
 
-    def test_panel_no_renderiza_cliente_ni_descripcion_en_tarjetas(self):
+    def test_panel_no_renderiza_descripcion_en_tarjetas(self):
         resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
         self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, "cuenta-card__client")
         self.assertNotContains(resp, "cuenta-card__description")
+
+    def test_panel_css_no_muestra_fondo_de_board_ni_acento_de_tarjetas(self):
+        css = PANEL_CSS_PATH.read_text(encoding="utf-8")
+
+        self.assertRegex(css, r"\.cuenta-board\s*\{[^}]*background:\s*transparent;")
+        self.assertRegex(css, r"\.cuenta-card__accent\s*\{[^}]*display:\s*none;")
+
+    def test_columnas_no_aplican_color_de_fondo_inline(self):
+        resp = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'style="background:')
 
     def test_panel_no_instancia_formulario_inline_de_creacion(self):
         with patch("cuenta_gastos.views.CuentaGastosInlineCreateForm") as form_class:

@@ -154,6 +154,9 @@ def cliente_lista(request):
         paginator = Paginator(clientes, CLIENTES_POR_PAGINA)
         page_obj = paginator.get_page(request.GET.get("page"))
         clientes_pagina = list(page_obj.object_list)
+        inicio = page_obj.start_index() if clientes_pagina else 0
+        for posicion, cliente in enumerate(clientes_pagina, start=inicio):
+            cliente.numero_cliente = f"CL-{posicion:03d}"
     except (OperationalError, ProgrammingError):
         messages.error(
             request,
