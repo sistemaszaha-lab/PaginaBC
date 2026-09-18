@@ -34,6 +34,14 @@
         {% else %}
             <a href="{% url 'operaciones:enviar_referencia_a_operaciones' r.id %}" class="btn btn-sm btn-success">Enviar a Operaciones</a>
         {% endif %}
+        {% if r.garantia_generada %}
+            <a href="{% url 'garantias:panel_garantias' %}" class="btn btn-sm btn-outline-info">Enviada a Garantias</a>
+        {% else %}
+            <form method="post" action="{% url 'garantias:enviar_referencia_a_garantias' r.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-info">Enviar a Garantias</button>
+            </form>
+        {% endif %}
         {% if request.user.is_superuser %}
             <a href="{% url 'editar_referencia' r.id %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-primary">Editar</a>
             <button

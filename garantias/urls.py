@@ -20,6 +20,7 @@ urlpatterns = [
     path("nueva/", views.crear_garantia, name="crear_garantia"),
     path("crear-inline/formulario/", views.formulario_garantia_inline, name="formulario_garantia_inline"),
     path("crear-inline/", views.crear_garantia_inline, name="crear_garantia_inline"),
+    path("referencias/<int:pk>/enviar-a-garantias/", views.enviar_referencia_a_garantias, name="enviar_referencia_a_garantias"),
     path("actualizar-estado/", views.actualizar_estado_garantia, name="actualizar_estado_garantia"),
     path("<int:pk>/actualizar-inline/", views.actualizar_garantia_inline, name="actualizar_garantia_inline"),
     path("<int:pk>/detalle/", views.detalle_garantia_parcial, name="detalle_garantia_parcial"),

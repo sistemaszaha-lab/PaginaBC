@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Prefetch, Q, Window
 from django.db.models.functions import RowNumber
 from django.http import FileResponse, JsonResponse
@@ -39,6 +39,8 @@ from .models import (
     GarantiaEtiqueta,
 )
 from .services import copiar_garantia_a_columna
+from .services import obtener_datos_garantia_desde_referencia
+from solicitudes.models import Referencia
 
 User = get_user_model()
 
@@ -646,6 +648,45 @@ def crear_garantia(request):
         "garantias/crear_garantia.html",
         {"form": form, "archivos_form": archivos_form, "enlace_form": enlace_form, "next_url": next_url},
     )
+
+
+@login_required
+@admin_required
+@require_POST
+def enviar_referencia_a_garantias(request, pk):
+    referencia = get_object_or_404(
+        Referencia.objects.filter(eliminado_en__isnull=True),
+        pk=pk,
+    )
+    columna = _buscar_columna_activa_por_codigo(Garantia.Estado.EN_PROCESO)
+    if columna is None:
+        raise PermissionDenied("No existe la columna En proceso en Garantias.")
+
+    try:
+        with transaction.atomic():
+            existente = Garantia.objects.select_for_update().filter(
+                referencia_origen=referencia,
+                eliminado_en__isnull=True,
+            ).first()
+            if existente:
+                messages.info(request, "Esta referencia ya fue enviada a Garantias.")
+                return redirect("garantias:panel_garantias")
+            garantia = Garantia.objects.create(
+                **obtener_datos_garantia_desde_referencia(referencia),
+                estado=columna.codigo,
+                columna=columna,
+                prioridad=Garantia.Prioridad.MEDIA,
+                creado_por=request.user,
+                referencia_origen=referencia,
+            )
+            if referencia.ejecutivo_id:
+                garantia.asignados.set([referencia.ejecutivo_id])
+    except IntegrityError:
+        messages.info(request, "Esta referencia ya fue enviada a Garantias.")
+        return redirect("garantias:panel_garantias")
+
+    messages.success(request, "La referencia se envio correctamente a Garantias en En proceso.")
+    return redirect("garantias:panel_garantias")
 
 
 @login_required

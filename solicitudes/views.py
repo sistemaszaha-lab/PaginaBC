@@ -1461,6 +1461,7 @@ def lista_referencias(request):
     referencias_qs = _referencias_activas().select_related(
         "ejecutivo",
         "operacion_generada",
+        "garantia_generada",
     )
     q = request.GET.get("q", "").strip()
     orden = (request.GET.get("orden") or "").strip().lower()

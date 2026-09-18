@@ -18,6 +18,7 @@ from django.utils import timezone
 from datetime import date, timedelta
 
 from clientes.models import Cliente
+from solicitudes.models import Referencia
 
 from .models import (
     Garantia,
@@ -41,6 +42,102 @@ SHARED_STATUS_JS_PATH = (
     / "js"
     / "kanban_status_control.js"
 )
+
+
+def asegurar_columnas_garantias_actuales():
+    from .views import COLUMNAS_INICIALES
+
+    for orden, (codigo, nombre) in enumerate(COLUMNAS_INICIALES, start=1):
+        GarantiaColumna.objects.update_or_create(
+            codigo=codigo,
+            defaults={"nombre": nombre, "orden": orden, "activa": True},
+        )
+
+
+class ReferenciaAGarantiaTests(TestCase):
+    def setUp(self):
+        asegurar_columnas_garantias_actuales()
+        self.usuario = User.objects.create_user(
+            username="convertidor-garantia",
+            password="pass",
+            first_name="Convertidor",
+        )
+        self.cliente = Cliente.objects.create(nombre="CLIENTE GARANTIA")
+        self.referencia = Referencia.objects.create(
+            referencia="BC261101",
+            consecutivo=101,
+            ejecutivo=self.usuario,
+            cliente="CLIENTE GARANTIA",
+            servicio="importacion",
+            medio_operacion="maritima",
+            agencia_aduanal="Agencia Test",
+        )
+        self.url = reverse(
+            "garantias:enviar_referencia_a_garantias",
+            args=[self.referencia.pk],
+        )
+        self.client.force_login(self.usuario)
+
+    def test_boton_enviar_a_garantias_aparece_en_referencias_con_csrf(self):
+        response = self.client.get(reverse("lista_referencias"))
+        self.assertContains(response, "Enviar a Garantias")
+        self.assertContains(response, self.url)
+        self.assertContains(response, "csrfmiddlewaretoken")
+
+    def test_crea_garantia_en_en_proceso_vinculada_y_con_datos(self):
+        response = self.client.post(self.url)
+        self.assertRedirects(response, reverse("garantias:panel_garantias"))
+        garantia = Garantia.objects.get(referencia_origen=self.referencia)
+        self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
+        self.assertIsNotNone(garantia.columna)
+        self.assertEqual(garantia.columna.nombre, "En proceso")
+        self.assertEqual(garantia.titulo, "Referencia BC261101")
+        self.assertIn("Referencia: BC261101", garantia.descripcion)
+        self.assertIn("Agencia aduanal: Agencia Test", garantia.descripcion)
+        self.assertEqual(garantia.cliente, self.cliente)
+        self.assertEqual(garantia.creado_por, self.usuario)
+        self.assertIn(self.usuario, list(garantia.asignados.all()))
+
+    def test_envio_a_garantias_no_duplica(self):
+        self.client.post(self.url)
+        self.client.post(self.url)
+        self.assertEqual(
+            Garantia.objects.filter(referencia_origen=self.referencia).count(),
+            1,
+        )
+
+    def test_rama_garantias_es_independiente_de_operaciones(self):
+        from operaciones.models import Operacion, OperacionColumna
+
+        OperacionColumna.objects.update_or_create(
+            codigo=Operacion.Estado.COORDINAR_PICKUP,
+            defaults={"nombre": "Pick up", "orden": 1, "activa": True},
+        )
+        Operacion.objects.create(
+            titulo="Operacion existente",
+            estado=Operacion.Estado.COORDINAR_PICKUP,
+            creado_por=self.usuario,
+            referencia_origen=self.referencia,
+        )
+        response = self.client.post(self.url)
+        self.assertRedirects(response, reverse("garantias:panel_garantias"))
+        self.assertEqual(
+            Garantia.objects.filter(referencia_origen=self.referencia).count(),
+            1,
+        )
+
+    def test_conversion_requiere_autenticacion(self):
+        self.client.logout()
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Garantia.objects.filter(referencia_origen=self.referencia).count(), 0)
+
+    def test_garantia_manual_sin_referencia_origen_es_valida(self):
+        garantia = Garantia.objects.create(
+            titulo="Garantia manual",
+            creado_por=self.usuario,
+        )
+        self.assertIsNone(garantia.referencia_origen)
 
 
 class GarantiasFiltroTests(TestCase):
@@ -814,6 +911,7 @@ class GarantiasCopiarPegarTests(TestCase):
     def test_copia_relaciones_validas_y_excluye_historial_archivos_enlaces(self):
         response = self._paste(self.admin)
         nueva = Garantia.objects.get(pk=response.json()["tarjeta_id"])
+        self.assertIsNone(nueva.referencia_origen)
         self.assertEqual(
             list(nueva.asignados.order_by("pk").values_list("pk", flat=True)),
             list(self.garantia.asignados.order_by("pk").values_list("pk", flat=True)),
@@ -826,16 +924,20 @@ class GarantiasCopiarPegarTests(TestCase):
         self.assertFalse(nueva.archivos.exists())
         self.assertFalse(nueva.enlaces.exists())
 
-    def test_modelo_no_tiene_one_to_one_ni_identificadores_unicos_copiables(self):
+    def test_modelo_no_tiene_one_to_one_copiables_salvo_trazabilidad_referencia(self):
         one_to_one_fields = [
             field.name for field in Garantia._meta.get_fields()
             if getattr(field, "one_to_one", False) and not getattr(field, "auto_created", False)
         ]
         unique_fields = [
             field.name for field in Garantia._meta.fields
-            if getattr(field, "unique", False) and not field.primary_key
+            if (
+                getattr(field, "unique", False)
+                and not field.primary_key
+                and field.name != "referencia_origen"
+            )
         ]
-        self.assertEqual(one_to_one_fields, [])
+        self.assertEqual(one_to_one_fields, ["referencia_origen"])
         self.assertEqual(unique_fields, [])
         self.assertEqual(self._paste(self.admin).status_code, 201)
 
