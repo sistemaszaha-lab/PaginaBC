@@ -12,7 +12,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.http import content_disposition_header
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from solicitudes_app.trash import enviar_a_papelera
@@ -47,6 +47,7 @@ from .forms import (
     CuentaGastosEnlaceForm,
     CuentaGastosEtiquetaForm,
     CuentaGastosOpcionForm,
+    CuentaGastosQuickEditForm,
 )
 from .services import copiar_cuenta_gastos_a_columna
 
@@ -892,6 +893,25 @@ def editor_cuenta_inline(request, pk):
             "html": _render_inline_editor(request, cuenta, field_name),
         }
     )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def editar_cuenta_rapida(request, pk):
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
+    if not _puede_modificar_cuenta(request.user, cuenta):
+        raise PermissionDenied("No tienes permisos para modificar esta cuenta de gastos.")
+    form = CuentaGastosQuickEditForm(request.POST or None, instance=cuenta)
+    if request.method == "GET":
+        return JsonResponse({"ok": True, "id": pk, "html": render_to_string(
+            "cuenta_gastos/_quick_edit_form.html", {"form": form, "cuenta": cuenta}, request=request)})
+    if not form.is_valid():
+        return JsonResponse({"ok": False, "id": pk, "html": render_to_string(
+            "cuenta_gastos/_quick_edit_form.html", {"form": form, "cuenta": cuenta}, request=request)}, status=400)
+    form.save()
+    cuenta = get_object_or_404(_cuenta_queryset(), pk=pk)
+    return JsonResponse({"ok": True, "id": pk, "card_html": _render_card_html(request, cuenta),
+                         "column_count": _column_count(cuenta.estado, _filtro_post_id(request))})
 
 
 @login_required

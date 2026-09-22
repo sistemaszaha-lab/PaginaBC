@@ -1,0 +1,11 @@
+<form method="post" class="cuenta-quick-editor" data-cuenta-quick-editor="1"
+      data-update-url="{% url 'cuenta_gastos:editar_cuenta_rapida' cuenta.id %}">
+  {% csrf_token %}
+  <div class="row g-2">
+    {% for field in form %}<div class="col-md-{{ field.name|yesno:'6,12' }}">{{ field.label_tag }}{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+  </div>
+  <div class="cuenta-quick-editor__actions mt-2">
+    <button type="button" class="btn btn-light btn-sm" data-cuenta-quick-cancel="1">Cancelar</button>
+    <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+  </div>
+</form>

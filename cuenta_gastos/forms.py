@@ -316,6 +316,32 @@ class CuentaGastosEditarForm(forms.ModelForm):
         self.fields["etiquetas"].label_from_instance = lambda obj: obj.nombre
 
 
+class CuentaGastosQuickEditForm(forms.ModelForm):
+    cliente = ClienteChoiceField(
+        queryset=Cliente.objects.all().order_by("nombre", "empresa", "id"),
+        required=False, empty_label="Sin cliente",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+    asignados = FirstNameUserMultipleChoiceField(
+        queryset=get_user_model().objects.all().order_by("first_name", "last_name", "username", "id"),
+        required=False,
+        widget=forms.SelectMultiple(attrs={"class": "form-select form-select-sm garantia-asignados-select"}),
+    )
+
+    class Meta:
+        model = CuentaGastos
+        fields = ["titulo", "cliente", "prioridad", "fecha_vencimiento", "asignados"]
+        widgets = {
+            "titulo": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "prioridad": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control form-control-sm", "type": "date"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["titulo"].required = True
+
+
 class CuentaGastosTituloInlineForm(forms.ModelForm):
     class Meta:
         model = CuentaGastos

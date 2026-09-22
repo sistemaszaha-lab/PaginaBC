@@ -97,6 +97,7 @@ urlpatterns = [
         views.editor_cuenta_inline,
         name="editor_cuenta_inline",
     ),
+    path("<int:pk>/edicion-rapida/", views.editar_cuenta_rapida, name="editar_cuenta_rapida"),
 
     path(
         "<int:pk>/mover/",

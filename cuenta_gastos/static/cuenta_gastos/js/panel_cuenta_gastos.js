@@ -1663,6 +1663,33 @@
         return;
       }
 
+      const quickOpenButton = e.target.closest('[data-cuenta-quick-open="1"]');
+      if (quickOpenButton) {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = quickOpenButton.closest('[data-cuenta-card="1"]');
+        if (!card || card.dataset.quickEditing === '1') return;
+        card.dataset.quickEditing = '1';
+        card.dataset.quickPreviousHtml = card.innerHTML;
+        fetch(card.dataset.cuentaQuickEditUrl, {headers: {'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'}})
+          .then(r => r.json().then(data => { if (!r.ok) throw data; return data; }))
+          .then(data => {
+            const body = card.querySelector('.cuenta-card__body');
+            if (body) { body.innerHTML = data.html; window.initcuentaSelects?.(body); body.querySelector('input, select')?.focus(); }
+          })
+          .catch(() => { card.innerHTML = card.dataset.quickPreviousHtml || card.innerHTML; delete card.dataset.quickPreviousHtml; delete card.dataset.quickEditing; });
+        return;
+      }
+
+      const quickCancelButton = e.target.closest('[data-cuenta-quick-cancel="1"]');
+      if (quickCancelButton) {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = quickCancelButton.closest('[data-cuenta-card="1"]');
+        if (card?.dataset.quickPreviousHtml) { card.innerHTML = card.dataset.quickPreviousHtml; delete card.dataset.quickPreviousHtml; delete card.dataset.quickEditing; }
+        return;
+      }
+
       const copyCardButton = e.target.closest('[data-cuenta-copy-card="1"]');
       if (copyCardButton) {
         e.preventDefault();
@@ -1952,6 +1979,24 @@
     };
 
     document.addEventListener('submit', function (e) {
+      const quickEditor = e.target.closest('[data-cuenta-quick-editor="1"]');
+      if (quickEditor) {
+        e.preventDefault();
+        const card = quickEditor.closest('[data-cuenta-card="1"]');
+        if (!card || card.dataset.quickSubmitting === '1') return;
+        card.dataset.quickSubmitting = '1';
+        fetch(quickEditor.dataset.updateUrl, {method: 'POST', credentials: 'same-origin',
+          headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': window.getCSRFToken(quickEditor)},
+          body: new FormData(quickEditor)}).then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw data;
+            return data;
+          }).then((data) => { if (data.card_html) replaceCardFromHtml(card.dataset.id, data.card_html); })
+          .catch((error) => { if (error.html) { const body = card.querySelector('.cuenta-card__body'); if (body) body.innerHTML = error.html; } })
+          .finally(() => { delete card.dataset.quickSubmitting; });
+        return;
+      }
+
       const inlineEditor = e.target.closest('[data-cuenta-inline-editor="1"]');
       if (inlineEditor) {
         e.preventDefault();
