@@ -2463,6 +2463,47 @@
         return;
       }
 
+      const generatedTagForm = e.target.closest('[data-operacion-generated-tag-edit-form="1"], [data-operacion-generated-tag-delete-form="1"]');
+      if (generatedTagForm) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (generatedTagForm.dataset.submitting === '1') return;
+        const isDelete = generatedTagForm.matches('[data-operacion-generated-tag-delete-form="1"]');
+        if (isDelete && !window.confirm('Enviar esta etiqueta a papelera?')) return;
+        generatedTagForm.dataset.submitting = '1';
+        const modalBody = generatedTagForm.closest('[data-operacion-generated-tags="1"]');
+        postForm(generatedTagForm.getAttribute('action'), new FormData(generatedTagForm), generatedTagForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo actualizar la etiqueta.');
+            return data;
+          })
+          .then((data) => {
+            if (isDelete) {
+              generatedTagForm.previousElementSibling?.remove();
+              generatedTagForm.remove();
+              return;
+            }
+            generatedTagForm.querySelector('[name="nombre"]').value = data.nombre;
+            generatedTagForm.querySelector('[name="color"]').value = data.color;
+            generatedTagForm.classList.remove('is-invalid');
+          })
+          .catch((error) => {
+            console.error('No se pudo actualizar la etiqueta generada:', error);
+            let errorElement = modalBody?.querySelector('[data-operacion-generated-tag-error="1"]');
+            if (!errorElement && modalBody) {
+              errorElement = document.createElement('div');
+              errorElement.dataset.operacionGeneratedTagError = '1';
+              errorElement.className = 'alert alert-danger py-2';
+              errorElement.setAttribute('role', 'alert');
+              modalBody.prepend(errorElement);
+            }
+            if (errorElement) errorElement.textContent = error.message || 'No se pudo actualizar la etiqueta.';
+          })
+          .finally(() => { delete generatedTagForm.dataset.submitting; });
+        return;
+      }
+
       const commentForm = e.target.closest('[data-operacion-comentario-form="1"]');
       if (!commentForm) return;
 
