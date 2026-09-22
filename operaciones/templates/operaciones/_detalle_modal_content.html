@@ -28,11 +28,10 @@
           </div>
           <div class="d-flex gap-1 flex-wrap align-items-center" data-operacion-detail-header-tags="1">
             {% for etiqueta in etiquetas %}
-            <span class="badge" style="background-color: {{ etiqueta.color }}; color: #fff;">{{ etiqueta.nombre
-              }}</span>
+            <span class="badge" style="background-color: {{ etiqueta.color }}; color: #fff;">{{ etiqueta.nombre }}</span>
             {% endfor %}
           </div>
-          <span class="small text-muted">{{ operacion.asignados.count }} asignados</span>
+          {% if asignados_count %}<span class="small text-muted">{{ asignados_count }} asignados</span>{% endif %}
           {% if operacion.fecha_vencimiento %}<span class="small text-muted">ETD: {{ operacion.fecha_vencimiento|date:"d/m/Y" }}</span>{% endif %}
           {% if operacion.eta %}<span class="small text-muted">ETA: {{ operacion.eta|date:"d/m/Y" }}</span>{% endif %}
           {% if not operacion.fecha_vencimiento and not operacion.eta %}<span
@@ -140,12 +139,12 @@
       const isEtiquetas = select.id === 'id_etiquetas' || select.id === 'id_etiqueta';
       new TomSelect(select, {
         plugins: ['remove_button'],
-        create: isEtiquetas,
+        create: false,
         maxOptions: 200,
         persist: false,
         closeAfterSelect: false,
         hidePlaceholder: true,
-        placeholder: isEtiquetas ? 'Buscar o crear etiqueta...' : 'Agregar...',
+        placeholder: isEtiquetas ? 'Buscar etiqueta...' : 'Agregar...',
         searchField: ['text']
       });
     });

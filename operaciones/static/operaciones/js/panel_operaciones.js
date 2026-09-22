@@ -2504,6 +2504,58 @@
         return;
       }
 
+      const generatedTagCreateForm = e.target.closest('[data-operacion-generated-tag-create-form="1"]');
+      if (generatedTagCreateForm) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (generatedTagCreateForm.dataset.submitting === '1') return;
+        const modalBody = generatedTagCreateForm.closest('[data-operacion-generated-tags="1"]');
+        const list = modalBody?.querySelector('[data-operacion-generated-tag-list="1"]');
+        const formData = new FormData(generatedTagCreateForm);
+        generatedTagCreateForm.dataset.submitting = '1';
+        postForm(generatedTagCreateForm.getAttribute('action'), formData, generatedTagCreateForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) throw new Error(data.errors?.nombre?.[0]?.message || data.errors?.color?.[0]?.message || data.error || 'No se pudo crear la etiqueta.');
+            return data;
+          })
+          .then((data) => {
+            const empty = list?.querySelector('[data-operacion-generated-tag-empty="1"]');
+            empty?.remove();
+            if (!list) return;
+            const editForm = document.createElement('form');
+            editForm.method = 'post';
+            editForm.action = `/operaciones/etiqueta/${data.id}/editar/`;
+            editForm.dataset.operacionGeneratedTagEditForm = '1';
+            editForm.className = 'd-flex align-items-center gap-2 mb-2';
+            editForm.innerHTML = `<input type="hidden" name="csrfmiddlewaretoken" value="${window.getCSRFToken(generatedTagCreateForm)}"><input name="nombre" class="form-control form-control-sm"><input name="color" type="color" class="form-control form-control-color"><button class="btn btn-sm btn-outline-primary">Guardar</button>`;
+            editForm.querySelector('[name="nombre"]').value = data.nombre;
+            editForm.querySelector('[name="color"]').value = data.color;
+            const deleteForm = document.createElement('form');
+            deleteForm.method = 'post';
+            deleteForm.action = `/operaciones/etiqueta/${data.id}/eliminar/`;
+            deleteForm.dataset.operacionGeneratedTagDeleteForm = '1';
+            deleteForm.className = 'mb-2';
+            deleteForm.innerHTML = `<input type="hidden" name="csrfmiddlewaretoken" value="${window.getCSRFToken(generatedTagCreateForm)}"><button class="btn btn-sm btn-outline-danger">Enviar a papelera</button>`;
+            list.append(editForm, deleteForm);
+            generatedTagCreateForm.reset();
+            generatedTagCreateForm.querySelector('[name="color"]').value = '#3E9FA2';
+          })
+          .catch((error) => {
+            let errorElement = modalBody?.querySelector('[data-operacion-generated-tag-error="1"]');
+            if (!errorElement && modalBody) {
+              errorElement = document.createElement('div');
+              errorElement.dataset.operacionGeneratedTagError = '1';
+              errorElement.className = 'alert alert-danger py-2';
+              errorElement.setAttribute('role', 'alert');
+              modalBody.prepend(errorElement);
+            }
+            if (errorElement) errorElement.textContent = error.message || 'No se pudo crear la etiqueta.';
+          })
+          .finally(() => { delete generatedTagCreateForm.dataset.submitting; });
+        return;
+      }
+
       const commentForm = e.target.closest('[data-operacion-comentario-form="1"]');
       if (!commentForm) return;
 

@@ -2091,6 +2091,45 @@ class OperacionesEtiquetasAjaxTests(TestCase):
         self.assertFalse(self.operacion.etiquetas.exists())
 
 
+class OperacionesGeneratedTagsTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="generated_tags", password="pass", is_staff=True)
+        self.client.force_login(self.user)
+
+    def test_crear_etiqueta_devuelve_json_y_persiste(self):
+        response = self.client.post(
+            reverse("operaciones:crear_etiqueta"),
+            {"nombre": "Nueva", "color": "#12AB34"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["ok"], True)
+        etiqueta = OperacionEtiqueta.objects.get(nombre="Nueva")
+        self.assertEqual(etiqueta.color, "#12AB34")
+
+    def test_detalle_no_permite_crear_etiquetas_desde_tom_select(self):
+        operacion = Operacion.objects.create(titulo="Operacion detalle", creado_por=self.user)
+        response = self.client.get(reverse("operaciones:detalle_operacion", args=[operacion.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("create: false", response.json()["html"])
+
+    def test_detalle_muestra_solo_nombres_de_etiquetas_activas(self):
+        operacion = Operacion.objects.create(titulo="Operacion con resumen", creado_por=self.user)
+        activa = OperacionEtiqueta.objects.create(nombre="Etiqueta activa", color="#12AB34")
+        eliminada = OperacionEtiqueta.objects.create(nombre="Etiqueta eliminada", color="#AB1234")
+        eliminada.eliminado_en = timezone.now()
+        eliminada.save(update_fields=["eliminado_en"])
+        operacion.etiquetas.add(activa, eliminada)
+
+        response = self.client.get(reverse("operaciones:detalle_operacion", args=[operacion.id]))
+        html = response.json()["html"]
+
+        self.assertIn("Etiqueta activa", html)
+        self.assertNotIn("{{ etiqueta.nombre }}", html)
+        self.assertNotIn("Etiqueta eliminada", html)
+
+
 @override_settings(
     STORAGES={
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},

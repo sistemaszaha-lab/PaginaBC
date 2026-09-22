@@ -45,7 +45,12 @@
 
 <div class="modal fade" id="OperacionEtiquetasModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Etiquetas generadas</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-    <div class="modal-body" data-operacion-generated-tags="1">{% for etiqueta in etiquetas_generadas %}<form method="post" action="{% url 'operaciones:editar_etiqueta' etiqueta.id %}" data-operacion-generated-tag-edit-form="1" class="d-flex align-items-center gap-2 mb-2">{% csrf_token %}<input name="nombre" value="{{ etiqueta.nombre }}" class="form-control form-control-sm"><input name="color" type="color" value="{{ etiqueta.color }}" class="form-control form-control-color"><button class="btn btn-sm btn-outline-primary">Guardar</button></form><form method="post" action="{% url 'operaciones:eliminar_etiqueta' etiqueta.id %}" data-operacion-generated-tag-delete-form="1" class="mb-2">{% csrf_token %}<button class="btn btn-sm btn-outline-danger">Enviar a papelera</button></form>{% empty %}<p class="text-muted">No hay etiquetas activas.</p>{% endfor %}</div>
+    <div class="modal-body" data-operacion-generated-tags="1">
+      <form method="post" action="{% url 'operaciones:crear_etiqueta' %}" data-operacion-generated-tag-create-form="1" class="d-flex align-items-center gap-2 mb-3">
+        {% csrf_token %}<input name="nombre" class="form-control form-control-sm" placeholder="Nueva etiqueta" maxlength="100" required><input name="color" type="color" value="#3E9FA2" class="form-control form-control-color" required><button class="btn btn-sm btn-primary">Crear etiqueta</button>
+      </form>
+      <div data-operacion-generated-tag-list="1">{% for etiqueta in etiquetas_generadas %}<form method="post" action="{% url 'operaciones:editar_etiqueta' etiqueta.id %}" data-operacion-generated-tag-edit-form="1" class="d-flex align-items-center gap-2 mb-2">{% csrf_token %}<input name="nombre" value="{{ etiqueta.nombre }}" class="form-control form-control-sm"><input name="color" type="color" value="{{ etiqueta.color }}" class="form-control form-control-color"><button class="btn btn-sm btn-outline-primary">Guardar</button></form><form method="post" action="{% url 'operaciones:eliminar_etiqueta' etiqueta.id %}" data-operacion-generated-tag-delete-form="1" class="mb-2">{% csrf_token %}<button class="btn btn-sm btn-outline-danger">Enviar a papelera</button></form>{% empty %}<p class="text-muted" data-operacion-generated-tag-empty="1">No hay etiquetas activas.</p>{% endfor %}</div>
+    </div>
   </div></div>
 </div>
 
