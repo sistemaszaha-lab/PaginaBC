@@ -3,7 +3,7 @@
 {% block title %}Panel de Operaciones{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{% static 'operaciones/css/panel_operaciones.css' %}?v=20260810-1">
+<link rel="stylesheet" href="{% static 'operaciones/css/panel_operaciones.css' %}?v=20260922-2">
 <link rel="stylesheet" href="{% static 'css/zaha_detail_modal.css' %}?v=20260814-1">
 {% include "garantias/_asignados_tags_assets.html" %}
 <div class="operaciones-page-header">
@@ -54,7 +54,7 @@
   </div></div>
 </div>
 
-{% include "operaciones/_tablero.html" with columnas=columnas estados=estados only %}
+{% include "operaciones/_tablero.html" with columnas=columnas estados=estados csrf_token=csrf_token only %}
 
 <div data-operacion-inline-host="1">
   <div class="px-3 pt-3 d-none" data-operacion-inline-container="1" data-estado="">
@@ -107,6 +107,9 @@
               maxlength="120"
               required>
           </div>
+          <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="visible_para_todos" value="1" checked data-column-visibility-all="1"><label class="form-check-label">Todos los usuarios</label></div>
+          <label class="form-label">Usuarios específicos</label>
+          <div data-column-visibility-users="1">{% for usuario in usuarios_filtro %}<label class="form-check"><input class="form-check-input" type="checkbox" name="usuarios_visibles" value="{{ usuario.id }}"><span class="form-check-label">{{ usuario.nombre }}</span></label>{% endfor %}</div>
           <div class="small text-danger d-none" data-operacion-column-create-error="1"></div>
         </div>
         <div class="modal-footer">
@@ -138,6 +141,9 @@
               maxlength="120"
               required>
           </div>
+          <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="visible_para_todos" value="1" checked data-column-visibility-all="1"><label class="form-check-label">Todos los usuarios</label></div>
+          <label class="form-label">Usuarios específicos</label>
+          <div data-column-visibility-users="1">{% for usuario in usuarios_filtro %}<label class="form-check"><input class="form-check-input" type="checkbox" name="usuarios_visibles" value="{{ usuario.id }}"><span class="form-check-label">{{ usuario.nombre }}</span></label>{% endfor %}</div>
           <div class="small text-danger d-none" data-operacion-column-edit-error="1"></div>
         </div>
         <div class="modal-footer">

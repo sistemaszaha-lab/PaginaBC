@@ -654,6 +654,7 @@ def crear_garantia(request):
 @admin_required
 @require_POST
 def enviar_referencia_a_garantias(request, pk):
+    return JsonResponse({"ok": False, "error": "Las nuevas garantías deben originarse desde Operaciones."}, status=410)
     referencia = get_object_or_404(
         Referencia.objects.filter(eliminado_en__isnull=True),
         pk=pk,
@@ -683,10 +684,35 @@ def enviar_referencia_a_garantias(request, pk):
                 garantia.asignados.set([referencia.ejecutivo_id])
     except IntegrityError:
         messages.info(request, "Esta referencia ya fue enviada a Garantias.")
-        return redirect("garantias:panel_garantias")
+        return redirect("operaciones:panel_operaciones")
 
     messages.success(request, "La referencia se envio correctamente a Garantias en En proceso.")
     return redirect("garantias:panel_garantias")
+
+@login_required
+@admin_required
+@require_POST
+def enviar_operacion_a_garantias(request, pk):
+    from operaciones.models import Operacion
+    from operaciones.views import _puede_modificar_operacion
+    operacion = get_object_or_404(Operacion.objects.select_related("cliente"), pk=pk, eliminado_en__isnull=True)
+    if not _puede_modificar_operacion(request.user, operacion):
+        return JsonResponse({"ok": False, "error": "No tienes permisos para enviar esta operación."}, status=403)
+    if operacion.estado != Operacion.Estado.EXPEDIENTE_CG:
+        return JsonResponse({"ok": False, "error": "Solo se pueden enviar operaciones en Expediente CG."}, status=400)
+    columna = _buscar_columna_activa_por_codigo(Garantia.Estado.SOLICITUD_NAVIERA)
+    if columna is None:
+        return JsonResponse({"ok": False, "error": "No existe la columna Solicitud naviera."}, status=400)
+    with transaction.atomic():
+        garantia = Garantia.objects.select_for_update().filter(operacion_origen=operacion, eliminado_en__isnull=True).first()
+        creada = garantia is None
+        if creada:
+            garantia = Garantia.objects.create(titulo=operacion.titulo, descripcion=operacion.descripcion, cliente=operacion.cliente, estado=Garantia.Estado.SOLICITUD_NAVIERA, columna=columna, prioridad=operacion.prioridad, creado_por=request.user, operacion_origen=operacion)
+            garantia.asignados.set(operacion.asignados.all())
+    if not _es_ajax(request):
+        messages.success(request, "La operación se envió a Garantías correctamente.")
+        return redirect("operaciones:panel_operaciones")
+    return JsonResponse({"ok": True, "garantia_id": garantia.pk, "creada": creada})
 
 
 @login_required

@@ -423,6 +423,12 @@ class OperacionEtiquetaCreateForm(forms.Form):
         widget=forms.TextInput(attrs={"class": "form-control form-control-color", "type": "color"}),
     )
 
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("visible_para_todos") and not cleaned.get("usuarios_visibles"):
+            raise forms.ValidationError("Selecciona al menos un usuario o marca Todos los usuarios.")
+        return cleaned
+
     def clean_nombre(self):
         return self.cleaned_data["nombre"].strip()
     def clean_color(self):
@@ -486,11 +492,13 @@ class OperacionElementoAccionUpdateForm(OperacionElementoAccionCreateForm):
 
 
 class OperacionColumnaCreateForm(forms.ModelForm):
+    usuarios_visibles = forms.ModelMultipleChoiceField(queryset=get_user_model().objects.filter(is_active=True), required=False, widget=forms.CheckboxSelectMultiple)
     class Meta:
         model = OperacionColumna
-        fields = ["nombre"]
+        fields = ["nombre", "visible_para_todos", "usuarios_visibles"]
         widgets = {
             "nombre": forms.TextInput(attrs={"class": "form-control"}),
+            "visible_para_todos": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
 
     def clean_nombre(self):

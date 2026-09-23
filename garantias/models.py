@@ -96,6 +96,7 @@ class Garantia(models.Model):
         related_name="garantia_generada",
         editable=False,
     )
+    operacion_origen = models.OneToOneField("operaciones.Operacion", null=True, blank=True, on_delete=models.SET_NULL, related_name="garantia_generada", editable=False)
     eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
     eliminado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,

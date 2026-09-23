@@ -72,65 +72,78 @@ class ReferenciaAGarantiaTests(TestCase):
             medio_operacion="maritima",
             agencia_aduanal="Agencia Test",
         )
+        from operaciones.models import Operacion, OperacionColumna
+        OperacionColumna.objects.update_or_create(codigo=Operacion.Estado.EXPEDIENTE_CG, defaults={"nombre": "Expediente CG", "orden": 1, "activa": True})
+        self.operacion = Operacion.objects.create(titulo="Operacion CG", cliente=self.cliente, estado=Operacion.Estado.EXPEDIENTE_CG, creado_por=self.usuario)
+        self.operacion.asignados.add(self.usuario)
+        self.operacion_url = reverse("garantias:enviar_operacion_a_garantias", args=[self.operacion.pk])
         self.url = reverse(
             "garantias:enviar_referencia_a_garantias",
             args=[self.referencia.pk],
         )
         self.client.force_login(self.usuario)
 
-    def test_boton_enviar_a_garantias_aparece_en_referencias_con_csrf(self):
+    def test_referencia_ya_no_muestra_accion_de_garantias(self):
         response = self.client.get(reverse("lista_referencias"))
-        self.assertContains(response, "Enviar a Garantias")
-        self.assertContains(response, self.url)
-        self.assertContains(response, "csrfmiddlewaretoken")
+        self.assertNotContains(response, "enviar-a-garantias")
 
     def test_crea_garantia_en_en_proceso_vinculada_y_con_datos(self):
-        response = self.client.post(self.url)
-        self.assertRedirects(response, reverse("garantias:panel_garantias"))
-        garantia = Garantia.objects.get(referencia_origen=self.referencia)
+        response = self.client.post(self.operacion_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(response.status_code, 200)
+        garantia = Garantia.objects.get(operacion_origen=self.operacion)
         self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
         self.assertIsNotNone(garantia.columna)
         self.assertEqual(garantia.columna.nombre, "En proceso")
-        self.assertEqual(garantia.titulo, "Referencia BC261101")
-        self.assertIn("Referencia: BC261101", garantia.descripcion)
-        self.assertIn("Agencia aduanal: Agencia Test", garantia.descripcion)
+        self.assertEqual(garantia.titulo, self.operacion.titulo)
+        self.assertEqual(garantia.descripcion, self.operacion.descripcion)
         self.assertEqual(garantia.cliente, self.cliente)
         self.assertEqual(garantia.creado_por, self.usuario)
         self.assertIn(self.usuario, list(garantia.asignados.all()))
 
     def test_envio_a_garantias_no_duplica(self):
-        self.client.post(self.url)
-        self.client.post(self.url)
-        self.assertEqual(
-            Garantia.objects.filter(referencia_origen=self.referencia).count(),
-            1,
-        )
+        self.client.post(self.operacion_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        second = self.client.post(self.operacion_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertFalse(second.json()["creada"])
+        self.assertEqual(Garantia.objects.filter(operacion_origen=self.operacion).count(), 1)
 
     def test_rama_garantias_es_independiente_de_operaciones(self):
-        from operaciones.models import Operacion, OperacionColumna
-
-        OperacionColumna.objects.update_or_create(
-            codigo=Operacion.Estado.COORDINAR_PICKUP,
-            defaults={"nombre": "Pick up", "orden": 1, "activa": True},
-        )
-        Operacion.objects.create(
-            titulo="Operacion existente",
-            estado=Operacion.Estado.COORDINAR_PICKUP,
-            creado_por=self.usuario,
-            referencia_origen=self.referencia,
-        )
-        response = self.client.post(self.url)
-        self.assertRedirects(response, reverse("garantias:panel_garantias"))
-        self.assertEqual(
-            Garantia.objects.filter(referencia_origen=self.referencia).count(),
-            1,
-        )
+        from operaciones.models import Operacion
+        self.operacion.estado = Operacion.Estado.COORDINAR_PICKUP
+        self.operacion.save(update_fields=["estado"])
+        response = self.client.post(self.operacion_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Garantia.objects.filter(operacion_origen=self.operacion).count(), 0)
 
     def test_conversion_requiere_autenticacion(self):
         self.client.logout()
-        response = self.client.post(self.url)
+        response = self.client.post(self.operacion_url)
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Garantia.objects.filter(referencia_origen=self.referencia).count(), 0)
+        self.assertEqual(Garantia.objects.filter(operacion_origen=self.operacion).count(), 0)
+
+    def test_envio_operacion_requiere_csrf_y_acepta_token(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.usuario)
+        sin_token = csrf_client.post(self.operacion_url)
+        self.assertEqual(sin_token.status_code, 403)
+        pagina = csrf_client.get(reverse("operaciones:panel_operaciones"))
+        token = get_token(pagina.wsgi_request)
+        correcto = csrf_client.post(self.operacion_url, HTTP_X_CSRFTOKEN=token, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(correcto.status_code, 200)
+
+    def test_tablero_real_renderiza_formulario_csrf_y_envio_normal_redirige(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.usuario)
+        tablero = csrf_client.get(reverse("operaciones:panel_operaciones"))
+        self.assertEqual(tablero.status_code, 200)
+        html = tablero.content.decode()
+        action = f'/garantias/operaciones/{self.operacion.pk}/enviar-a-garantias/'
+        self.assertIn(action, html)
+        fragmento = html[html.index(action) - 100:html.index(action) + 500]
+        self.assertIn('name="csrfmiddlewaretoken"', fragmento)
+        token = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', fragmento).group(1)
+        respuesta = csrf_client.post(self.operacion_url, {"csrfmiddlewaretoken": token})
+        self.assertRedirects(respuesta, reverse("operaciones:panel_operaciones"))
+        self.assertTrue(Garantia.objects.filter(operacion_origen=self.operacion).exists())
 
     def test_garantia_manual_sin_referencia_origen_es_valida(self):
         garantia = Garantia.objects.create(
@@ -924,7 +937,7 @@ class GarantiasCopiarPegarTests(TestCase):
         self.assertFalse(nueva.archivos.exists())
         self.assertFalse(nueva.enlaces.exists())
 
-    def test_modelo_no_tiene_one_to_one_copiables_salvo_trazabilidad_referencia(self):
+    def test_modelo_conserva_trazabilidad_historica_y_unicidad_por_origen(self):
         one_to_one_fields = [
             field.name for field in Garantia._meta.get_fields()
             if getattr(field, "one_to_one", False) and not getattr(field, "auto_created", False)
@@ -937,8 +950,12 @@ class GarantiasCopiarPegarTests(TestCase):
                 and field.name != "referencia_origen"
             )
         ]
-        self.assertEqual(one_to_one_fields, ["referencia_origen"])
-        self.assertEqual(unique_fields, [])
+        self.assertEqual(one_to_one_fields, ["referencia_origen", "operacion_origen"])
+        self.assertEqual(unique_fields, ["operacion_origen"])
+        referencia_historica = Referencia.objects.create(referencia="HIST-001", consecutivo=999, cliente="Historico")
+        historica = Garantia.objects.create(titulo="Historica", creado_por=self.admin, referencia_origen=referencia_historica)
+        self.assertEqual(historica.referencia_origen_id, referencia_historica.pk)
+        self.assertIsNone(historica.operacion_origen_id)
         self.assertEqual(self._paste(self.admin).status_code, 201)
 
     def test_no_puede_pegar_en_columna_inexistente_o_inactiva(self):

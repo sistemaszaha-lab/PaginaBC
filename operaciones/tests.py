@@ -225,7 +225,7 @@ class OperacionesPanelFiltroUsuariosTests(TestCase):
             titulo="Op 1",
             creado_por=self.user,
         )
-        self.operacion.asignados.add(self.asignado, self.otro_asignado)
+        self.operacion.asignados.add(self.user, self.asignado, self.otro_asignado)
 
         self.client = Client()
         self.client.force_login(self.user)
@@ -253,7 +253,7 @@ class OperacionesPanelFiltroUsuariosTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(
             resp,
-            f'data-assigned-user-ids="{self.asignado.id},{self.otro_asignado.id}"',
+            f'data-assigned-user-ids="{self.user.id},{self.asignado.id},{self.otro_asignado.id}"',
         )
 
     def test_panel_no_renderiza_cliente_ni_descripcion_en_tarjetas(self):
@@ -645,14 +645,14 @@ class OperacionesMovimientoTests(TestCase):
         self.operacion.refresh_from_db()
         self.assertEqual(self.operacion.estado, Operacion.Estado.EN_ADUANA)
 
-    def test_ejecutivo_no_asignado_puede_mover(self):
+    def test_ejecutivo_no_asignado_no_puede_mover(self):
         self.client.force_login(self.other_user)
 
         response = self.client.post(self.move_url, {"estado": Operacion.Estado.SEGUROS})
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 403)
         self.operacion.refresh_from_db()
-        self.assertEqual(self.operacion.estado, Operacion.Estado.SEGUROS)
+        self.assertEqual(self.operacion.estado, Operacion.Estado.PENDIENTE)
 
     def test_mover_requiere_autenticacion(self):
         response = self.client.post(self.move_url, {"estado": Operacion.Estado.SEGUROS})

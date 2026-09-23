@@ -31,24 +31,28 @@
       </div>
     </div>
 
-    <div class="operaciones-card__tags" data-operacion-card-tags="1">
+    <div class="operacion-card-labels" data-operacion-card-tags="1">
       {% for etiqueta in operacion.etiquetas.all %}
         <span class="operaciones-tag" style="--operacion-tag-bg: {{ etiqueta.color }};">{{ etiqueta.nombre }}</span>
       {% endfor %}
     </div>
 
-    <div class="operaciones-card__meta">
+    <div class="operacion-card-state">
       <span class="operaciones-chip operaciones-chip--state" data-operacion-state-badge="1">{{ operacion.get_estado_display }}</span>
+    </div>
+    <div class="operacion-card-dates">
       {% if operacion.fecha_vencimiento %}<span>ETD: {{ operacion.fecha_vencimiento|date:"d M Y" }}</span>{% endif %}
       {% if operacion.eta %}<span>ETA: {{ operacion.eta|date:"d M Y" }}</span>{% endif %}
       {% if operacion.carga_lista %}<span>Carga: {{ operacion.carga_lista|date:"d M Y" }}</span>{% endif %}
       {% if not operacion.fecha_vencimiento and not operacion.eta and not operacion.carga_lista %}<span>Sin fechas</span>{% endif %}
+    </div>
+    <div class="operacion-card-meta">
       <span data-operacion-card-files-count="1">Archivos: {{ operacion.archivos_count|default:0 }}</span>
       <span data-operacion-card-links-count="1">Enlaces: {{ operacion.enlaces_count|default:0 }}</span>
       <span data-operacion-card-comments-count="1">Comentarios: {{ operacion.comentarios_count|default:0 }}</span>
     </div>
 
-    <div class="operaciones-card__footer">
+    <div class="operacion-card-actions">
       <div class="operaciones-card__assignees">
         {% for usuario in operacion.asignados.all %}
           <span class="operaciones-avatar" title="{{ usuario.first_name }}">{{ usuario.first_name|slice:":2"|upper }}</span>
@@ -56,7 +60,7 @@
           <span class="operaciones-card__assignees-empty">Sin asignados</span>
         {% endfor %}
       </div>
-      <div class="d-flex gap-2">
+      <div class="operacion-card-actions__buttons">
         <button
           type="button"
           class="btn btn-sm btn-outline-danger"
@@ -85,7 +89,7 @@
       </div>
     </div>
 
-    <div class="operaciones-card__state-control">
+    <div class="operacion-card-move operaciones-card__state-control">
       <label class="operaciones-card__state-label" for="operacion-estado-{{ operacion.id }}">Mover a</label>
       <select
         id="operacion-estado-{{ operacion.id }}"
@@ -98,5 +102,12 @@
         {% endfor %}
       </select>
     </div>
+    {% if operacion.estado == "EXPEDIENTE_CG" and not operacion.garantia_generada %}
+      <div class="operacion-card-guarantee">
+      <form method="post" action="{% url 'garantias:enviar_operacion_a_garantias' operacion.id %}">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-primary w-100" type="submit">Enviar a garantías</button>
+      </form>
+      </div>
+    {% endif %}
   </div>
 </div>

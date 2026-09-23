@@ -10,7 +10,9 @@
   {% endif %}
   data-estado="{{ columna.estado }}"
   data-total="{{ columna.count }}"
-  data-loaded="{{ columna.loaded }}">
+  data-loaded="{{ columna.loaded }}"
+  data-visible-para-todos="{{ columna.visible_para_todos|yesno:'1,0' }}"
+  data-usuarios-visibles="{% for usuario_id in columna.usuarios_visibles_ids %}{% if not forloop.first %},{% endif %}{{ usuario_id }}{% endfor %}">
   <header class="operaciones-column__header">
     <div class="d-flex align-items-start justify-content-between gap-3">
       <h3 class="operaciones-column__title mb-0" data-operacion-column-title="1">{{ columna.titulo|default:columna.estado_texto }}</h3>
@@ -89,7 +91,7 @@
     data-columna-nombre="{{ columna.nombre|default:columna.titulo }}"
     data-estado="{{ columna.estado }}">
     {% for operacion in columna.items %}
-      {% include "operaciones/_operacion_card.html" with operacion=operacion estados=estados only %}
+      {% include "operaciones/_operacion_card.html" with operacion=operacion estados=estados csrf_token=csrf_token only %}
     {% empty %}
       <div class="operaciones-column__empty text-muted panel-operacion-empty">Sin operaciones.</div>
     {% endfor %}

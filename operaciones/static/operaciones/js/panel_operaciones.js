@@ -739,6 +739,16 @@
       if (inlineButton) inlineButton.dataset.estadoLabel = name;
     }
 
+    function syncColumnVisibilityForm(form, allValue, userIds = []) {
+      const all = form?.querySelector('[data-column-visibility-all="1"]');
+      if (!all) return;
+      all.checked = allValue !== false;
+      form.querySelectorAll('input[name="usuarios_visibles"]').forEach((input) => {
+        input.checked = userIds.map(String).includes(input.value);
+        input.disabled = all.checked;
+      });
+    }
+
     function buildInlineOpenButtonMarkup(shell) {
       const columnId = getColumnId(shell);
       const state = getColumnState(shell);
@@ -1760,6 +1770,7 @@
         if (!activeColumnShell || !columnEditForm) return;
         columnEditForm.querySelector('input[name="columna_id"]').value = getColumnId(activeColumnShell);
         columnEditForm.querySelector('input[name="nombre"]').value = getColumnName(activeColumnShell);
+        syncColumnVisibilityForm(columnEditForm, activeColumnShell.dataset.visibleParaTodos === '1', (activeColumnShell.dataset.usuariosVisibles || '').split(',').filter(Boolean));
         showColumnFormError(columnEditForm, '');
         columnEditModalInstance?.show();
         return;
@@ -1929,6 +1940,11 @@
         e.preventDefault();
         form.requestSubmit();
       }
+    });
+
+    document.addEventListener('change', (e) => {
+      const all = e.target.closest('[data-column-visibility-all="1"]');
+      if (all) syncColumnVisibilityForm(all.form, all.checked);
     });
 
     document.addEventListener('submit', (e) => {
@@ -2192,6 +2208,7 @@
         e.preventDefault();
         if (!columnCreateForm) return;
         columnCreateForm.reset();
+        syncColumnVisibilityForm(columnCreateForm, true);
         showColumnFormError(columnCreateForm, '');
         columnCreateModalInstance?.show();
         return;

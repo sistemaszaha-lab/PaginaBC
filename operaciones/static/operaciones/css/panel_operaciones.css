@@ -52,10 +52,14 @@
 .operaciones-chip--baja { background: #d1fae5; color: #047857; }
 .operaciones-chip--state { background: #d9efec; color: #176a67; }
 .operaciones-card__description { display: -webkit-box; overflow: hidden; margin-top: 0.75rem; color: var(--operaciones-text-muted); font-size: 0.86rem; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.operaciones-card__tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.8rem; }
+.operacion-card-labels { display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 0.35rem; width: 100%; margin-top: 0.8rem; }
 .operaciones-tag { padding: 0.25rem 0.55rem; background: var(--operacion-tag-bg, #3e9fa2); color: #fff; }
-.operaciones-card__meta { display: flex; flex-wrap: wrap; gap: 0.45rem 0.75rem; margin-top: 0.85rem; color: var(--operaciones-text-muted); font-size: 0.78rem; }
-.operaciones-card__footer { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.9rem; padding-top: 0.85rem; border-top: 1px solid rgba(22, 129, 125, 0.12); }
+.operacion-card-state, .operacion-card-dates, .operacion-card-meta, .operacion-card-move, .operacion-card-guarantee { width: 100%; }
+.operacion-card-state { display: flex; align-items: center; margin-top: 0.8rem; }
+.operacion-card-dates { display: grid; grid-template-columns: 1fr; gap: 0.25rem; margin-top: 0.7rem; color: var(--operaciones-text-muted); font-size: 0.78rem; }
+.operacion-card-meta { display: flex; flex-wrap: wrap; gap: 0.45rem 0.75rem; margin-top: 0.75rem; color: var(--operaciones-text-muted); font-size: 0.78rem; }
+.operacion-card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; margin-top: 0.9rem; padding-top: 0.85rem; border-top: 1px solid rgba(22, 129, 125, 0.12); }
+.operacion-card-actions__buttons { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; min-width: 0; }
 .operaciones-card__assignees { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; min-width: 0; }
 .operaciones-avatar { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: 999px; background: linear-gradient(135deg, #016b6b, #3e9fa2); color: #fff; font-size: 0.67rem; font-weight: 800; }
 .operaciones-card__detail-btn { border: 1px solid #acd1cc; border-radius: 999px; background: #f2fbfa; color: #176a67; font-weight: 700; }
@@ -69,6 +73,8 @@
 .operaciones-quick-edit-form__header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem; color: var(--operaciones-text-main); }
 .operaciones-quick-edit-form[data-pending="1"] { opacity: 0.7; pointer-events: none; }
 .operaciones-card__state-control { display: grid; gap: 0.35rem; margin-top: 0.9rem; }
+.operacion-card-guarantee { margin-top: 0.7rem; }
+.operacion-card-guarantee form { width: 100%; }
 .operaciones-card__state-label { color: var(--operaciones-text-muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .operaciones-card__state-select { border-color: #b7d8d4; border-radius: 12px; background-color: #f7fcfb; color: var(--operaciones-text-main); font-size: 0.86rem; }
 .operaciones-drawer { position: fixed; inset: 0; z-index: 1080; pointer-events: none; }

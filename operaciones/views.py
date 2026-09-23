@@ -10,6 +10,7 @@ from django.db.models import Count, F, Prefetch, Q, Window
 from django.db import IntegrityError, transaction
 from django.db.models.functions import RowNumber
 from django.http import JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -83,6 +84,12 @@ SPECIAL_COLUMN_DATE_ORDERING = {
 def _columnas_activas_queryset():
     return OperacionColumna.objects.filter(activa=True).order_by("orden", "id")
 
+def _es_admin_operaciones(user):
+    return bool(user and user.is_authenticated and (user.is_superuser or user.is_staff or user.groups.filter(name__iexact="admin").exists()))
+
+def _puede_ver_columna(user, columna):
+    return _es_admin_operaciones(user) or columna.visible_para_todos or columna.usuarios_visibles.filter(pk=user.pk).exists()
+
 
 def _columnas_activas():
     return list(_columnas_activas_queryset())
@@ -155,6 +162,8 @@ def _column_context(*, columna: OperacionColumna, items, count: int, loaded: int
         "has_more": False,
         "remaining": 0,
         "load_url": "",
+        "visible_para_todos": columna.visible_para_todos,
+        "usuarios_visibles_ids": list(columna.usuarios_visibles.values_list("id", flat=True)),
     }
 
 
@@ -223,11 +232,13 @@ def _board_queryset(usuario=None):
     )
     if usuario is not None:
         queryset = queryset.filter(asignados__id=usuario.id).distinct()
+        permitidas = [c.codigo for c in _columnas_activas() if _puede_ver_columna(usuario, c)]
+        queryset = queryset.filter(estado__in=permitidas)
     return queryset.order_by(*OPERACION_ORDERING)
 
 
 def _columnas_kanban(usuario=None):
-    columnas = _columnas_activas()
+    columnas = [c for c in _columnas_activas() if usuario is None or _puede_ver_columna(usuario, c)]
     operaciones = list(
         _board_queryset(usuario)
         .annotate(
@@ -392,6 +403,7 @@ def _render_elementos_accion_section(
         "operaciones/_elementos_accion_section.html",
         {
             "operacion": operacion,
+            "csrf_token": get_token(request),
             "elementos_accion": elementos,
             "elementos_accion_resumen": resumen,
             "elemento_accion_form": create_form or OperacionElementoAccionCreateForm(),
@@ -625,6 +637,7 @@ def _render_card_html(request, operacion):
         "operaciones/_operacion_card.html",
         {
             "operacion": operacion,
+            "csrf_token": get_token(request),
             "comentario_form": OperacionComentarioForm(),
             "estados": _columnas_estado_choices(),
         },
@@ -692,6 +705,7 @@ def panel_operaciones(request):
         "etiquetas_generadas": OperacionEtiqueta.objects.filter(eliminado_en__isnull=True).order_by("nombre", "id"),
         "current": "panel_operaciones",
         "today": timezone.localdate(),
+        "csrf_token": get_token(request),
         "panel_config": {
             "inlineCreateUrl": reverse("operaciones:crear_operacion_inline"),
             "inlineFormUrl": reverse("operaciones:formulario_operacion_inline"),
@@ -716,6 +730,7 @@ def tablero_partial(request):
             "columnas": _columnas_kanban(usuario),
             "estados": _columnas_estado_choices(),
             "today": timezone.localdate(),
+            "csrf_token": get_token(request),
         },
     )
 
@@ -1711,6 +1726,8 @@ def tarjeta_pegar(request, columna_id):
         return JsonResponse({"ok": False, "error": "Tarjeta invalida."}, status=400)
 
     columna_destino = get_object_or_404(OperacionColumna, pk=columna_id, activa=True)
+    if not _puede_ver_columna(request.user, columna_destino):
+        return JsonResponse({"ok": False, "error": "No tienes acceso a la columna destino."}, status=403)
     operacion_original = get_object_or_404(_operacion_queryset(), pk=int(raw_tarjeta_id))
 
     if not _puede_modificar_operacion(request.user, operacion_original):
@@ -1798,6 +1815,8 @@ def mover_operacion(request, operacion_id):
     columna_obj = _buscar_columna_activa_por_codigo(estado)
     if not columna_obj:
         return JsonResponse({"ok": False, "status": "error", "error": "Estado invalido."}, status=400)
+    if not _puede_ver_columna(request.user, columna_obj):
+        return JsonResponse({"ok": False, "status": "error", "error": "No tienes acceso a la columna destino."}, status=403)
 
     posicion = 0
     if posicion_str and posicion_str.isdigit():

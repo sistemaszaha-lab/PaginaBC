@@ -17,6 +17,8 @@ class OperacionColumna(models.Model):
     codigo = models.CharField(max_length=60, unique=True)
     orden = models.PositiveIntegerField(default=0)
     activa = models.BooleanField(default=True)
+    visible_para_todos = models.BooleanField(default=True)
+    usuarios_visibles = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name="columnas_operaciones_visibles")
     creada_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

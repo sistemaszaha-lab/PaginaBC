@@ -3,7 +3,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import Q
+from django.db.models import Q, Count, F, OuterRef, Subquery, IntegerField, Window
+from django.db.models.functions import RowNumber
 from django.db.models.deletion import PROTECT, ProtectedError
 from django.db.utils import OperationalError, ProgrammingError
 from django.http import JsonResponse
@@ -13,6 +14,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from .forms import ClienteForm, MENSAJE_CLIENTE_DUPLICADO
 from .models import Cliente, es_integrity_error_duplicado_cliente
+from solicitudes.models import Referencia
 
 
 RELACIONES_PROTEGIDAS_CLIENTE = {
@@ -150,13 +152,23 @@ def cliente_lista(request):
                 | Q(correo__icontains=query)
                 | Q(cuentas_por_cobrar__icontains=query)
             )
-        clientes = clientes.order_by("nombre", "pk")
+        referencias_por_cliente = Referencia.objects.filter(
+            eliminado_en__isnull=True, cliente=OuterRef("nombre")
+        ).values("cliente").annotate(total=Count("pk")).values("total")[:1]
+        clientes = clientes.annotate(
+            referencias_count=Subquery(referencias_por_cliente, output_field=IntegerField())
+        ).annotate(
+            ranking=Window(
+                expression=RowNumber(),
+                order_by=[F("referencias_count").desc(nulls_last=True), "nombre", "pk"],
+            )
+        ).order_by("nombre", "pk")
         paginator = Paginator(clientes, CLIENTES_POR_PAGINA)
         page_obj = paginator.get_page(request.GET.get("page"))
         clientes_pagina = list(page_obj.object_list)
         inicio = page_obj.start_index() if clientes_pagina else 0
         for posicion, cliente in enumerate(clientes_pagina, start=inicio):
-            cliente.numero_cliente = f"CL-{posicion:03d}"
+            cliente.numero_cliente = f"CL-{getattr(cliente, 'ranking', posicion):03d}"
     except (OperationalError, ProgrammingError):
         messages.error(
             request,
