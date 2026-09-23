@@ -48,3 +48,24 @@ class InicioDashboardUtilidadesTests(TestCase):
         self.assertEqual(response.content.decode().count("Top 5"), 2)
         self.assertEqual(response.content.decode().count("Top 10"), 2)
         self.assertEqual(response.content.decode().count("Top 20"), 2)
+
+    def test_utilidad_suma_nombre_y_representacion_compuesta(self):
+        cliente = Cliente.objects.create(nombre="CLIENTE UNO", empresa="EMPRESA UNO")
+        for indice, valor in enumerate((100, 50)):
+            referencia = Referencia.objects.create(
+                referencia=f"UTIL-{indice}", consecutivo=indice, cliente=cliente.nombre if indice == 0 else str(cliente)
+            )
+            MovimientoReferencia.objects.create(
+                referencia=referencia, tipo=MovimientoReferencia.INGRESO, monto=valor, registrado_por=self.usuario
+            )
+        referencia = Referencia.objects.create(referencia="UTIL-PARCIAL", consecutivo=9, cliente="AMERICAN")
+        MovimientoReferencia.objects.create(
+            referencia=referencia, tipo=MovimientoReferencia.INGRESO, monto=1000, registrado_por=self.usuario
+        )
+
+        response = self.client.get(reverse("inicio"))
+        datos = dict(zip(
+            json.loads(response.context["clientes_utilidades_labels"]),
+            json.loads(response.context["clientes_utilidades_data"]),
+        ))
+        self.assertEqual(datos[cliente.nombre], "150")

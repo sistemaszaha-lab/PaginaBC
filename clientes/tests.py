@@ -592,6 +592,28 @@ class ClientePaginationTests(TestCase):
         actualizado = self.client.get(reverse("cliente_lista"))
         self.assertEqual(self._clientes_renderizados(actualizado)[0].numero_cliente, "CL-001")
 
+    def test_ranking_cuenta_nombre_y_representacion_compuesta_sin_parciales(self):
+        cliente = Cliente.objects.create(nombre="CLIENTE UNO", empresa="EMPRESA UNO")
+        for indice in range(2):
+            Referencia.objects.create(referencia=f"UNO-{indice}", consecutivo=indice, cliente=cliente.nombre)
+        for indice in range(3):
+            Referencia.objects.create(referencia=f"UNO-C-{indice}", consecutivo=10 + indice, cliente=str(cliente))
+        Referencia.objects.create(referencia="UNO-DEL", consecutivo=99, cliente=str(cliente), eliminado_en=date(2026, 1, 1))
+        Referencia.objects.create(referencia="UNO-PARCIAL", consecutivo=100, cliente="AMERICAN")
+
+        response = self.client.get(reverse("cliente_lista"))
+        renderizado = next(c for c in self._clientes_renderizados(response) if c.pk == cliente.pk)
+        self.assertEqual(renderizado.referencias_count, 5)
+        self.assertEqual(renderizado.numero_cliente, "CL-001")
+
+    def test_empresa_vacia_no_reconoce_nombre_parentesis(self):
+        cliente = Cliente.objects.create(nombre="ALDO", empresa="")
+        Referencia.objects.create(referencia="ALDO-PARCIAL", consecutivo=1, cliente="ALDO ()")
+        response = self.client.get(reverse("cliente_lista"))
+        renderizado = next(c for c in self._clientes_renderizados(response) if c.pk == cliente.pk)
+        self.assertEqual(renderizado.referencias_count, 0)
+        self.assertEqual(renderizado.numero_cliente, "")
+
     def test_numero_es_primera_columna_y_sigue_orden_alfabetico(self):
         Cliente.objects.bulk_create(
             [

@@ -14,7 +14,7 @@ from django.core.paginator import Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value, Case, When, Sum
-from django.db.models.functions import Cast, Coalesce, Length, Substr
+from django.db.models.functions import Cast, Coalesce, Concat, Length, Substr
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -674,18 +674,36 @@ def inicio(request):
 
     labels = [c['cliente'] for c in top_clientes]
     data = [c['total'] for c in top_clientes]
-    utilidad_clientes = Referencia.objects.filter(
+    utilidad_cliente_base = Referencia.objects.filter(
         eliminado_en__isnull=True, cliente=OuterRef("nombre")
     ).values("cliente").annotate(total=Sum(Case(
         When(movimientos__tipo=MovimientoReferencia.INGRESO, then=F("movimientos__monto")),
         When(movimientos__tipo=MovimientoReferencia.GASTO, then=-F("movimientos__monto")),
         output_field=DecimalField(max_digits=14, decimal_places=2),
     ))).values("total")[:1]
+    utilidad_cliente_compuesta = Referencia.objects.filter(
+        eliminado_en__isnull=True,
+        cliente=Concat(OuterRef("nombre"), Value(" ("), OuterRef("empresa"), Value(")")),
+    ).values("cliente").annotate(total=Sum(Case(
+        When(movimientos__tipo=MovimientoReferencia.INGRESO, then=F("movimientos__monto")),
+        When(movimientos__tipo=MovimientoReferencia.GASTO, then=-F("movimientos__monto")),
+        output_field=DecimalField(max_digits=14, decimal_places=2),
+    ))).values("total")[:1]
     top_clientes_utilidades = (
-        Cliente.objects.annotate(utilidad_calculada=Coalesce(
-            Subquery(utilidad_clientes, output_field=DecimalField(max_digits=14, decimal_places=2)),
-            Value(Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2)),
-        ))
+        Cliente.objects.annotate(
+            utilidad_calculada=Coalesce(
+                Subquery(utilidad_cliente_base, output_field=DecimalField(max_digits=14, decimal_places=2)),
+                Value(Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2)),
+            )
+            + Case(
+                When(empresa__gt="", then=Coalesce(
+                    Subquery(utilidad_cliente_compuesta, output_field=DecimalField(max_digits=14, decimal_places=2)),
+                    Value(Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2)),
+                )),
+                default=Value(Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2)),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            )
+        )
         .order_by("-utilidad_calculada", "nombre", "pk")
         .values("nombre", "utilidad_calculada")[:20]
     )
