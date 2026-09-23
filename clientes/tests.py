@@ -14,7 +14,7 @@ from django.urls import resolve, reverse
 from clientes.forms import ClienteForm, MENSAJE_CLIENTE_DUPLICADO
 from clientes.models import Cliente
 from operaciones.models import Operacion
-from solicitudes.models import Cotizacion
+from solicitudes.models import Cotizacion, MovimientoReferencia, Referencia
 
 
 class ClienteFormTests(TestCase):
@@ -25,7 +25,7 @@ class ClienteFormTests(TestCase):
             gastos=400,
         )
 
-        self.assertEqual(cliente.utilidad, Decimal("600.00"))
+        self.assertEqual(cliente.utilidad, Decimal("0.00"))
 
     def test_utilidad_permite_resultado_negativo(self):
         cliente = Cliente.objects.create(
@@ -34,6 +34,10 @@ class ClienteFormTests(TestCase):
             gastos=1000,
         )
 
+        usuario = User.objects.create_user(username="movimientos", password="pass")
+        referencia = Referencia.objects.create(referencia="REF-NEGATIVA", consecutivo=1, cliente=cliente.nombre)
+        MovimientoReferencia.objects.create(referencia=referencia, tipo=MovimientoReferencia.INGRESO, monto=Decimal("400"), registrado_por=usuario)
+        MovimientoReferencia.objects.create(referencia=referencia, tipo=MovimientoReferencia.GASTO, monto=Decimal("1000"), registrado_por=usuario)
         self.assertEqual(cliente.utilidad, Decimal("-600.00"))
 
     def test_utilidad_default_es_cero_para_cliente_historico(self):
@@ -138,9 +142,9 @@ class ClienteFormTests(TestCase):
 
         self.assertTrue(form.is_valid(), form.errors)
         cliente = form.save()
-        self.assertEqual(cliente.ingresos, Decimal("1000.50"))
-        self.assertEqual(cliente.gastos, Decimal("400.25"))
-        self.assertEqual(cliente.utilidad, Decimal("600.25"))
+        self.assertEqual(cliente.ingresos, Decimal("0.00"))
+        self.assertEqual(cliente.gastos, Decimal("0.00"))
+        self.assertEqual(cliente.utilidad, Decimal("0.00"))
 
     def test_utilidad_no_es_editable_directamente(self):
         form = ClienteForm()
@@ -557,6 +561,37 @@ class ClientePaginationTests(TestCase):
             4,
         )
 
+    def test_ranking_cl_solo_incluye_referencias_activas_y_desempata_por_nombre(self):
+        for nombre, cantidad in (("ALFA", 5), ("BETA", 0), ("CHARLIE", 2), ("DELTA", 1)):
+            Cliente.objects.create(nombre=nombre)
+            for indice in range(cantidad):
+                Referencia.objects.create(referencia=f"{nombre}-{indice}", consecutivo=indice + 1, cliente=nombre)
+        response = self.client.get(reverse("cliente_lista"))
+        por_nombre = {c.nombre: c.numero_cliente for c in self._clientes_renderizados(response)}
+        self.assertEqual(por_nombre, {"ALFA": "CL-001", "BETA": "", "CHARLIE": "CL-002", "DELTA": "CL-003"})
+
+    def test_empate_alfabetico_y_referencia_eliminada_no_dan_cl(self):
+        alfa = Cliente.objects.create(nombre="ALFA")
+        beta = Cliente.objects.create(nombre="BETA")
+        sin_referencia_activa = Cliente.objects.create(nombre="GAMMA")
+        for cliente in (alfa, beta):
+            for indice in range(2):
+                Referencia.objects.create(referencia=f"{cliente.nombre}-{indice}", consecutivo=indice + 1, cliente=cliente.nombre)
+        Referencia.objects.create(referencia="GAMMA-1", consecutivo=1, cliente=sin_referencia_activa.nombre, eliminado_en=date(2026, 8, 1))
+        response = self.client.get(reverse("cliente_lista"))
+        por_nombre = {c.nombre: c.numero_cliente for c in self._clientes_renderizados(response)}
+        self.assertEqual(por_nombre["ALFA"], "CL-001")
+        self.assertEqual(por_nombre["BETA"], "CL-002")
+        self.assertEqual(por_nombre["GAMMA"], "")
+
+    def test_cliente_recibe_cl_al_crear_su_primera_referencia_activa(self):
+        cliente = Cliente.objects.create(nombre="NUEVO")
+        inicial = self.client.get(reverse("cliente_lista"))
+        self.assertEqual(self._clientes_renderizados(inicial)[0].numero_cliente, "")
+        Referencia.objects.create(referencia="NUEVO-1", consecutivo=1, cliente=cliente.nombre)
+        actualizado = self.client.get(reverse("cliente_lista"))
+        self.assertEqual(self._clientes_renderizados(actualizado)[0].numero_cliente, "CL-001")
+
     def test_numero_es_primera_columna_y_sigue_orden_alfabetico(self):
         Cliente.objects.bulk_create(
             [
@@ -571,12 +606,8 @@ class ClientePaginationTests(TestCase):
 
         self.assertContains(response, "<th>Número</th>", html=True)
         self.assertLess(html.index("<th>Número</th>"), html.index("<th>Cliente</th>"))
-        self.assertContains(response, "CL-001")
-        self.assertContains(response, "CL-002")
-        self.assertContains(response, "CL-003")
-        self.assertLess(html.index("CL-001"), html.index("ALFA"))
         self.assertLess(html.index("ALFA"), html.index("COMERCIALIZADORA"))
-        self.assertEqual(self._clientes_renderizados(response)[0].numero_cliente, "CL-001")
+        self.assertEqual([c.numero_cliente for c in self._clientes_renderizados(response)], ["", "", ""])
 
     def test_numero_se_recorre_si_entra_cliente_antes_alfabeticamente(self):
         alfa = Cliente.objects.create(nombre="ALFA")
@@ -586,7 +617,7 @@ class ClientePaginationTests(TestCase):
         inicial = self.client.get(reverse("cliente_lista"))
         self.assertEqual(self._clientes_renderizados(inicial)[0].pk, alfa.pk)
         self.assertEqual(self._clientes_renderizados(inicial)[1].pk, comercializadora.pk)
-        self.assertEqual(self._clientes_renderizados(inicial)[0].numero_cliente, "CL-001")
+        self.assertEqual(self._clientes_renderizados(inicial)[0].numero_cliente, "")
 
         aduanas = Cliente.objects.create(nombre="ADUANAS")
         actualizado = self.client.get(reverse("cliente_lista"))
@@ -595,9 +626,7 @@ class ClientePaginationTests(TestCase):
         self.assertEqual(resultados[0].pk, aduanas.pk)
         self.assertEqual(resultados[1].pk, alfa.pk)
         self.assertEqual(resultados[2].pk, comercializadora.pk)
-        self.assertEqual(resultados[0].numero_cliente, "CL-001")
-        self.assertEqual(resultados[1].numero_cliente, "CL-002")
-        self.assertEqual(resultados[2].numero_cliente, "CL-003")
+        self.assertEqual([r.numero_cliente for r in resultados[:3]], ["", "", ""])
 
     def test_numero_se_recalcula_al_renombrar_cliente(self):
         alfa = Cliente.objects.create(nombre="ALFA")
@@ -610,8 +639,8 @@ class ClientePaginationTests(TestCase):
 
         self.assertEqual(resultados[0].pk, beta.pk)
         self.assertEqual(resultados[1].pk, alfa.pk)
-        self.assertEqual(resultados[0].numero_cliente, "CL-001")
-        self.assertEqual(resultados[1].numero_cliente, "CL-002")
+        self.assertEqual(resultados[0].numero_cliente, "")
+        self.assertEqual(resultados[1].numero_cliente, "")
 
     def test_busqueda_se_aplica_antes_de_paginar_y_conserva_q(self):
         self._crear_clientes(30, prefijo="COINCIDE")
@@ -684,11 +713,10 @@ class ClientePaginationTests(TestCase):
         pagina_cuatro = self.client.get(reverse("cliente_lista"), {"page": 4})
         pagina_cuarenta = self.client.get(reverse("cliente_lista"), {"page": 40})
 
-        self.assertEqual(self._clientes_renderizados(primera)[0].numero_cliente, "CL-001")
-        self.assertEqual(self._clientes_renderizados(primera)[9].numero_cliente, "CL-010")
-        self.assertEqual(self._clientes_renderizados(pagina_dos)[0].numero_cliente, "CL-026")
-        self.assertEqual(self._clientes_renderizados(pagina_cuatro)[24].numero_cliente, "CL-100")
-        self.assertEqual(self._clientes_renderizados(pagina_cuarenta)[24].numero_cliente, "CL-1000")
+        self.assertTrue(all(not c.numero_cliente for c in self._clientes_renderizados(primera)))
+        self.assertTrue(all(not c.numero_cliente for c in self._clientes_renderizados(pagina_dos)))
+        self.assertTrue(all(not c.numero_cliente for c in self._clientes_renderizados(pagina_cuatro)))
+        self.assertTrue(all(not c.numero_cliente for c in self._clientes_renderizados(pagina_cuarenta)))
 
     def test_consultas_del_get_son_constantes_entre_25_y_250(self):
         self._crear_clientes(25)
@@ -701,7 +729,7 @@ class ClientePaginationTests(TestCase):
         self.assertEqual(response_25.status_code, 200)
         self.assertEqual(response_250.status_code, 200)
         self.assertEqual(len(consultas_25), len(consultas_250))
-        self.assertEqual(len(consultas_250), 4)
+        self.assertEqual(len(consultas_250), len(consultas_25))
 
     def test_get_no_modifica_clientes(self):
         self._crear_clientes(51)
@@ -758,23 +786,18 @@ class ClientePaginationTests(TestCase):
                 "contacto": "Ana",
                 "correo": "ana@example.com",
                 "cuentas_por_cobrar": "Saldo inicial",
-                "ingresos": "1000.00",
-                "gastos": "250.00",
                 "estado": Cliente.ESTADO_ACTIVO,
                 "next": retorno,
             },
         )
         cliente = Cliente.objects.get(nombre="CLIENTE CREADO")
         self.assertEqual(cliente.cuentas_por_cobrar, "Saldo inicial")
-        self.assertEqual(cliente.utilidad, Decimal("750.00"))
         editar = self.client.post(
             reverse("cliente_editar", args=[cliente.pk]),
             {
                 "nombre": "Cliente editado",
                 "empresa": "Empresa",
                 "cuentas_por_cobrar": "Saldo actualizado",
-                "ingresos": "500.00",
-                "gastos": "800.00",
                 "estado": Cliente.ESTADO_ACTIVO,
                 "next": retorno,
             },
@@ -785,14 +808,30 @@ class ClientePaginationTests(TestCase):
         cliente.refresh_from_db()
         self.assertEqual(cliente.nombre, "CLIENTE EDITADO")
         self.assertEqual(cliente.cuentas_por_cobrar, "Saldo actualizado")
-        self.assertEqual(cliente.utilidad, Decimal("-300.00"))
 
     def test_listado_muestra_utilidades_entre_celular_y_status(self):
-        Cliente.objects.create(
+        cliente = Cliente.objects.create(
             nombre="CLIENTE UTILIDADES",
             celular="5551234",
-            ingresos=100000,
-            gastos=60000,
+            ingresos=999999,
+            gastos=1,
+        )
+        referencia = Referencia.objects.create(
+            referencia="REF-UTILIDADES",
+            consecutivo=1,
+            cliente=cliente.nombre,
+        )
+        MovimientoReferencia.objects.create(
+            referencia=referencia,
+            tipo=MovimientoReferencia.INGRESO,
+            monto=Decimal("25000.00"),
+            registrado_por=self.user,
+        )
+        MovimientoReferencia.objects.create(
+            referencia=referencia,
+            tipo=MovimientoReferencia.GASTO,
+            monto=Decimal("5000.00"),
+            registrado_por=self.user,
         )
 
         response = self.client.get(reverse("cliente_lista"))
@@ -803,9 +842,7 @@ class ClientePaginationTests(TestCase):
         contenido = response.content.decode()
         self.assertLess(contenido.index("<th>Celular</th>"), contenido.index("<th>Utilidades</th>"))
         self.assertLess(contenido.index("<th>Utilidades</th>"), contenido.index("<th>Status</th>"))
-        self.assertContains(response, "Ingresos: $100000.00")
-        self.assertContains(response, "Gastos: $60000.00")
-        self.assertContains(response, "Utilidad: $40000.00")
+        self.assertContains(response, "Utilidad: $20000.00")
 
     def test_listado_muestra_cuentas_por_cobrar_entre_correo_y_telefono(self):
         Cliente.objects.create(

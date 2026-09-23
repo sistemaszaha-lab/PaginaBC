@@ -36,7 +36,7 @@
     <div class="p-3 p-md-4">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
             <h5 class="mb-0 fw-bold">Clientes con más utilidades</h5>
-            <span class="text-muted small">Top 5</span>
+            <select id="clientesUtilidadesTopSelect" class="form-select form-select-sm w-auto" aria-label="Cantidad de clientes por utilidad"><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option></select>
         </div>
 
         <div style="position: relative; height: 300px;">
@@ -49,7 +49,7 @@
     <div class="p-3 p-md-4">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
             <h5 class="mb-0 fw-bold">Top clientes con más operaciones</h5>
-            <span class="text-muted small">Top 5</span>
+            <select id="clientesOperacionesTopSelect" class="form-select form-select-sm w-auto" aria-label="Cantidad de clientes por operaciones"><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option></select>
         </div>
 
         <div style="position: relative; height: 300px;">
@@ -59,10 +59,10 @@
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
         <script>
             document.addEventListener("DOMContentLoaded", () => {
-                const labels = {{ clientes_labels|safe }};
-                const values = {{ clientes_data|safe }};
+                const allLabels = {{ clientes_labels|safe }};
+                const allValues = {{ clientes_data|safe }};
 
-            if (!labels || !labels.length) {
+            if (!allLabels || !allLabels.length) {
                 const canvasContainer = document.getElementById('clientesChart').parentNode;
                 canvasContainer.innerHTML = '<div class="text-muted mt-3">No hay datos disponibles</div>';
                 return;
@@ -81,14 +81,14 @@
             const primary = "rgba(62, 159, 162, 0.75)";
             const primaryBorder = "rgba(62, 159, 162, 1)";
 
-            new Chart(chartEl, {
+            const chart = new Chart(chartEl, {
                 type: "bar",
                 data: {
-                    labels: labels,
+                    labels: allLabels.slice(0, 5),
                     datasets: [
                         {
                             label: "Operaciones",
-                            data: values,
+                            data: allValues.slice(0, 5),
                             backgroundColor: primary,
                             borderColor: primaryBorder,
                             borderWidth: 1,
@@ -122,6 +122,12 @@
                     },
                 },
             });
+            document.getElementById('clientesOperacionesTopSelect').addEventListener('change', (event) => {
+                const limit = Number(event.target.value);
+                chart.data.labels = allLabels.slice(0, limit);
+                chart.data.datasets[0].data = allValues.slice(0, limit);
+                chart.update();
+            });
             });
         </script>
     </div>
@@ -129,12 +135,12 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", () => {
-        const labels = {{ clientes_utilidades_labels|safe }};
-        const values = {{ clientes_utilidades_data|safe }};
+        const allLabels = {{ clientes_utilidades_labels|safe }};
+        const allValues = {{ clientes_utilidades_data|safe }};
         const chartEl = document.getElementById("clientesUtilidadesChart");
         if (!chartEl) return;
 
-        if (!labels || !labels.length) {
+        if (!allLabels || !allLabels.length) {
             chartEl.parentNode.innerHTML = '<div class="text-muted mt-3">No hay datos disponibles</div>';
             return;
         }
@@ -150,14 +156,14 @@
             currency: "MXN",
         });
 
-        new Chart(chartEl, {
+        const chart = new Chart(chartEl, {
             type: "bar",
             data: {
-                labels: labels,
+                labels: allLabels.slice(0, 5),
                 datasets: [
                     {
                         label: "Utilidad",
-                        data: values,
+                        data: allValues.slice(0, 5),
                         backgroundColor: "rgba(25, 135, 84, 0.75)",
                         borderColor: "rgba(25, 135, 84, 1)",
                         borderWidth: 1,
@@ -192,6 +198,12 @@
                     },
                 },
             },
+        });
+        document.getElementById('clientesUtilidadesTopSelect').addEventListener('change', (event) => {
+            const limit = Number(event.target.value);
+            chart.data.labels = allLabels.slice(0, limit);
+            chart.data.datasets[0].data = allValues.slice(0, limit);
+            chart.update();
         });
     });
 </script>

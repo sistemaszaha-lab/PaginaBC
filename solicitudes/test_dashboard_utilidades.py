@@ -29,6 +29,22 @@ class InicioDashboardUtilidadesTests(TestCase):
         data = json.loads(response.context["clientes_utilidades_data"])
         self.assertEqual(
             labels,
-            ["CLIENTE B", "CLIENTE C", "CLIENTE A", "CLIENTE D", "CLIENTE E"],
+            ["CLIENTE B", "CLIENTE C", "CLIENTE A", "CLIENTE D", "CLIENTE E", "CLIENTE F"],
         )
-        self.assertEqual(data, ["4000", "2000", "200", "50", "40"])
+        self.assertEqual(data, ["4000", "2000", "200", "50", "40", "30"])
+
+    def test_dashboard_entrega_hasta_20_y_selectores_independientes(self):
+        for indice in range(21):
+            nombre = f"CLIENTE {indice:02d}"
+            Cliente.objects.create(nombre=nombre)
+            referencia = Referencia.objects.create(referencia=f"REF-{indice}", consecutivo=100 + indice, cliente=nombre)
+            MovimientoReferencia.objects.create(referencia=referencia, tipo=MovimientoReferencia.INGRESO, monto=indice + 1, registrado_por=self.usuario)
+
+        response = self.client.get(reverse("inicio"))
+        self.assertEqual(len(json.loads(response.context["clientes_utilidades_labels"])), 20)
+        self.assertEqual(len(json.loads(response.context["clientes_labels"])), 20)
+        self.assertContains(response, 'id="clientesUtilidadesTopSelect"')
+        self.assertContains(response, 'id="clientesOperacionesTopSelect"')
+        self.assertEqual(response.content.decode().count("Top 5"), 2)
+        self.assertEqual(response.content.decode().count("Top 10"), 2)
+        self.assertEqual(response.content.decode().count("Top 20"), 2)

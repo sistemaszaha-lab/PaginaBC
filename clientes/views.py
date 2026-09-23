@@ -167,18 +167,17 @@ def cliente_lista(request):
             referencias_count=Subquery(referencias_por_cliente, output_field=IntegerField())
         ).annotate(
             utilidad_calculada=Coalesce(Subquery(utilidad_referencias, output_field=DecimalField(max_digits=14, decimal_places=2)), Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)))
-        ).annotate(
-            ranking=Window(
-                expression=RowNumber(),
-                order_by=[F("referencias_count").desc(nulls_last=True), "nombre", "pk"],
-            )
         ).order_by("nombre", "pk")
+        rankings = dict(clientes.filter(referencias_count__gt=0).annotate(
+            ranking=Window(expression=RowNumber(), order_by=[F("referencias_count").desc(), "nombre", "pk"])
+        ).values_list("pk", "ranking"))
         paginator = Paginator(clientes, CLIENTES_POR_PAGINA)
         page_obj = paginator.get_page(request.GET.get("page"))
         clientes_pagina = list(page_obj.object_list)
         inicio = page_obj.start_index() if clientes_pagina else 0
         for posicion, cliente in enumerate(clientes_pagina, start=inicio):
-            cliente.numero_cliente = f"CL-{getattr(cliente, 'ranking', posicion):03d}"
+            ranking = rankings.get(cliente.pk)
+            cliente.numero_cliente = f"CL-{ranking:03d}" if ranking else ""
     except (OperationalError, ProgrammingError):
         messages.error(
             request,

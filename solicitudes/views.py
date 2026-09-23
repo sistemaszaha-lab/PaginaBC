@@ -669,7 +669,7 @@ def inicio(request):
         .exclude(cliente__exact='')
         .values('cliente')
         .annotate(total=Count('id'))
-        .order_by('-total')[:5]
+        .order_by('-total', 'cliente')[:20]
     )
 
     labels = [c['cliente'] for c in top_clientes]
@@ -687,7 +687,7 @@ def inicio(request):
             Value(Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2)),
         ))
         .order_by("-utilidad_calculada", "nombre", "pk")
-        .values("nombre", "utilidad_calculada")[:5]
+        .values("nombre", "utilidad_calculada")[:20]
     )
     utilidades_labels = [cliente["nombre"] for cliente in top_clientes_utilidades]
     utilidades_data = [cliente["utilidad_calculada"] or Decimal("0.00") for cliente in top_clientes_utilidades]
