@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from clientes.models import Cliente
+from solicitudes.models import Referencia, MovimientoReferencia
 
 
 class InicioDashboardUtilidadesTests(TestCase):
@@ -13,12 +14,13 @@ class InicioDashboardUtilidadesTests(TestCase):
         self.client.force_login(self.usuario)
 
     def test_clientes_con_mas_utilidades_ordenados_por_utilidad_desc_y_top_5(self):
-        Cliente.objects.create(nombre="CLIENTE A", ingresos=1000, gastos=800)
-        Cliente.objects.create(nombre="CLIENTE B", ingresos=5000, gastos=1000)
-        Cliente.objects.create(nombre="CLIENTE C", ingresos=3000, gastos=1000)
-        Cliente.objects.create(nombre="CLIENTE D", ingresos=100, gastos=50)
-        Cliente.objects.create(nombre="CLIENTE E", ingresos=90, gastos=50)
-        Cliente.objects.create(nombre="CLIENTE F", ingresos=80, gastos=50)
+        clientes = ["CLIENTE A", "CLIENTE B", "CLIENTE C", "CLIENTE D", "CLIENTE E", "CLIENTE F"]
+        utilidades = [(1000, 800), (5000, 1000), (3000, 1000), (100, 50), (90, 50), (80, 50)]
+        for nombre, (ingreso, gasto) in zip(clientes, utilidades):
+            Cliente.objects.create(nombre=nombre)
+            referencia = Referencia.objects.create(referencia=f"REF-{nombre[-1]}", consecutivo=len(nombre), cliente=nombre)
+            MovimientoReferencia.objects.create(referencia=referencia, tipo=MovimientoReferencia.INGRESO, monto=ingreso, registrado_por=self.usuario)
+            MovimientoReferencia.objects.create(referencia=referencia, tipo=MovimientoReferencia.GASTO, monto=gasto, registrado_por=self.usuario)
 
         response = self.client.get(reverse("inicio"))
 

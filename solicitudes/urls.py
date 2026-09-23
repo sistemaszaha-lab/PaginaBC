@@ -33,5 +33,6 @@ urlpatterns = [
     path("referencias/editar/<int:pk>/", views.editar_referencia, name="editar_referencia"),
     path("referencias/eliminar/<int:pk>/", views.eliminar_referencia, name="eliminar_referencia"),
     path("referencias/cambiar-ejecutivo/<int:pk>/", views.cambiar_ejecutivo_referencia, name="cambiar_ejecutivo_referencia"),
+    path("referencias/<int:pk>/movimientos/", views.agregar_movimientos_referencia, name="agregar_movimientos_referencia"),
 ]
 

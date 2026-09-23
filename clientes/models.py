@@ -93,7 +93,17 @@ class Cliente(models.Model):
 
     @property
     def utilidad(self):
-        return (self.ingresos or 0) - (self.gastos or 0)
+        from solicitudes.models import MovimientoReferencia
+        from django.db.models import Sum, Case, When, F, DecimalField
+        total = MovimientoReferencia.objects.filter(
+            referencia__cliente=self.nombre,
+            referencia__eliminado_en__isnull=True,
+        ).aggregate(total=Sum(Case(
+            When(tipo=MovimientoReferencia.INGRESO, then=F("monto")),
+            When(tipo=MovimientoReferencia.GASTO, then=-F("monto")),
+            output_field=DecimalField(max_digits=14, decimal_places=2),
+        )))['total']
+        return total or 0
 
     def __str__(self):
         return f"{self.nombre} ({self.empresa})" if self.empresa else self.nombre

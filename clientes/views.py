@@ -3,7 +3,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import Q, Count, F, OuterRef, Subquery, IntegerField, Window
+from django.db.models import Q, Count, F, OuterRef, Subquery, IntegerField, Window, DecimalField, Sum, Case, When, Value
+from django.db.models.functions import Coalesce
 from django.db.models.functions import RowNumber
 from django.db.models.deletion import PROTECT, ProtectedError
 from django.db.utils import OperationalError, ProgrammingError
@@ -155,8 +156,17 @@ def cliente_lista(request):
         referencias_por_cliente = Referencia.objects.filter(
             eliminado_en__isnull=True, cliente=OuterRef("nombre")
         ).values("cliente").annotate(total=Count("pk")).values("total")[:1]
+        utilidad_referencias = Referencia.objects.filter(
+            eliminado_en__isnull=True, cliente=OuterRef("nombre")
+        ).values("cliente").annotate(total=Sum(Case(
+            When(movimientos__tipo="INGRESO", then=F("movimientos__monto")),
+            When(movimientos__tipo="GASTO", then=-F("movimientos__monto")),
+            output_field=DecimalField(max_digits=14, decimal_places=2),
+        ))).values("total")[:1]
         clientes = clientes.annotate(
             referencias_count=Subquery(referencias_por_cliente, output_field=IntegerField())
+        ).annotate(
+            utilidad_calculada=Coalesce(Subquery(utilidad_referencias, output_field=DecimalField(max_digits=14, decimal_places=2)), Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)))
         ).annotate(
             ranking=Window(
                 expression=RowNumber(),

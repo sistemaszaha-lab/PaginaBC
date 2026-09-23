@@ -29,6 +29,9 @@
     <td>{{ r.agencia_aduanal }}</td>
     <td>{{ r.fecha }}</td>
     <td>
+        <button type="button" class="btn btn-sm btn-outline-primary js-movimientos-referencia" data-movimientos-url="{% url 'agregar_movimientos_referencia' r.id %}" data-referencia="{{ r.referencia }}">+ Agregar</button>
+    </td>
+    <td>
         {% if r.operacion_generada %}
             <a href="{% url 'operaciones:panel_operaciones' %}" class="btn btn-sm btn-outline-success">Enviada a Operaciones</a>
         {% else %}
@@ -43,7 +46,7 @@
                 aria-label="Enviar a la papelera"
                 data-trash-send="1"
                 data-trash-module="referencia"
-                data-trash-empty-colspan="7"
+                data-trash-empty-colspan="8"
                 data-trash-empty-message="No hay referencias registradas."
                 data-trash-endpoint="{% url 'eliminar_referencia' r.id %}?next={{ request.get_full_path|urlencode }}"
             >
@@ -64,6 +67,6 @@
 </tr>
 {% empty %}
 <tr>
-    <td colspan="7" class="text-center">No hay referencias registradas.</td>
+    <td colspan="8" class="text-center">No hay referencias registradas.</td>
 </tr>
 {% endfor %}

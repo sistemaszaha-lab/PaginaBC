@@ -9,11 +9,11 @@ from unicodedata import normalize
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value, Case, When, Sum
 from django.db.models.functions import Cast, Coalesce, Length, Substr
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -37,7 +37,7 @@ from .forms import (
     ReferenciaForm,
     SolicitudForm,
 )
-from .models import Cotizacion, Referencia, Solicitud
+from .models import Cotizacion, Referencia, Solicitud, MovimientoReferencia
 from .services import (
     aplicar_estados_vigentes_cotizaciones,
     obtener_datos_panel_desde_solicitud,
@@ -674,20 +674,18 @@ def inicio(request):
 
     labels = [c['cliente'] for c in top_clientes]
     data = [c['total'] for c in top_clientes]
+    utilidad_clientes = Referencia.objects.filter(
+        eliminado_en__isnull=True, cliente=OuterRef("nombre")
+    ).values("cliente").annotate(total=Sum(Case(
+        When(movimientos__tipo=MovimientoReferencia.INGRESO, then=F("movimientos__monto")),
+        When(movimientos__tipo=MovimientoReferencia.GASTO, then=-F("movimientos__monto")),
+        output_field=DecimalField(max_digits=14, decimal_places=2),
+    ))).values("total")[:1]
     top_clientes_utilidades = (
-        Cliente.objects.annotate(
-            utilidad_calculada=ExpressionWrapper(
-                Coalesce(
-                    F("ingresos"),
-                    Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, decimal_places=2)),
-                )
-                - Coalesce(
-                    F("gastos"),
-                    Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, decimal_places=2)),
-                ),
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            )
-        )
+        Cliente.objects.annotate(utilidad_calculada=Coalesce(
+            Subquery(utilidad_clientes, output_field=DecimalField(max_digits=14, decimal_places=2)),
+            Value(Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2)),
+        ))
         .order_by("-utilidad_calculada", "nombre", "pk")
         .values("nombre", "utilidad_calculada")[:5]
     )
@@ -1462,7 +1460,11 @@ def lista_referencias(request):
         "ejecutivo",
         "operacion_generada",
         "garantia_generada",
-    )
+    ).annotate(utilidad_calculada=Sum(Case(
+        When(movimientos__tipo=MovimientoReferencia.INGRESO, then=F("movimientos__monto")),
+        When(movimientos__tipo=MovimientoReferencia.GASTO, then=-F("movimientos__monto")),
+        output_field=DecimalField(max_digits=14, decimal_places=2),
+    )))
     q = request.GET.get("q", "").strip()
     orden = (request.GET.get("orden") or "").strip().lower()
     orden = "asc" if orden == "asc" else "desc"
@@ -1514,6 +1516,39 @@ def lista_referencias(request):
             "puede_crear_referencia": puede_crear(request.user),
         },
     )
+
+
+@login_required
+def agregar_movimientos_referencia(request, pk):
+    referencia = get_object_or_404(_referencias_activas(), pk=pk)
+    if not (request.user.is_superuser or getattr(request.user, "rol", "") == "ejecutivo"):
+        raise PermissionDenied("No tienes permisos para registrar movimientos.")
+    movimientos = referencia.movimientos.select_related("registrado_por").all()
+    def resumen():
+        ingresos = movimientos.filter(tipo=MovimientoReferencia.INGRESO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
+        gastos = movimientos.filter(tipo=MovimientoReferencia.GASTO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
+        return ingresos, gastos, [{"tipo": m.get_tipo_display(), "monto": str(m.monto), "usuario": m.registrado_por.get_full_name() or m.registrado_por.username, "fecha": timezone.localtime(m.creado_en).strftime("%d/%m/%Y %H:%M")} for m in movimientos[:50]]
+    if request.method == "GET":
+        ingresos, gastos, historial = resumen()
+        return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos-gastos), "movimientos": historial})
+    creados = []
+    for campo, tipo in (("ingreso", MovimientoReferencia.INGRESO), ("gasto", MovimientoReferencia.GASTO)):
+        valor = request.POST.get(campo, "").strip()
+        if valor:
+            try:
+                monto = Decimal(valor)
+            except Exception:
+                return JsonResponse({"ok": False, "error": f"{campo.title()} inválido."}, status=400)
+            if monto <= 0:
+                return JsonResponse({"ok": False, "error": "Los montos deben ser mayores que cero."}, status=400)
+            creados.append(MovimientoReferencia(referencia=referencia, tipo=tipo, monto=monto, registrado_por=request.user))
+    if not creados:
+        return JsonResponse({"ok": False, "error": "Captura al menos un ingreso o gasto."}, status=400)
+    with transaction.atomic():
+        MovimientoReferencia.objects.bulk_create(creados)
+    movimientos = referencia.movimientos.select_related("registrado_por").all()
+    ingresos, gastos, historial = resumen()
+    return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos-gastos), "movimientos": historial, "referencia": referencia.referencia})
 
 
 @login_required

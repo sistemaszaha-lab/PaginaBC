@@ -76,6 +76,7 @@ class Solicitud(models.Model):
     def esta_eliminada(self):
         return self.eliminado_en is not None
 
+
     # ===============================
     # ESTADO ACTIVO
     # ===============================
@@ -318,6 +319,35 @@ class Referencia(models.Model):
     @property
     def esta_eliminada(self):
         return self.eliminado_en is not None
+
+    @property
+    def utilidad(self):
+        from django.db.models import Sum, Case, When, F, DecimalField
+        total = self.movimientos.aggregate(total=Sum(Case(
+            When(tipo=MovimientoReferencia.INGRESO, then=F("monto")),
+            When(tipo=MovimientoReferencia.GASTO, then=-F("monto")),
+            output_field=DecimalField(max_digits=14, decimal_places=2),
+        )))['total']
+        return total or 0
+
+
+class MovimientoReferencia(models.Model):
+    INGRESO = "INGRESO"
+    GASTO = "GASTO"
+    TIPO_CHOICES = [(INGRESO, "Ingreso"), (GASTO, "Gasto")]
+    referencia = models.ForeignKey(Referencia, on_delete=models.CASCADE, related_name="movimientos")
+    tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
+    monto = models.DecimalField(max_digits=14, decimal_places=2)
+    registrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="movimientos_referencia")
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-creado_en", "-pk"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.monto is None or self.monto <= 0:
+            raise ValidationError({"monto": "El monto debe ser mayor que cero."})
 
 
 class UserProfile(models.Model):

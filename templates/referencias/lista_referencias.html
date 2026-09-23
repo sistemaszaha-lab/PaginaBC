@@ -37,6 +37,19 @@
     {% include "referencias/_referencias_listado.html" %}
 </div>
 
+<style>
+  #movimientosReferenciaModal[hidden] { display:none !important; }
+  #movimientosReferenciaModal { display:flex; align-items:center; justify-content:center; }
+  #movimientosReferenciaModal .movimientos-modal__dialog { background:#fff; border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.28); width:min(650px,100%); max-height:90vh; overflow-y:auto; }
+  #movimientosReferenciaModal .movimientos-modal__header { display:flex; align-items:center; justify-content:space-between; padding:1rem 1.25rem; border-bottom:1px solid #dee2e6; }
+  #movimientosReferenciaModal .movimientos-modal__body { padding:1.25rem; }
+  #movimientosReferenciaModal .movimientos-modal__history { overflow-x:auto; }
+</style>
+<div class="movimientos-modal" id="movimientosReferenciaModal" hidden aria-hidden="true" role="dialog" aria-modal="true" style="background:rgba(0,0,0,.5);position:fixed;inset:0;z-index:1055;padding:1rem">
+  <div class="movimientos-modal__dialog"><div class="movimientos-modal__header"><h5 class="mb-0">Ingresos y gastos — <span id="mov-ref"></span></h5><button type="button" class="btn-close" data-movimientos-close aria-label="Cerrar"></button></div>
+  <div class="movimientos-modal__body"><div id="mov-resumen" class="mb-3">Cargando movimientos...</div><form id="mov-form">{% csrf_token %}<label for="mov-ingreso">Agregar ingreso</label><input id="mov-ingreso" name="ingreso" type="text" inputmode="decimal" value="$0.0" autocomplete="off" class="form-control mb-2"><label for="mov-gasto">Agregar gasto</label><input id="mov-gasto" name="gasto" type="text" inputmode="decimal" value="$0.0" autocomplete="off" class="form-control mb-2"><div id="mov-error" class="text-danger small"></div><button type="submit" class="btn btn-primary">Calcular</button></form><hr><h6>Últimos movimientos</h6><div id="mov-historial" class="small movimientos-modal__history"></div></div></div></div>
+</div>
+
 <script>
     (function () {
         const form = document.getElementById("buscador-referencias");
@@ -76,5 +89,21 @@
         form.addEventListener("input", handleChange);
         form.addEventListener("change", handleChange);
     })();
+    document.addEventListener('click', function (e) {
+        const button = e.target.closest('.js-movimientos-referencia'); if (!button) return;
+        e.preventDefault();
+        const modal = document.getElementById('movimientosReferenciaModal');
+        const form = document.getElementById('mov-form'), resumen = document.getElementById('mov-resumen'), historial = document.getElementById('mov-historial'), error = document.getElementById('mov-error');
+        document.getElementById('mov-ref').textContent = button.dataset.referencia; form.dataset.url = button.dataset.movimientosUrl;
+        const money = v => '$' + Number(v || 0).toLocaleString('es-MX',{minimumFractionDigits:1,maximumFractionDigits:2});
+        const normalizeMoney = value => value.replace(/[$,\s]/g,'');
+        const formatInput = input => { const raw=normalizeMoney(input.value); if (!raw || raw === '0') { input.value='$0.0'; return; } const n=Number(raw); input.value=Number.isFinite(n) ? money(n) : '$0.0'; };
+        form.querySelectorAll('input[name="ingreso"], input[name="gasto"]').forEach(input => { input.addEventListener('focus', () => { if (input.value === '$0.0') input.select(); }); input.addEventListener('blur', () => formatInput(input)); });
+        function render(data) { resumen.innerHTML = `<div><strong>RESUMEN</strong></div><div>Ingresos acumulados: ${money(data.ingresos)}</div><div>Gastos acumulados: ${money(data.gastos)}</div>`; historial.innerHTML = data.movimientos.length ? `<table class="table table-sm"><thead><tr><th>Tipo</th><th>Monto</th><th>Registrado por</th><th>Fecha</th></tr></thead><tbody>${data.movimientos.map(m => `<tr><td>${m.tipo}</td><td>${money(m.monto)}</td><td>${m.usuario}</td><td>${m.fecha}</td></tr>`).join('')}</tbody></table>` : 'No hay movimientos registrados.'; }
+        modal.hidden=false; modal.setAttribute('aria-hidden','false');
+        fetch(form.dataset.url, {headers:{'Accept':'application/json'}}).then(r=>r.ok ? r.json() : Promise.reject()).then(render).catch(()=>{ resumen.textContent='No se pudieron cargar los movimientos.'; });
+        form.onsubmit = function (ev) { ev.preventDefault(); error.textContent=''; const submit=form.querySelector('button[type="submit"]'); submit.disabled=true; const csrf=form.querySelector('input[name="csrfmiddlewaretoken"]'); const ingreso=form.elements.ingreso, gasto=form.elements.gasto; const rawIngreso=normalizeMoney(ingreso.value), rawGasto=normalizeMoney(gasto.value); const payload=new FormData(form); payload.set('ingreso', rawIngreso === '0' ? '' : rawIngreso); payload.set('gasto', rawGasto === '0' ? '' : rawGasto); fetch(form.dataset.url,{method:'POST',body:payload,headers:{'X-CSRFToken':csrf ? csrf.value : ''}}).then(r=>r.json()).then(data=>{if(!data.ok){error.textContent=data.error;return;} render(data); ingreso.value='$0.0'; gasto.value='$0.0';}).catch(()=>error.textContent='No se pudo guardar el movimiento.').finally(()=>submit.disabled=false); };
+        document.querySelector('[data-movimientos-close]').onclick = () => { modal.hidden=true; modal.setAttribute('aria-hidden','true'); };
+    });
 </script>
 {% endblock %}

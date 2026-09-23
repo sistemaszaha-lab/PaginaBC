@@ -31,8 +31,6 @@
                 <td>{{ cliente.telefono|default:"-" }}</td>
                 <td>{{ cliente.celular|default:"-" }}</td>
                 <td class="small">
-                    <div>Ingresos: ${{ cliente.ingresos|floatformat:2 }}</div>
-                    <div>Gastos: ${{ cliente.gastos|floatformat:2 }}</div>
                     <div><strong>Utilidad: ${{ cliente.utilidad|floatformat:2 }}</strong></div>
                 </td>
                 <td>
