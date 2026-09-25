@@ -140,6 +140,20 @@ def _es_url_lista_clientes(url):
 @login_required
 def cliente_lista(request):
     query = request.GET.get("q", "").strip()
+    existentes_pagination_query = urlencode(
+        [
+            (clave, valor)
+            for clave, valor in request.GET.items()
+            if clave not in {"page", "page_existentes"}
+        ]
+    )
+    nuevos_pagination_query = urlencode(
+        [
+            (clave, valor)
+            for clave, valor in request.GET.items()
+            if clave not in {"page", "page_nuevos"}
+        ]
+    )
     try:
         clientes = Cliente.objects.all()
         if query:
@@ -190,40 +204,41 @@ def cliente_lista(request):
                 output_field=DecimalField(max_digits=14, decimal_places=2),
             )
         ).order_by("nombre", "pk")
-        paginator = Paginator(clientes, CLIENTES_POR_PAGINA)
-        page_obj = paginator.get_page(request.GET.get("page"))
-        clientes_pagina = list(page_obj.object_list)
-        inicio = page_obj.start_index() if clientes_pagina else 0
-        for posicion, cliente in enumerate(clientes_pagina, start=inicio):
-            cliente.numero_cliente = cliente.numero_cliente_formateado
+        existentes_paginator = Paginator(
+            clientes.filter(tipo_cliente=Cliente.TIPO_EXISTENTE),
+            CLIENTES_POR_PAGINA,
+        )
+        nuevos_paginator = Paginator(
+            clientes.filter(tipo_cliente=Cliente.TIPO_NUEVO),
+            CLIENTES_POR_PAGINA,
+        )
+        existentes_page = existentes_paginator.get_page(
+            request.GET.get("page_existentes")
+        )
+        nuevos_page = nuevos_paginator.get_page(request.GET.get("page_nuevos"))
     except (OperationalError, ProgrammingError):
         messages.error(
             request,
             "No se pudo cargar el directorio de clientes. Revisa que las migraciones esten aplicadas.",
         )
-        paginator = Paginator([], CLIENTES_POR_PAGINA)
-        page_obj = paginator.get_page(1)
-        clientes_pagina = []
-    incluir_pagina_retorno = (
-        "page" in request.GET or page_obj.number != 1
-    )
-    return_url = _url_lista_clientes(
-        query,
-        page_obj.number if incluir_pagina_retorno else None,
-    )
+        existentes_page = Paginator([], CLIENTES_POR_PAGINA).get_page(1)
+        nuevos_page = Paginator([], CLIENTES_POR_PAGINA).get_page(1)
+    return_url = reverse("cliente_lista")
+    query_actual = request.GET.urlencode()
+    if query_actual:
+        return_url = f"{return_url}?{query_actual}"
     context = {
-        "clientes": clientes_pagina,
+        "clientes": list(existentes_page.object_list) + list(nuevos_page.object_list),
         "query": query,
-        "page_obj": page_obj,
-        "pagination_items": _elementos_paginacion(page_obj),
-        "pagination_base_url": _url_lista_clientes(query),
+        "existentes_page": existentes_page,
+        "nuevos_page": nuevos_page,
+        "existentes_pagination_items": _elementos_paginacion(existentes_page),
+        "nuevos_pagination_items": _elementos_paginacion(nuevos_page),
+        "existentes_pagination_query": existentes_pagination_query,
+        "nuevos_pagination_query": nuevos_pagination_query,
         "return_url": return_url,
-        "clientes_existentes": list(
-            clientes.filter(tipo_cliente=Cliente.TIPO_EXISTENTE).order_by("nombre", "pk")
-        ),
-        "clientes_nuevos": list(
-            clientes.filter(tipo_cliente=Cliente.TIPO_NUEVO).order_by("nombre", "pk")
-        ),
+        "clientes_existentes": existentes_page.object_list,
+        "clientes_nuevos": nuevos_page.object_list,
     }
     return render(request, "clientes/cliente_lista.html", context)
 

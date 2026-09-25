@@ -17,9 +17,10 @@
 
 <h3>Clientes existentes</h3>
 {% include "clientes/_clientes_table.html" with clientes=clientes_existentes mostrar_convertir=False %}
+{% include "clientes/_pagination.html" with page_obj=existentes_page pagination_items=existentes_pagination_items page_param="page_existentes" pagination_query=existentes_pagination_query %}
 
 <h3 class="mt-4">Clientes nuevos</h3>
 {% include "clientes/_clientes_table.html" with clientes=clientes_nuevos mostrar_convertir=True %}
+{% include "clientes/_pagination.html" with page_obj=nuevos_page pagination_items=nuevos_pagination_items page_param="page_nuevos" pagination_query=nuevos_pagination_query %}
 
-{% include "clientes/_pagination.html" %}
 {% endblock %}

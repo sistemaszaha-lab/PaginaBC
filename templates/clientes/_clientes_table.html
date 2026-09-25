@@ -31,7 +31,7 @@
                 <td>{{ cliente.telefono|default:"-" }}</td>
                 <td>{{ cliente.celular|default:"-" }}</td>
                 <td class="small">
-                    <div><strong>Utilidad: ${{ cliente.utilidad|floatformat:2 }}</strong></div>
+                    <div><strong>Utilidad: ${{ cliente.utilidad_calculada|floatformat:2 }}</strong></div>
                 </td>
                 <td>
                     <form method="post" action="{% url 'cliente_cambiar_estado' cliente.pk %}">

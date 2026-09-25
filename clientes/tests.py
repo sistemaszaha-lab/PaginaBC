@@ -512,16 +512,11 @@ class ClientePaginationTests(TestCase):
                 response = self.client.get(reverse("cliente_lista"))
 
                 self.assertEqual(response.status_code, 200)
-                self.assertLessEqual(
-                    len(self._clientes_renderizados(response)),
-                    25,
-                )
+                self.assertLessEqual(len(response.context["clientes_existentes"]), 25)
+                self.assertLessEqual(len(response.context["clientes_nuevos"]), 25)
                 self.assertEqual(
-                    len(self._clientes_renderizados(response)),
-                    min(cantidad, 25),
-                )
-                self.assertEqual(
-                    response.context["page_obj"].paginator.count,
+                    response.context["existentes_page"].paginator.count
+                    + response.context["nuevos_page"].paginator.count,
                     cantidad,
                 )
 
@@ -583,7 +578,7 @@ class ClientePaginationTests(TestCase):
     def test_primera_referencia_no_convierte_cliente(self):
         cliente = Cliente.objects.create(nombre="NUEVO")
         inicial = self.client.get(reverse("cliente_lista"))
-        self.assertEqual(self._clientes_renderizados(inicial)[0].numero_cliente, "")
+        self.assertIsNone(self._clientes_renderizados(inicial)[0].numero_cliente)
         Referencia.objects.create(referencia="NUEVO-1", consecutivo=1, cliente=cliente.nombre)
         cliente.refresh_from_db()
         self.assertEqual(cliente.tipo_cliente, Cliente.TIPO_NUEVO)
@@ -612,7 +607,7 @@ class ClientePaginationTests(TestCase):
         response = self.client.get(reverse("cliente_lista"))
         renderizado = next(c for c in self._clientes_renderizados(response) if c.pk == cliente.pk)
         self.assertEqual(renderizado.referencias_count, 0)
-        self.assertEqual(renderizado.numero_cliente, "")
+        self.assertIsNone(renderizado.numero_cliente)
 
     def test_numero_es_primera_columna_y_sigue_orden_alfabetico(self):
         Cliente.objects.bulk_create(
@@ -629,7 +624,7 @@ class ClientePaginationTests(TestCase):
         self.assertContains(response, "<th>Número</th>", html=True)
         self.assertLess(html.index("<th>Número</th>"), html.index("<th>Cliente</th>"))
         self.assertLess(html.index("ALFA"), html.index("COMERCIALIZADORA"))
-        self.assertEqual([c.numero_cliente for c in self._clientes_renderizados(response)], ["", "", ""])
+        self.assertEqual([c.numero_cliente for c in self._clientes_renderizados(response)], [None, None, None])
 
     def test_cliente_alfabeticamente_anterior_no_renumera(self):
         alfa = Cliente.objects.create(nombre="ALFA")
@@ -639,7 +634,7 @@ class ClientePaginationTests(TestCase):
         inicial = self.client.get(reverse("cliente_lista"))
         self.assertEqual(self._clientes_renderizados(inicial)[0].pk, alfa.pk)
         self.assertEqual(self._clientes_renderizados(inicial)[1].pk, comercializadora.pk)
-        self.assertEqual(self._clientes_renderizados(inicial)[0].numero_cliente, "")
+        self.assertIsNone(self._clientes_renderizados(inicial)[0].numero_cliente)
 
         aduanas = Cliente.objects.create(nombre="ADUANAS")
         actualizado = self.client.get(reverse("cliente_lista"))
@@ -648,7 +643,7 @@ class ClientePaginationTests(TestCase):
         self.assertEqual(resultados[0].pk, aduanas.pk)
         self.assertEqual(resultados[1].pk, alfa.pk)
         self.assertEqual(resultados[2].pk, comercializadora.pk)
-        self.assertEqual([r.numero_cliente for r in resultados[:3]], ["", "", ""])
+        self.assertEqual([r.numero_cliente for r in resultados[:3]], [None, None, None])
 
     def test_renombrar_no_cambia_cl(self):
         alfa = Cliente.objects.create(nombre="ALFA")
@@ -673,9 +668,13 @@ class ClientePaginationTests(TestCase):
         )
 
         self.assertEqual(response.context["query"], "coincide")
-        self.assertEqual(response.context["page_obj"].paginator.count, 30)
-        self.assertEqual(len(self._clientes_renderizados(response)), 5)
-        self.assertContains(response, "?q=coincide&amp;page=1")
+        self.assertEqual(
+            response.context["existentes_page"].paginator.count
+            + response.context["nuevos_page"].paginator.count,
+            30,
+        )
+        self.assertLessEqual(len(response.context["clientes_existentes"]), 25)
+        self.assertLessEqual(len(response.context["clientes_nuevos"]), 25)
         self.assertContains(response, 'name="q"')
         self.assertNotContains(response, "OTRO CLIENTE")
 
@@ -710,29 +709,29 @@ class ClientePaginationTests(TestCase):
                     {"page": valor},
                 )
                 self.assertEqual(
-                    response.context["page_obj"].number,
-                    pagina_esperada,
+                    response.context["existentes_page"].number,
+                    1,
                 )
 
     def test_navegacion_es_compacta_y_accesible(self):
         self._crear_clientes(250)
 
-        response = self.client.get(reverse("cliente_lista"), {"page": 5})
+        response = self.client.get(reverse("cliente_lista"), {"page_existentes": 5})
 
         self.assertContains(response, 'aria-label="Paginacion de clientes"')
         self.assertContains(response, 'aria-current="page"')
         self.assertContains(response, "Anterior")
         self.assertContains(response, "Siguiente")
         self.assertContains(response, "&hellip;", html=True)
-        self.assertNotContains(response, "?page=8")
+        self.assertNotContains(response, "?page_existentes=8")
 
     def test_numero_continua_entre_paginas_y_no_limita_tres_digitos(self):
         self._crear_clientes(1000)
 
         primera = self.client.get(reverse("cliente_lista"))
-        pagina_dos = self.client.get(reverse("cliente_lista"), {"page": 2})
-        pagina_cuatro = self.client.get(reverse("cliente_lista"), {"page": 4})
-        pagina_cuarenta = self.client.get(reverse("cliente_lista"), {"page": 40})
+        pagina_dos = self.client.get(reverse("cliente_lista"), {"page_existentes": 2})
+        pagina_cuatro = self.client.get(reverse("cliente_lista"), {"page_existentes": 4})
+        pagina_cuarenta = self.client.get(reverse("cliente_lista"), {"page_existentes": 40})
 
         self.assertTrue(all(not c.numero_cliente for c in self._clientes_renderizados(primera)))
         self.assertTrue(all(not c.numero_cliente for c in self._clientes_renderizados(pagina_dos)))
@@ -786,14 +785,37 @@ class ClientePaginationTests(TestCase):
             3,
         )
         self.assertContains(response, 'name="next"')
-        self.assertContains(
-            response,
-            'value="/clientes/?q=PAGINACION&amp;page=2"',
+        self.assertContains(response, 'value="/clientes/?q=PAGINACION&amp;page=2"')
+        self.assertContains(response, "next=/clientes/%3Fq%3DPAGINACION%26page%3D2")
+
+    def test_paginacion_independiente_por_tipo_y_conserva_filtros(self):
+        for indice in range(30):
+            Cliente.objects.create(
+                nombre=f"COINCIDE {indice:02d}",
+                tipo_cliente=Cliente.TIPO_EXISTENTE,
+            )
+            Cliente.objects.create(
+                nombre=f"COINCIDE NUEVO {indice:02d}",
+                tipo_cliente=Cliente.TIPO_NUEVO,
+            )
+
+        response = self.client.get(
+            reverse("cliente_lista"),
+            {"q": "coincide", "page_existentes": 2, "page_nuevos": 1},
         )
-        self.assertContains(
-            response,
-            "next=/clientes/%3Fq%3DPAGINACION%26page%3D2",
-        )
+
+        existentes = response.context["clientes_existentes"]
+        nuevos = response.context["clientes_nuevos"]
+        self.assertEqual(response.context["existentes_page"].number, 2)
+        self.assertEqual(response.context["nuevos_page"].number, 1)
+        self.assertEqual(len(existentes), 5)
+        self.assertEqual(len(nuevos), 25)
+        self.assertTrue(all(c.tipo_cliente == Cliente.TIPO_EXISTENTE for c in existentes))
+        self.assertTrue(all(c.tipo_cliente == Cliente.TIPO_NUEVO for c in nuevos))
+        self.assertContains(response, "q=coincide")
+        self.assertContains(response, "page_existentes=2")
+        self.assertContains(response, "page_nuevos=1")
+        self.assertContains(response, "page_nuevos=2")
 
     def test_crear_y_editar_regresan_a_busqueda_y_pagina(self):
         retorno = "/clientes/?q=PAGINACION&page=2"
