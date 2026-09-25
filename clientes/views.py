@@ -2,11 +2,10 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Q, Count, F, OuterRef, Subquery, IntegerField, Window, DecimalField, Sum, Case, When, Value
 from django.db.models.functions import Coalesce
 from django.db.models.functions import Concat
-from django.db.models.functions import RowNumber
 from django.db.models.deletion import PROTECT, ProtectedError
 from django.db.utils import OperationalError, ProgrammingError
 from django.http import JsonResponse
@@ -15,7 +14,7 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from .forms import ClienteForm, MENSAJE_CLIENTE_DUPLICADO
-from .models import Cliente, es_integrity_error_duplicado_cliente
+from .models import Cliente, ClienteConsecutivo, es_integrity_error_duplicado_cliente
 from solicitudes.models import Referencia
 
 
@@ -191,16 +190,12 @@ def cliente_lista(request):
                 output_field=DecimalField(max_digits=14, decimal_places=2),
             )
         ).order_by("nombre", "pk")
-        rankings = dict(clientes.filter(referencias_count__gt=0).annotate(
-            ranking=Window(expression=RowNumber(), order_by=[F("referencias_count").desc(), "nombre", "pk"])
-        ).values_list("pk", "ranking"))
         paginator = Paginator(clientes, CLIENTES_POR_PAGINA)
         page_obj = paginator.get_page(request.GET.get("page"))
         clientes_pagina = list(page_obj.object_list)
         inicio = page_obj.start_index() if clientes_pagina else 0
         for posicion, cliente in enumerate(clientes_pagina, start=inicio):
-            ranking = rankings.get(cliente.pk)
-            cliente.numero_cliente = f"CL-{ranking:03d}" if ranking else ""
+            cliente.numero_cliente = cliente.numero_cliente_formateado
     except (OperationalError, ProgrammingError):
         messages.error(
             request,
@@ -223,6 +218,12 @@ def cliente_lista(request):
         "pagination_items": _elementos_paginacion(page_obj),
         "pagination_base_url": _url_lista_clientes(query),
         "return_url": return_url,
+        "clientes_existentes": list(
+            clientes.filter(tipo_cliente=Cliente.TIPO_EXISTENTE).order_by("nombre", "pk")
+        ),
+        "clientes_nuevos": list(
+            clientes.filter(tipo_cliente=Cliente.TIPO_NUEVO).order_by("nombre", "pk")
+        ),
     }
     return render(request, "clientes/cliente_lista.html", context)
 
@@ -236,7 +237,10 @@ def cliente_crear(request):
         form = ClienteForm(request.POST, requerir_datos_alta=True)
         if form.is_valid():
             try:
-                cliente = form.save()
+                cliente = form.save(commit=False)
+                cliente.tipo_cliente = Cliente.TIPO_NUEVO
+                cliente.numero_cliente = None
+                cliente.save()
             except IntegrityError as exc:
                 if not es_integrity_error_duplicado_cliente(exc):
                     raise
@@ -339,6 +343,15 @@ def cliente_cambiar_estado(request, pk):
 def cliente_convertir_existente(request, pk):
     cliente = get_object_or_404(Cliente, pk=pk)
     destino = _destino_retorno(request)
-    cliente.tipo_cliente = Cliente.TIPO_EXISTENTE
-    cliente.save(update_fields=["tipo_cliente"])
+    with transaction.atomic():
+        cliente = Cliente.objects.select_for_update().get(pk=pk)
+        if cliente.tipo_cliente == Cliente.TIPO_NUEVO and cliente.numero_cliente is None:
+            contador, _ = ClienteConsecutivo.objects.select_for_update().get_or_create(
+                clave="clientes", defaults={"ultimo_numero": 0}
+            )
+            contador.ultimo_numero += 1
+            contador.save(update_fields=["ultimo_numero"])
+            cliente.numero_cliente = contador.ultimo_numero
+            cliente.tipo_cliente = Cliente.TIPO_EXISTENTE
+            cliente.save(update_fields=["tipo_cliente", "numero_cliente"])
     return redirect(destino)

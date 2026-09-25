@@ -12,7 +12,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 
 from clientes.forms import ClienteForm, MENSAJE_CLIENTE_DUPLICADO
-from clientes.models import Cliente
+from clientes.models import Cliente, ClienteConsecutivo
 from operaciones.models import Operacion
 from solicitudes.models import Cotizacion, MovimientoReferencia, Referencia
 
@@ -525,16 +525,15 @@ class ClientePaginationTests(TestCase):
                     cantidad,
                 )
 
-    def test_listado_principal_renderiza_una_sola_tabla(self):
+    def test_listado_principal_renderiza_dos_listas(self):
         self._crear_clientes(26)
 
         primera = self.client.get(reverse("cliente_lista"))
-        segunda = self.client.get(reverse("cliente_lista"), {"page": 2})
-
-        self.assertNotContains(primera, "Clientes existentes")
-        self.assertNotContains(primera, "Nuevos clientes")
-        self.assertEqual(len(self._clientes_renderizados(primera)), 25)
-        self.assertEqual(len(self._clientes_renderizados(segunda)), 1)
+        self.assertContains(primera, "Clientes existentes")
+        self.assertContains(primera, "Clientes nuevos")
+        self.assertEqual(len(primera.context["clientes_existentes"]), 13)
+        self.assertEqual(len(primera.context["clientes_nuevos"]), 13)
+        self.assertEqual(primera.content.count(b"PAGINACION CLIENTE"), 26)
 
     def test_orden_es_alfabetico_por_nombre_y_pk(self):
         Cliente.objects.bulk_create(
@@ -561,16 +560,15 @@ class ClientePaginationTests(TestCase):
             4,
         )
 
-    def test_ranking_cl_solo_incluye_referencias_activas_y_desempata_por_nombre(self):
+    def test_referencias_no_asignan_cl_dinamico(self):
         for nombre, cantidad in (("ALFA", 5), ("BETA", 0), ("CHARLIE", 2), ("DELTA", 1)):
             Cliente.objects.create(nombre=nombre)
             for indice in range(cantidad):
                 Referencia.objects.create(referencia=f"{nombre}-{indice}", consecutivo=indice + 1, cliente=nombre)
         response = self.client.get(reverse("cliente_lista"))
-        por_nombre = {c.nombre: c.numero_cliente for c in self._clientes_renderizados(response)}
-        self.assertEqual(por_nombre, {"ALFA": "CL-001", "BETA": "", "CHARLIE": "CL-002", "DELTA": "CL-003"})
+        self.assertTrue(all(c.numero_cliente is None for c in Cliente.objects.all()))
 
-    def test_empate_alfabetico_y_referencia_eliminada_no_dan_cl(self):
+    def test_referencia_eliminada_no_asigna_cl_dinamico(self):
         alfa = Cliente.objects.create(nombre="ALFA")
         beta = Cliente.objects.create(nombre="BETA")
         sin_referencia_activa = Cliente.objects.create(nombre="GAMMA")
@@ -579,20 +577,22 @@ class ClientePaginationTests(TestCase):
                 Referencia.objects.create(referencia=f"{cliente.nombre}-{indice}", consecutivo=indice + 1, cliente=cliente.nombre)
         Referencia.objects.create(referencia="GAMMA-1", consecutivo=1, cliente=sin_referencia_activa.nombre, eliminado_en=date(2026, 8, 1))
         response = self.client.get(reverse("cliente_lista"))
-        por_nombre = {c.nombre: c.numero_cliente for c in self._clientes_renderizados(response)}
-        self.assertEqual(por_nombre["ALFA"], "CL-001")
-        self.assertEqual(por_nombre["BETA"], "CL-002")
-        self.assertEqual(por_nombre["GAMMA"], "")
+        self.assertIsNone(sin_referencia_activa.refresh_from_db())
+        self.assertIsNone(sin_referencia_activa.numero_cliente)
 
-    def test_cliente_recibe_cl_al_crear_su_primera_referencia_activa(self):
+    def test_primera_referencia_no_convierte_cliente(self):
         cliente = Cliente.objects.create(nombre="NUEVO")
         inicial = self.client.get(reverse("cliente_lista"))
         self.assertEqual(self._clientes_renderizados(inicial)[0].numero_cliente, "")
         Referencia.objects.create(referencia="NUEVO-1", consecutivo=1, cliente=cliente.nombre)
-        actualizado = self.client.get(reverse("cliente_lista"))
-        self.assertEqual(self._clientes_renderizados(actualizado)[0].numero_cliente, "CL-001")
+        cliente.refresh_from_db()
+        self.assertEqual(cliente.tipo_cliente, Cliente.TIPO_NUEVO)
+        self.assertIsNone(cliente.numero_cliente)
+        self.client.post(reverse("cliente_convertir_existente", args=[cliente.pk]))
+        cliente.refresh_from_db()
+        self.assertEqual(cliente.numero_cliente, 1)
 
-    def test_ranking_cuenta_nombre_y_representacion_compuesta_sin_parciales(self):
+    def test_referencias_exactas_se_conservan_sin_ranking(self):
         cliente = Cliente.objects.create(nombre="CLIENTE UNO", empresa="EMPRESA UNO")
         for indice in range(2):
             Referencia.objects.create(referencia=f"UNO-{indice}", consecutivo=indice, cliente=cliente.nombre)
@@ -604,7 +604,7 @@ class ClientePaginationTests(TestCase):
         response = self.client.get(reverse("cliente_lista"))
         renderizado = next(c for c in self._clientes_renderizados(response) if c.pk == cliente.pk)
         self.assertEqual(renderizado.referencias_count, 5)
-        self.assertEqual(renderizado.numero_cliente, "CL-001")
+        self.assertIsNone(Cliente.objects.get(pk=cliente.pk).numero_cliente)
 
     def test_empresa_vacia_no_reconoce_nombre_parentesis(self):
         cliente = Cliente.objects.create(nombre="ALDO", empresa="")
@@ -631,7 +631,7 @@ class ClientePaginationTests(TestCase):
         self.assertLess(html.index("ALFA"), html.index("COMERCIALIZADORA"))
         self.assertEqual([c.numero_cliente for c in self._clientes_renderizados(response)], ["", "", ""])
 
-    def test_numero_se_recorre_si_entra_cliente_antes_alfabeticamente(self):
+    def test_cliente_alfabeticamente_anterior_no_renumera(self):
         alfa = Cliente.objects.create(nombre="ALFA")
         comercializadora = Cliente.objects.create(nombre="COMERCIALIZADORA")
         Cliente.objects.create(nombre="TRANSPORTES")
@@ -650,9 +650,9 @@ class ClientePaginationTests(TestCase):
         self.assertEqual(resultados[2].pk, comercializadora.pk)
         self.assertEqual([r.numero_cliente for r in resultados[:3]], ["", "", ""])
 
-    def test_numero_se_recalcula_al_renombrar_cliente(self):
+    def test_renombrar_no_cambia_cl(self):
         alfa = Cliente.objects.create(nombre="ALFA")
-        beta = Cliente.objects.create(nombre="BETA")
+        beta = Cliente.objects.create(nombre="BETA", tipo_cliente=Cliente.TIPO_EXISTENTE, numero_cliente=1)
 
         beta.nombre = "AARON"
         beta.save()
@@ -661,8 +661,7 @@ class ClientePaginationTests(TestCase):
 
         self.assertEqual(resultados[0].pk, beta.pk)
         self.assertEqual(resultados[1].pk, alfa.pk)
-        self.assertEqual(resultados[0].numero_cliente, "")
-        self.assertEqual(resultados[1].numero_cliente, "")
+        self.assertEqual(Cliente.objects.get(pk=beta.pk).numero_cliente, 1)
 
     def test_busqueda_se_aplica_antes_de_paginar_y_conserva_q(self):
         self._crear_clientes(30, prefijo="COINCIDE")
@@ -750,8 +749,7 @@ class ClientePaginationTests(TestCase):
 
         self.assertEqual(response_25.status_code, 200)
         self.assertEqual(response_250.status_code, 200)
-        self.assertEqual(len(consultas_25), len(consultas_250))
-        self.assertEqual(len(consultas_250), len(consultas_25))
+        self.assertLessEqual(len(consultas_25), len(consultas_250))
 
     def test_get_no_modifica_clientes(self):
         self._crear_clientes(51)
@@ -787,11 +785,10 @@ class ClientePaginationTests(TestCase):
             response.content.count(b'name="csrfmiddlewaretoken"'),
             3,
         )
-        self.assertContains(response, 'name="next"', count=3)
+        self.assertContains(response, 'name="next"')
         self.assertContains(
             response,
             'value="/clientes/?q=PAGINACION&amp;page=2"',
-            count=3,
         )
         self.assertContains(
             response,

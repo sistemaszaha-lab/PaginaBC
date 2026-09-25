@@ -19,7 +19,7 @@
         <tbody>
             {% for cliente in clientes %}
             <tr class="{% if cliente.estado != 'activo' %}table-warning{% endif %}">
-                <td>{{ cliente.numero_cliente }}</td>
+                <td>{{ cliente.numero_cliente_formateado }}</td>
                 <td>
                     <strong>{{ cliente.nombre }}</strong>
                 </td>
@@ -51,11 +51,11 @@
                         <input type="hidden" name="next" value="{{ return_url }}">
                         <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                     </form>
-                    {% if cliente.tipo_cliente == 'nuevo' %}
+                    {% if mostrar_convertir and cliente.tipo_cliente == 'nuevo' %}
                         <form method="post" action="{% url 'cliente_convertir_existente' cliente.pk %}" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="next" value="{{ return_url }}">
-                            <button type="submit" class="btn btn-sm btn-outline-primary">Convertir</button>
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Convertir a cliente existente</button>
                         </form>
                     {% endif %}
                 </td>

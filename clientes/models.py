@@ -67,8 +67,9 @@ class Cliente(models.Model):
     tipo_cliente = models.CharField(
         max_length=20,
         choices=TIPO_CHOICES,
-        default=TIPO_EXISTENTE,
+        default=TIPO_NUEVO,
     )
+    numero_cliente = models.PositiveIntegerField(null=True, blank=True, unique=True)
     estado = models.CharField(
         max_length=10,
         choices=ESTADO_CHOICES,
@@ -107,3 +108,15 @@ class Cliente(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.empresa})" if self.empresa else self.nombre
+
+    @property
+    def numero_cliente_formateado(self):
+        return f"CL-{self.numero_cliente:03d}" if self.numero_cliente else ""
+
+
+class ClienteConsecutivo(models.Model):
+    clave = models.CharField(max_length=30, unique=True, default="clientes")
+    ultimo_numero = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Consecutivo de clientes"
