@@ -669,7 +669,11 @@
     }
 
     function getColumnsContainer() {
-      return root.querySelector('[data-cuenta-columns="1"]');
+      // El tablero mismo es el contenedor directo de las columnas.  root.querySelector
+      // no incluye al propio root, por lo que antes devolvía null siempre.
+      return root.matches('[data-cuenta-columns="1"]')
+        ? root
+        : root.querySelector('[data-cuenta-columns="1"]');
     }
 
     function getCopiedCardPayload() {
@@ -1581,6 +1585,9 @@
       columnsSortable = Sortable.create(container, {
         animation: 150,
         draggable: '[data-cuenta-column-item="1"]',
+        handle: '[data-cuenta-column-handle="1"]',
+        filter: 'button, input, select, textarea, a, [data-bs-toggle], .dropdown-menu',
+        preventOnFilter: false,
         onEnd: function () {
           syncInlineCreateAccess();
           const ids = Array.from(container.querySelectorAll('[data-cuenta-column="1"]'))
@@ -2194,8 +2201,13 @@
             wrapper.innerHTML = data.html || '';
             const columnItem = wrapper.firstElementChild;
             if (!columnItem) throw new Error('HTML de columna invalido.');
-            getColumnsContainer()?.appendChild(columnItem);
+            const columnsContainer = getColumnsContainer();
+            if (!columnsContainer) {
+              throw new Error('No se encontró el contenedor de columnas de Cuenta de gastos.');
+            }
+            columnsContainer.appendChild(columnItem);
             initCardSortables();
+            initColumnSortable();
             syncDeleteDestinationOptions('');
             columnCreateModal?.hide();
           })

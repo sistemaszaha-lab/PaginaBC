@@ -1630,6 +1630,14 @@ def columna_reordenar(request):
     columnas = list(CuentaGastosColumna.objects.filter(pk__in=ids, activa=True))
     if len(columnas) != len(ids):
         return JsonResponse({"ok": False, "error": "Columna no encontrada."}, status=400)
+    columnas_activas = set(
+        CuentaGastosColumna.objects.filter(activa=True).values_list("pk", flat=True)
+    )
+    if set(ids) != columnas_activas:
+        return JsonResponse(
+            {"ok": False, "error": "Debes enviar todas las columnas activas."},
+            status=400,
+        )
     with transaction.atomic():
         for orden, columna_id in enumerate(ids, start=1):
             CuentaGastosColumna.objects.filter(pk=columna_id).update(orden=orden)
