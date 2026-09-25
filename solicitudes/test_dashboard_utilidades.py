@@ -33,7 +33,7 @@ class InicioDashboardUtilidadesTests(TestCase):
         )
         self.assertEqual(data, ["4000", "2000", "200", "50", "40", "30"])
 
-    def test_dashboard_entrega_hasta_20_y_selectores_independientes(self):
+    def test_dashboard_entrega_dataset_completo_y_selectores_independientes(self):
         for indice in range(21):
             nombre = f"CLIENTE {indice:02d}"
             Cliente.objects.create(nombre=nombre)
@@ -41,13 +41,14 @@ class InicioDashboardUtilidadesTests(TestCase):
             MovimientoReferencia.objects.create(referencia=referencia, tipo=MovimientoReferencia.INGRESO, monto=indice + 1, registrado_por=self.usuario)
 
         response = self.client.get(reverse("inicio"))
-        self.assertEqual(len(json.loads(response.context["clientes_utilidades_labels"])), 20)
-        self.assertEqual(len(json.loads(response.context["clientes_labels"])), 20)
+        self.assertEqual(len(json.loads(response.context["clientes_utilidades_labels"])), 21)
+        self.assertEqual(len(json.loads(response.context["clientes_labels"])), 21)
         self.assertContains(response, 'id="clientesUtilidadesTopSelect"')
         self.assertContains(response, 'id="clientesOperacionesTopSelect"')
         self.assertEqual(response.content.decode().count("Top 5"), 2)
         self.assertEqual(response.content.decode().count("Top 10"), 2)
         self.assertEqual(response.content.decode().count("Top 20"), 2)
+        self.assertEqual(response.content.decode().count("Todos"), 2)
 
     def test_utilidad_suma_nombre_y_representacion_compuesta(self):
         cliente = Cliente.objects.create(nombre="CLIENTE UNO", empresa="EMPRESA UNO")
