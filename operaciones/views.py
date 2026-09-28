@@ -645,6 +645,11 @@ def _render_card_html(request, operacion):
     )
 
 
+def _render_detail_html(request, operacion, form=None):
+    contexto = _contexto_modal_operacion(operacion, form=form)
+    return render_to_string("operaciones/_detalle_modal_content.html", contexto, request=request)
+
+
 def _render_inline_create_form(request, form, columna):
     return render_to_string(
         "operaciones/_inline_create_form.html",
@@ -969,9 +974,7 @@ def editar_operacion_rapida(request, operacion_id):
 @login_required
 def detalle_operacion(request, operacion_id):
     operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
-    contexto = _contexto_modal_operacion(operacion)
-    html = render_to_string("operaciones/_detalle_modal_content.html", contexto, request=request)
-    return JsonResponse({"html": html})
+    return JsonResponse({"html": _render_detail_html(request, operacion)})
 
 
 @login_required
@@ -1041,9 +1044,12 @@ def editar_operacion(request, operacion_id):
         operacion.refresh_from_db()
 
         if _es_ajax(request):
+            card_html = _render_card_html(request, operacion)
             return JsonResponse({
                 "success": True,
-                "html": _render_card_html(request, operacion),
+                "html": card_html,
+                "card_html": card_html,
+                "detail_html": _render_detail_html(request, operacion),
             })
 
         messages.success(request, "OperaciÃ³n actualizada exitosamente.")
@@ -1052,7 +1058,7 @@ def editar_operacion(request, operacion_id):
     contexto = _contexto_modal_operacion(operacion, form=form)
     if _es_ajax(request):
         html = render_to_string("operaciones/_detalle_modal_content.html", contexto, request=request)
-        return JsonResponse({"html": html})
+        return JsonResponse({"success": False, "html": html}, status=400)
     return render(request, "operaciones/_detalle_modal_content.html", contexto)
 
 
@@ -1090,6 +1096,32 @@ def agregar_comentario(request, operacion_id):
         },
         status=400,
     )
+
+
+@login_required
+@require_POST
+def editar_comentario(request, operacion_id, comentario_id):
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied
+    comentario = get_object_or_404(OperacionComentario, id=comentario_id, operacion=operacion)
+    form = OperacionComentarioForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse({"success": False, "error": "El comentario no puede estar vacio."}, status=400)
+    comentario.comentario = form.cleaned_data["comentario"]
+    comentario.save(update_fields=["comentario"])
+    return JsonResponse({"success": True, "comments_html": _render_comentarios_section(request, operacion), "comments_count": operacion.comentarios.count()})
+
+
+@login_required
+@require_POST
+def eliminar_comentario(request, operacion_id, comentario_id):
+    operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
+    if not _puede_modificar_operacion(request.user, operacion):
+        raise PermissionDenied
+    comentario = get_object_or_404(OperacionComentario, id=comentario_id, operacion=operacion)
+    comentario.delete()
+    return JsonResponse({"success": True, "comments_html": _render_comentarios_section(request, operacion), "comments_count": operacion.comentarios.count()})
 
 
 @login_required

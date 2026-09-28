@@ -1982,11 +1982,9 @@
           .then((data) => {
             if (data.success) {
               const card = getCardElement(detailState.id || getDetailCardIdFromAction(detailForm.action));
-              const nextCard = replaceCardFromHtml(card, data.card_html || data.html);
+              const nextCard = replaceCardFromHtml(card, data.card_html);
               if (!nextCard) throw new Error('No se pudo actualizar la tarjeta.');
-              if (detailState.url) {
-                return loadDetail(nextCard.dataset.panelOperacionId, detailState.url, detailState.layout);
-              }
+              if (data.detail_html) renderDetailHtml(data.detail_html);
             } else if (data.html) {
               renderDetailHtml(data.html);
             }
@@ -2018,6 +2016,8 @@
             if (data.success) {
               if (data.redirect && data.id) {
                 removeCardFromBoard(data.id);
+                delete refreshForm.dataset.submitting;
+                setDetailPending(false);
                 closeDetail(true);
               } else {
                 if (data.card_html && data.id) {
@@ -2573,12 +2573,58 @@
         return;
       }
 
+      const commentEditForm = e.target.closest('[data-operacion-comment-edit-form="1"]');
+      if (commentEditForm) {
+        e.preventDefault();
+        if (commentEditForm.dataset.submitting === '1') return;
+        const section = commentEditForm.closest('[data-operacion-comments-section="1"]');
+        if (!commentEditForm.querySelector('textarea').value.trim()) return;
+        commentEditForm.dataset.submitting = '1';
+        postForm(commentEditForm.action, new FormData(commentEditForm), commentEditForm)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw new Error(data.error || `Error ${response.status}`);
+            return data;
+          })
+          .then((data) => { if (!replaceCommentsSection(data.comments_html)) throw new Error('No se pudo actualizar la sección.'); syncCommentsCount(detailState.id, data.comments_count); })
+          .catch((error) => renderCommentsError(section, error.message))
+          .finally(() => { delete commentEditForm.dataset.submitting; });
+        return;
+      }
+
       const commentForm = e.target.closest('[data-operacion-comentario-form="1"]');
       if (!commentForm) return;
 
       e.preventDefault();
       e.stopPropagation();
       submitCommentForm(commentForm);
+    });
+
+    document.addEventListener('click', (e) => {
+      const editButton = e.target.closest('[data-operacion-comment-edit="1"]');
+      const cancelButton = e.target.closest('[data-operacion-comment-cancel="1"]');
+      if (editButton || cancelButton) {
+        e.preventDefault();
+        const comment = (editButton || cancelButton).closest('[data-operacion-comment="1"]');
+        const form = comment?.querySelector('[data-operacion-comment-edit-form="1"]');
+        if (form) form.classList.toggle('d-none', Boolean(cancelButton));
+        if (editButton) form?.querySelector('textarea')?.focus();
+        return;
+      }
+      const deleteButton = e.target.closest('[data-operacion-comment-delete="1"]');
+      if (!deleteButton) return;
+      e.preventDefault();
+      const comment = deleteButton.closest('[data-operacion-comment="1"]');
+      const form = comment?.querySelector('[data-operacion-comment-delete-form="1"]');
+      if (!form || !window.confirm('¿Eliminar este comentario?')) return;
+      postForm(form.action, new FormData(form), form)
+        .then(async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.success) throw new Error(data.error || `Error ${response.status}`);
+          return data;
+        })
+        .then((data) => { if (!replaceCommentsSection(data.comments_html)) throw new Error('No se pudo actualizar la sección.'); syncCommentsCount(detailState.id, data.comments_count); })
+        .catch((error) => renderCommentsError(comment?.closest('[data-operacion-comments-section="1"]'), error.message));
     });
 
     const rootObserver = new MutationObserver(() => {
@@ -2595,4 +2641,3 @@
     initSortable();
     applyAssignedUserFilter();
   })();
-

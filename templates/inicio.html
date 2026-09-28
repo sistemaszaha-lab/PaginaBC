@@ -39,7 +39,7 @@
             <select id="clientesUtilidadesTopSelect" class="form-select form-select-sm w-auto" aria-label="Cantidad de clientes por utilidad"><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="all">Todos</option></select>
         </div>
 
-        <div style="position: relative; height: 300px;">
+        <div id="clientesUtilidadesChartContainer" style="position: relative; height: 300px;">
             <canvas id="clientesUtilidadesChart"></canvas>
         </div>
     </div>
@@ -52,7 +52,7 @@
             <select id="clientesOperacionesTopSelect" class="form-select form-select-sm w-auto" aria-label="Cantidad de clientes por operaciones"><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="all">Todos</option></select>
         </div>
 
-        <div style="position: relative; height: 300px;">
+        <div id="clientesOperacionesChartContainer" style="position: relative; height: 300px;">
             <canvas id="clientesChart"></canvas>
         </div>
 
@@ -81,6 +81,11 @@
             const primary = "rgba(62, 159, 162, 0.75)";
             const primaryBorder = "rgba(62, 159, 162, 1)";
 
+            const chartContainer = document.getElementById('clientesOperacionesChartContainer');
+            const updateChartHeight = (count) => {
+                chartContainer.style.height = `${Math.max(300, count * 58)}px`;
+                chart.resize();
+            };
             const chart = new Chart(chartEl, {
                 type: "bar",
                 data: {
@@ -122,10 +127,12 @@
                     },
                 },
             });
+            updateChartHeight(5);
             document.getElementById('clientesOperacionesTopSelect').addEventListener('change', (event) => {
                 const limit = event.target.value === 'all' ? allLabels.length : Number(event.target.value);
                 chart.data.labels = allLabels.slice(0, limit);
                 chart.data.datasets[0].data = allValues.slice(0, limit);
+                updateChartHeight(limit);
                 chart.update();
             });
             });
@@ -156,6 +163,11 @@
             currency: "MXN",
         });
 
+        const chartContainer = document.getElementById('clientesUtilidadesChartContainer');
+        const updateChartHeight = (count) => {
+            chartContainer.style.height = `${Math.max(300, count * 58)}px`;
+            chart.resize();
+        };
         const chart = new Chart(chartEl, {
             type: "bar",
             data: {
@@ -199,10 +211,12 @@
                 },
             },
         });
+        updateChartHeight(5);
         document.getElementById('clientesUtilidadesTopSelect').addEventListener('change', (event) => {
             const limit = event.target.value === 'all' ? allLabels.length : Number(event.target.value);
             chart.data.labels = allLabels.slice(0, limit);
             chart.data.datasets[0].data = allValues.slice(0, limit);
+            updateChartHeight(limit);
             chart.update();
         });
     });

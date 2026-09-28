@@ -34,6 +34,8 @@
     {% endif %}
   </form>
 
+  {% comment %}La creación se conserva en backend, pero ya no se ofrece desde el detalle.{% endcomment %}
+  {% comment %}
   <form method="post" action="{% url 'operaciones:crear_etiqueta_operacion' operacion.id %}"
     data-operacion-tag-create-form="1" data-operacion-id="{{ operacion.id }}">
     {% csrf_token %}
@@ -49,4 +51,5 @@
       <button type="submit" class="btn btn-outline-secondary btn-sm">Crear y asignar</button>
     </div>
   </form>
+  {% endcomment %}
 </section>

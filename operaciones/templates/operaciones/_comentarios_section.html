@@ -18,15 +18,26 @@
 
   <div data-operacion-comentarios="1">
     {% for comentario in comentarios %}
-    <div class="small border rounded p-2 mb-2">
+    <div class="small border rounded p-2 mb-2" data-operacion-comment="1">
       <div class="fw-semibold">
         {{ comentario.usuario.get_full_name|default:comentario.usuario.username }}
-        <span class="text-muted fw-normal">â€¢ {{ comentario.fecha|date:"Y-m-d H:i" }}</span>
+        <span class="text-muted fw-normal ms-2">{{ comentario.fecha|date:"Y-m-d H:i" }}</span>
       </div>
-      <div style="white-space: pre-wrap;">{{ comentario.comentario }}</div>
+      <div class="d-flex justify-content-between gap-2">
+        <div style="white-space: pre-wrap;" data-operacion-comment-text="1">{{ comentario.comentario }}</div>
+        <div class="text-nowrap">
+          <button type="button" class="btn btn-link btn-sm p-0 me-2" data-operacion-comment-edit="1">Editar</button>
+          <button type="button" class="btn btn-link btn-sm p-0 text-danger" data-operacion-comment-delete="1">Eliminar</button>
+        </div>
+      </div>
+      <form method="post" action="{% url 'operaciones:editar_comentario' operacion.id comentario.id %}" data-operacion-comment-edit-form="1" class="d-none mt-2">
+        {% csrf_token %}<textarea name="comentario" class="form-control" rows="2" required>{{ comentario.comentario }}</textarea>
+        <div class="mt-2 d-flex justify-content-end gap-2"><button type="button" class="btn btn-outline-secondary btn-sm" data-operacion-comment-cancel="1">Cancelar</button><button type="submit" class="btn btn-primary btn-sm">Guardar</button></div>
+      </form>
+      <form method="post" action="{% url 'operaciones:eliminar_comentario' operacion.id comentario.id %}" data-operacion-comment-delete-form="1" class="d-none">{% csrf_token %}</form>
     </div>
     {% empty %}
-    <div class="text-muted small">AÃºn no hay comentarios.</div>
+    <div class="text-muted small">Aún no hay comentarios.</div>
     {% endfor %}
   </div>
 </section>
