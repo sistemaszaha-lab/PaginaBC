@@ -78,12 +78,13 @@ class CuentaGastosForm(forms.ModelForm):
 
     class Meta:
         model = CuentaGastos
-        fields = ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "asignados", "etiquetas", "opciones"]
+        fields = ["titulo", "descripcion", "cliente", "prioridad", "fecha_vencimiento", "agencia_aduanal", "asignados", "etiquetas", "opciones"]
         widgets = {
             "titulo": forms.TextInput(attrs={"class": "form-control"}),
             "descripcion": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "prioridad": forms.Select(attrs={"class": "form-select"}),
             "fecha_vencimiento": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "agencia_aduanal": forms.TextInput(attrs={"class": "form-control"}),
             "etiquetas": forms.SelectMultiple(attrs={"class": "form-select rounded", "id": "id_etiquetas", "data-cuenta-tags-select": "1", "data-garantia-tags-select": "1"}),
             "opciones": forms.CheckboxSelectMultiple(attrs={"class": "form-check-input"}),
         }
@@ -126,7 +127,7 @@ class CuentaGastosInlineCreateForm(forms.ModelForm):
             "descripcion",
             "cliente",
             "prioridad",
-            "fecha_vencimiento",
+            "fecha_vencimiento", "agencia_aduanal",
             "asignados",
             "etiquetas",
             "opciones",
@@ -149,6 +150,7 @@ class CuentaGastosInlineCreateForm(forms.ModelForm):
             "fecha_vencimiento": forms.DateInput(
                 attrs={"class": "form-control form-control-sm", "type": "date"}
             ),
+            "agencia_aduanal": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
             "etiquetas": forms.SelectMultiple(
                 attrs={
                     "class": "form-select form-select-sm",
@@ -169,6 +171,7 @@ class CuentaGastosInlineCreateForm(forms.ModelForm):
             "cliente",
             "prioridad",
             "fecha_vencimiento",
+            "agencia_aduanal",
             "asignados",
             "etiquetas",
             "opciones",

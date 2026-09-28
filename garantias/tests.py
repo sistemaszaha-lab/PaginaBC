@@ -28,6 +28,7 @@ from .models import (
     GarantiaEnlace,
     GarantiaEtiqueta,
 )
+from cuenta_gastos.models import CuentaGastos
 
 PANEL_JS_PATH = (
     Path(__file__).resolve().parent
@@ -2335,4 +2336,84 @@ class GarantiaEtiquetasAjaxTests(TestCase):
         response = self.client.post(url, {'etiquetas': [self.etiqueta1.id]})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['error'], 'Solicitud AJAX requerida.')
+
+
+class GarantiaAcuentaGastosTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user(username="envio-garantia", password="pass")
+        self.asignado = User.objects.create_user(username="asignado-garantia", password="pass")
+        self.cliente = Cliente.objects.create(nombre="Cliente devolución")
+        self.etiqueta = GarantiaEtiqueta.objects.create(nombre="Devolución urgente")
+        self.garantia = Garantia.objects.create(
+            titulo="Garantía devolución 123", descripcion="Datos compatibles",
+            cliente=self.cliente, prioridad=Garantia.Prioridad.ALTA,
+            fecha_vencimiento=date(2026, 10, 20), creado_por=self.usuario,
+            estado=Garantia.Estado.DEVOLUCION_CLIENTE,
+        )
+        self.garantia.asignados.add(self.asignado)
+        self.garantia.etiquetas.add(self.etiqueta)
+        self.client.force_login(self.usuario)
+
+    def test_envio_crea_cuenta_en_destino_con_trazabilidad_y_campos(self):
+        response = self.client.post(reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk]))
+        self.assertEqual(response.status_code, 200)
+        cuenta = CuentaGastos.objects.get(garantia_origen=self.garantia)
+        self.assertEqual(self.garantia.refresh_from_db(), None)
+        self.assertEqual(self.garantia.estado, Garantia.Estado.DEVOLUCION_CLIENTE)
+        self.assertEqual(cuenta.columna.codigo, "DEVOLUCION_A_GARANTIAS")
+        self.assertEqual(cuenta.titulo, self.garantia.titulo)
+        self.assertEqual(cuenta.descripcion, self.garantia.descripcion)
+        self.assertEqual(cuenta.cliente, self.cliente)
+        self.assertEqual(cuenta.prioridad, Garantia.Prioridad.ALTA)
+        self.assertEqual(cuenta.fecha_vencimiento, self.garantia.fecha_vencimiento)
+        self.assertEqual(list(cuenta.asignados.values_list("pk", flat=True)), [self.asignado.pk])
+        self.assertEqual(cuenta.agencia_aduanal, "")
+
+    def test_segundo_envio_es_idempotente_y_controlado(self):
+        self.client.post(reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk]))
+        second = self.client.post(reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk]))
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(second.json()["creada"])
+        self.assertEqual(CuentaGastos.objects.filter(garantia_origen=self.garantia).count(), 1)
+
+    def test_endpoint_rechaza_garantia_fuera_de_devolucion_cliente(self):
+        self.garantia.estado = Garantia.Estado.SOLICITUD_NAVIERA
+        self.garantia.columna = GarantiaColumna.objects.get(codigo=Garantia.Estado.SOLICITUD_NAVIERA)
+        self.garantia.save(update_fields=["estado", "columna"])
+        response = self.client.post(reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk]))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(CuentaGastos.objects.filter(garantia_origen=self.garantia).count(), 0)
+
+    def test_endpoint_requiere_autenticacion(self):
+        self.client.logout()
+        response = self.client.post(reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk]))
+        self.assertEqual(response.status_code, 302)
+
+    def test_boton_aparece_en_tarjeta_y_no_en_detalle(self):
+        panel = self.client.get(reverse("garantias:panel_garantias"))
+        self.assertContains(panel, 'data-garantia-send-cuenta="1"')
+        detalle = self.client.get(reverse("garantias:detalle_garantia_parcial", args=[self.garantia.pk]))
+        self.assertNotContains(detalle, "Enviar a Devolución a garantías")
+
+    def test_boton_no_aparece_fuera_de_devolucion_cliente(self):
+        self.garantia.estado = Garantia.Estado.SOLICITUD_NAVIERA
+        self.garantia.columna = GarantiaColumna.objects.get(codigo=Garantia.Estado.SOLICITUD_NAVIERA)
+        self.garantia.save(update_fields=["estado", "columna"])
+        self.assertNotContains(self.client.get(reverse("garantias:panel_garantias")), 'data-garantia-send-cuenta="1"')
+
+    def test_endpoint_requiere_csrf_y_acepta_token(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.usuario)
+        url = reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk])
+        self.assertEqual(csrf_client.post(url).status_code, 403)
+        pagina = csrf_client.get(reverse("garantias:panel_garantias"))
+        token = get_token(pagina.wsgi_request)
+        response = csrf_client.post(url, HTTP_X_CSRFTOKEN=token, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(response.status_code, 200)
+
+    def test_tarjeta_muestra_estado_enviado_despues_del_envio(self):
+        self.client.post(reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk]))
+        panel = self.client.get(reverse("garantias:panel_garantias"))
+        self.assertContains(panel, "Enviado a Devolución a garantías")
+        self.assertNotContains(panel, 'data-garantia-send-cuenta="1"')
 

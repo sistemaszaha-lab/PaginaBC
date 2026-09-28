@@ -1498,6 +1498,31 @@
 
     root.addEventListener('click', (e) => {
 
+      const sendCuentaButton = e.target.closest('[data-garantia-send-cuenta="1"]');
+      if (sendCuentaButton) {
+        e.preventDefault();
+        if (sendCuentaButton.dataset.pending === '1') return;
+        sendCuentaButton.dataset.pending = '1';
+        sendCuentaButton.disabled = true;
+        window.csrfFetch(sendCuentaButton.dataset.sendUrl, {
+          method: 'POST',
+          headers: {'Accept': 'application/json'}
+        }).then(readJsonResponse).then((data) => {
+          if (!data.ok) throw Object.assign(new Error(data.error || 'No se pudo enviar la garantía.'), {status: 400, data});
+          const status = document.createElement('span');
+          status.className = 'btn btn-sm btn-outline-success disabled';
+          status.dataset.garantiaSendCuentaStatus = '1';
+          status.textContent = 'Enviado a Devolución a garantías';
+          sendCuentaButton.replaceWith(status);
+          showToast(data.creada === false ? 'La garantía ya había sido enviada.' : 'Enviada a Cuenta de gastos.', 'success');
+        }).catch((error) => {
+          sendCuentaButton.dataset.pending = '0';
+          sendCuentaButton.disabled = false;
+          showToast(error?.data?.error || requestErrorMessage(error), 'danger');
+        });
+        return;
+      }
+
       const inlineOpenButton = e.target.closest('[data-garantia-inline-open="1"]');
       if (inlineOpenButton) {
         e.preventDefault();

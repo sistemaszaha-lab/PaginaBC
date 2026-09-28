@@ -25,6 +25,7 @@ urlpatterns = [
     path("actualizar-estado/", views.actualizar_estado_garantia, name="actualizar_estado_garantia"),
     path("<int:pk>/actualizar-inline/", views.actualizar_garantia_inline, name="actualizar_garantia_inline"),
     path("<int:pk>/detalle/", views.detalle_garantia_parcial, name="detalle_garantia_parcial"),
+    path("<int:pk>/enviar-a-cuenta-gastos/", views.enviar_garantia_a_cuenta, name="enviar_garantia_a_cuenta"),
     path("<int:pk>/", views.detalle_garantia, name="detalle_garantia"),
     path("<int:pk>/editar/", views.editar_garantia, name="editar_garantia"),
     path("<int:pk>/eliminar/", views.eliminar_garantia, name="eliminar_garantia"),

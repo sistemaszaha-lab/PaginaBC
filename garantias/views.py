@@ -38,7 +38,7 @@ from .models import (
     GarantiaEnlace,
     GarantiaEtiqueta,
 )
-from .services import copiar_garantia_a_columna
+from .services import copiar_garantia_a_columna, enviar_garantia_a_cuenta_gastos
 from .services import obtener_datos_garantia_desde_referencia
 from solicitudes.models import Referencia
 
@@ -154,7 +154,7 @@ def _es_ajax(request):
 def _garantia_queryset():
     return (
         Garantia.objects.filter(eliminado_en__isnull=True)
-        .select_related("cliente", "creado_por", "columna")
+        .select_related("cliente", "creado_por", "columna", "cuenta_gastos_generada")
         .prefetch_related("asignados", "etiquetas")
         .annotate(
             comentarios_count=Count("comentarios", distinct=True),
@@ -1168,6 +1168,16 @@ def detalle_garantia(request, pk):
     if _es_ajax(request):
         return render(request, _detalle_template_name(layout), contexto)
     return render(request, "garantias/detalle_garantia.html", contexto)
+
+@login_required
+@require_POST
+def enviar_garantia_a_cuenta(request, pk):
+    garantia = get_object_or_404(Garantia, pk=pk, eliminado_en__isnull=True)
+    try:
+        cuenta, creada = enviar_garantia_a_cuenta_gastos(garantia, creado_por=request.user)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, "creada": creada, "cuenta_id": cuenta.pk})
 
 
 @login_required

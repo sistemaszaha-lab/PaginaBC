@@ -90,6 +90,13 @@
         </svg>
       </button>
       {% include "components/_kanban_status_control.html" with obj=g select_attr="data-garantia-state-select" choices=columnas_estado only %}
+      {% if g.estado == "DEVOLUCION_CLIENTE" %}
+        {% if g.cuenta_gastos_generada %}
+          <span class="btn btn-sm btn-outline-success disabled" data-garantia-send-cuenta-status="1">Enviado a Devolución a garantías</span>
+        {% else %}
+          <button type="button" class="btn btn-sm btn-outline-primary" data-garantia-send-cuenta="1" data-garantia-id="{{ g.id }}" data-send-url="{% url 'garantias:enviar_garantia_a_cuenta' g.id %}">Enviar a Devolución a garantías</button>
+        {% endif %}
+      {% endif %}
 
       <a
         href="{% url 'garantias:detalle_garantia_parcial' g.id %}"

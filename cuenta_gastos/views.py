@@ -6,12 +6,14 @@ from django.db import transaction
 from django.db.models import Count, F, Q, Window
 from django.db.models.functions import RowNumber
 from pathlib import Path
+from datetime import date
 
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.http import content_disposition_header
+from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
@@ -209,6 +211,9 @@ def _columnas_panel(usuario=None):
             ),
         )
     )
+    especiales = [c for c in cuentas if c.estado == CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS]
+    especiales.sort(key=lambda c: (c.fecha_vencimiento is None, c.fecha_vencimiento or date.max, c.id))
+    cuentas = [c for c in cuentas if c.estado != CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS] + especiales
     cuentas_por_estado = {columna.codigo: [] for columna in columnas}
     totales = {columna.codigo: 0 for columna in columnas}
     for cuenta in cuentas:

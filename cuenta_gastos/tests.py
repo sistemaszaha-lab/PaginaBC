@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 import re
 from unittest.mock import patch
@@ -494,6 +494,9 @@ class CuentaGastosTests(TestCase):
         self.assertContains(resp, "Laptop HP")
 
     def test_columnas_base_registradas_con_orden_original(self):
+        esperadas = list(views.COLUMNAS_INICIALES) + [
+            ("DEVOLUCION_A_GARANTIAS", "Devoluci\u00f3n a garant\u00edas")
+        ]
         self.assertEqual(
             list(
                 CuentaGastosColumna.objects.order_by("orden", "id").values_list(
@@ -501,8 +504,55 @@ class CuentaGastosTests(TestCase):
                     "nombre",
                 )
             ),
-            list(views.COLUMNAS_INICIALES),
+            esperadas,
         )
+
+    def test_agencia_aduanal_se_crea_edita_puede_vaciarse_y_se_copia(self):
+        self.cuenta.agencia_aduanal = "Agencia Aduanal del Golfo"
+        self.cuenta.save(update_fields=["agencia_aduanal"])
+        self.assertEqual(CuentaGastos.objects.get(pk=self.cuenta.pk).agencia_aduanal, "Agencia Aduanal del Golfo")
+        response = self.client.post(reverse("cuenta_gastos:editar_cuenta", args=[self.cuenta.pk]), {
+            "titulo": self.cuenta.titulo, "descripcion": self.cuenta.descripcion,
+            "cliente": self.cliente.pk, "prioridad": self.cuenta.prioridad,
+            "fecha_vencimiento": str(self.cuenta.fecha_vencimiento),
+            "agencia_aduanal": "Agencia Aduanal del Golfo Editada",
+        })
+        self.assertIn(response.status_code, (200, 302))
+        self.cuenta.refresh_from_db()
+        self.assertEqual(self.cuenta.agencia_aduanal, "Agencia Aduanal del Golfo Editada")
+        self.cuenta.agencia_aduanal = ""
+        self.cuenta.save(update_fields=["agencia_aduanal"])
+        destino = CuentaGastosColumna.objects.get(codigo="DEVOLUCION_A_GARANTIAS")
+        copia = copiar_cuenta_gastos_a_columna(self.cuenta, destino, self.user)
+        self.assertEqual(copia.agencia_aduanal, "")
+
+    def test_formulario_y_detalle_exponen_agencia_aduanal(self):
+        formulario = self.client.get(reverse("cuenta_gastos:formulario_cuenta_gastos_inline"))
+        self.assertContains(formulario, 'name="agencia_aduanal"')
+        self.cuenta.agencia_aduanal = "Agencia Aduanal del Golfo"
+        self.cuenta.save(update_fields=["agencia_aduanal"])
+        detalle = self.client.get(reverse("cuenta_gastos:detalle_cuenta_gastos", args=[self.cuenta.pk]))
+        detalle_html = detalle.json()["html"]
+        self.assertIn('name="agencia_aduanal"', detalle_html)
+        self.assertIn("Agencia Aduanal del Golfo", detalle_html)
+
+    def test_solicitud_agencia_aduanal_usa_fecha_ascendente_y_sin_fecha_al_final(self):
+        columna = CuentaGastosColumna.objects.get(codigo=CuentaGastos.Estado.SOLICITUD_CUENTA_GASTOS)
+        for titulo, vencimiento in (("Nov", date(2026, 11, 10)), ("Ene20", date(2026, 1, 20)), ("Jun", date(2026, 6, 5)), ("Ene03", date(2026, 1, 3)), ("Sin fecha", None)):
+            CuentaGastos.objects.create(titulo=titulo, creado_por=self.user, estado=columna.codigo, columna=columna, fecha_vencimiento=vencimiento)
+        response = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
+        items = response.context["columnas"][2]["items"]
+        self.assertEqual([item.titulo for item in items], ["Ene03", "Ene20", "Jun", "Nov", "Sin fecha"])
+
+    def test_devolucion_a_garantias_existe_y_acepta_creacion_y_reordenamiento(self):
+        columna = CuentaGastosColumna.objects.get(codigo="DEVOLUCION_A_GARANTIAS")
+        self.assertEqual(columna.nombre, "Devoluci\u00f3n a garant\u00edas")
+        response = self.client.post(reverse("cuenta_gastos:crear_cuenta_gastos_inline"), {"titulo": "Devolucion manual", "columna_id": columna.pk}, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(CuentaGastos.objects.get(titulo="Devolucion manual").columna_id, columna.pk)
+        ids = [str(c.pk) for c in CuentaGastosColumna.objects.order_by("-orden", "-id")]
+        self.assertEqual(self.client.post(reverse("cuenta_gastos:columna_reordenar"), {"columnas[]": ids}, HTTP_X_REQUESTED_WITH="XMLHttpRequest").status_code, 200)
+        self.assertEqual(list(CuentaGastosColumna.objects.order_by("orden", "id").values_list("pk", flat=True)), [int(i) for i in ids])
 
     def test_cuenta_existente_recibe_fk_de_columna_por_estado(self):
         self.assertEqual(self.cuenta.estado, CuentaGastos.Estado.SOLICITUD_PAGO)

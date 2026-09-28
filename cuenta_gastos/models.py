@@ -126,6 +126,7 @@ class CuentaGastos(models.Model):
         null=True,
         blank=True
     )
+    agencia_aduanal = models.CharField(max_length=255, blank=True, default="")
 
     fecha_creacion = models.DateTimeField(
         default=timezone.now
@@ -146,6 +147,10 @@ class CuentaGastos(models.Model):
         "operaciones.Operacion", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="cuenta_gastos_generada",
         editable=False,
+    )
+    garantia_origen = models.OneToOneField(
+        "garantias.Garantia", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="cuenta_gastos_generada", editable=False,
     )
     eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
     eliminado_por = models.ForeignKey(

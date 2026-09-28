@@ -51,6 +51,7 @@ def copiar_cuenta_gastos_a_columna(
         columna=columna_destino,
         creado_por=usuario,
         fecha_vencimiento=cuenta_original.fecha_vencimiento,
+        agencia_aduanal=cuenta_original.agencia_aduanal,
     )
     nueva_cuenta.asignados.set(cuenta_original.asignados.all())
     nueva_cuenta.etiquetas.set(cuenta_original.etiquetas.all())
