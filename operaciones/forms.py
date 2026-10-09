@@ -423,12 +423,6 @@ class OperacionEtiquetaCreateForm(forms.Form):
         widget=forms.TextInput(attrs={"class": "form-control form-control-color", "type": "color"}),
     )
 
-    def clean(self):
-        cleaned = super().clean()
-        if not cleaned.get("visible_para_todos") and not cleaned.get("usuarios_visibles"):
-            raise forms.ValidationError("Selecciona al menos un usuario o marca Todos los usuarios.")
-        return cleaned
-
     def clean_nombre(self):
         return self.cleaned_data["nombre"].strip()
     def clean_color(self):

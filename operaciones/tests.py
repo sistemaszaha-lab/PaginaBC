@@ -5,6 +5,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.test.utils import override_settings
@@ -2106,6 +2107,43 @@ class OperacionesGeneratedTagsTests(TestCase):
         self.assertEqual(response.json()["ok"], True)
         etiqueta = OperacionEtiqueta.objects.get(nombre="Nueva")
         self.assertEqual(etiqueta.color, "#12AB34")
+
+    def test_crear_etiqueta_permite_ejecutivo_autorizado(self):
+        ejecutivo = get_user_model().objects.create_user(username="generated_tags_ejecutivo", password="pass")
+        ejecutivo.groups.add(Group.objects.create(name="ejecutivo"))
+        self.client.force_login(ejecutivo)
+
+        response = self.client.post(
+            reverse("operaciones:crear_etiqueta"),
+            {"nombre": "EUR1", "color": "#3E9FA2"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["ok"], True)
+        self.assertEqual(OperacionEtiqueta.objects.get(nombre="EUR1").color, "#3E9FA2")
+
+    def test_crear_etiqueta_rechaza_datos_invalidos(self):
+        response = self.client.post(
+            reverse("operaciones:crear_etiqueta"),
+            {"nombre": "", "color": "azul"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+        self.assertIn("nombre", response.json()["errors"])
+        self.assertIn("color", response.json()["errors"])
+
+    def test_crear_etiqueta_requiere_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+
+        response = client.post(
+            reverse("operaciones:crear_etiqueta"),
+            {"nombre": "Sin CSRF", "color": "#12AB34"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(OperacionEtiqueta.objects.filter(nombre="Sin CSRF").exists())
 
     def test_detalle_no_permite_crear_etiquetas_desde_tom_select(self):
         operacion = Operacion.objects.create(titulo="Operacion detalle", creado_por=self.user)
