@@ -18,6 +18,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
+from solicitudes.permissions import puede_ver_todo
 
 # pyrefly: ignore [missing-import]
 from .forms import (
@@ -88,7 +89,7 @@ def _es_admin_operaciones(user):
     return bool(user and user.is_authenticated and (user.is_superuser or user.is_staff or user.groups.filter(name__iexact="admin").exists()))
 
 def _puede_ver_columna(user, columna):
-    return _es_admin_operaciones(user) or columna.visible_para_todos or columna.usuarios_visibles.filter(pk=user.pk).exists()
+    return puede_ver_todo(user) or _es_admin_operaciones(user) or columna.visible_para_todos or columna.usuarios_visibles.filter(pk=user.pk).exists()
 
 
 def _columnas_activas():
@@ -231,7 +232,8 @@ def _board_queryset(usuario=None):
         Q(columna__activa=True) | Q(columna__isnull=True)
     )
     if usuario is not None:
-        queryset = queryset.filter(asignados__id=usuario.id).distinct()
+        if not puede_ver_todo(usuario):
+            queryset = queryset.filter(asignados__id=usuario.id).distinct()
         permitidas = [c.codigo for c in _columnas_activas() if _puede_ver_columna(usuario, c)]
         queryset = queryset.filter(estado__in=permitidas)
     return queryset.order_by(*OPERACION_ORDERING)
@@ -698,7 +700,7 @@ def panel_operaciones(request):
     if "usuario" in request.GET:
         usuario = _get_usuario_filter(request)
     else:
-        usuario = request.user
+        usuario = None if puede_ver_todo(request.user) else request.user
     columnas = _columnas_kanban(usuario)
 
     return render(request, "operaciones/panel_operaciones.html", {
@@ -727,7 +729,7 @@ def tablero_partial(request):
     if "usuario" in request.GET:
         usuario = _get_usuario_filter(request)
     else:
-        usuario = request.user
+        usuario = None if puede_ver_todo(request.user) else request.user
     return render(
         request,
         "operaciones/_tablero.html",

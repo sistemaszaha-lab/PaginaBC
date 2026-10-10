@@ -29,11 +29,9 @@
             <td>{{ u|nombre_completo }}</td>
             <td>{{ u.email }}</td>
             <td>
-                {% if u.is_superuser %}
-                    <span class="badge bg-danger">Administrador</span>
-                {% else %}
-                    <span class="badge bg-primary">Ejecutivo</span>
-                {% endif %}
+                {% if u.is_superuser %}<span class="badge bg-danger">Administrador</span>
+                {% elif u|etiqueta_rol == "Solo lectura" %}<span class="badge bg-secondary">Solo lectura</span>
+                {% else %}<span class="badge bg-primary">Ejecutivo</span>{% endif %}
             </td>
             <td>{{ u.last_login|default:"Nunca" }}</td>
             <td>

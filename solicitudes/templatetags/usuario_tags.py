@@ -1,7 +1,12 @@
 from django import template
 from django.core.exceptions import ObjectDoesNotExist
+from solicitudes.permissions import rol_de_usuario, ROL_ADMIN, ROL_SOLO_LECTURA
 
 register = template.Library()
+
+@register.filter
+def etiqueta_rol(user):
+    return {ROL_ADMIN: "Administrador", ROL_SOLO_LECTURA: "Solo lectura"}.get(rol_de_usuario(user), "Ejecutivo")
 
 
 @register.filter

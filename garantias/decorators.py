@@ -1,6 +1,7 @@
 ﻿from functools import wraps
 
 from django.core.exceptions import PermissionDenied
+from solicitudes.permissions import es_solo_lectura
 
 
 def admin_required(view_func):
@@ -13,7 +14,7 @@ def admin_required(view_func):
         # Garantías: acceso completo para Administrador y Ejecutivo.
         # En este sistema, "Ejecutivo" corresponde a usuarios autenticados que no son superuser.
         rol = "admin" if request.user.is_superuser else "ejecutivo"
-        if rol not in {"admin", "ejecutivo"}:
+        if rol not in {"admin", "ejecutivo"} and not es_solo_lectura(request.user):
             raise PermissionDenied("No tienes permisos para acceder a este mÃ³dulo.")
 
         return view_func(request, *args, **kwargs)

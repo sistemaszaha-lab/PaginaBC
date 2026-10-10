@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 from clientes.models import normalizar_texto_cliente
 from .models import Cotizacion, Referencia, Solicitud, UserProfile
+from .permissions import ROL_ADMIN, ROL_EJECUTIVO, ROL_SOLO_LECTURA, aplicar_rol, rol_de_usuario
 
 CLIENTE_NUEVO_LABEL = "Registrar cliente nuevo"
 CLIENTE_NUEVO_VALUE = "Registrar cliente nuevo"
@@ -158,8 +159,9 @@ class CrearUsuarioForm(UserCreationForm):
     )
 
     ROLES = (
-        ("admin", "Administrador"),
-        ("usuario", "Ejecutivo"),
+        (ROL_ADMIN, "Administrador"),
+        (ROL_EJECUTIVO, "Ejecutivo"),
+        (ROL_SOLO_LECTURA, "Solo lectura"),
     )
 
     rol = forms.ChoiceField(
@@ -217,6 +219,7 @@ class CrearUsuarioForm(UserCreationForm):
         user.email = self.cleaned_data.get("email", "")
         if commit:
             user.save()
+            aplicar_rol(user, self.cleaned_data["rol"])
             self.save_profile(user)
         return user
 
@@ -244,8 +247,9 @@ class EditarUsuarioForm(forms.ModelForm):
     )
 
     ROLES = (
-        ("admin", "Administrador"),
-        ("usuario", "Ejecutivo"),
+        (ROL_ADMIN, "Administrador"),
+        (ROL_EJECUTIVO, "Ejecutivo"),
+        (ROL_SOLO_LECTURA, "Solo lectura"),
     )
 
     rol = forms.ChoiceField(
@@ -288,7 +292,7 @@ class EditarUsuarioForm(forms.ModelForm):
         if "email" in self.fields:
             self.fields["email"].widget.attrs.setdefault("class", "form-control")
         if self.can_edit_role:
-            self.fields["rol"].initial = "admin" if self.instance.is_superuser else "usuario"
+            self.fields["rol"].initial = rol_de_usuario(self.instance)
         else:
             self.fields.pop("rol")
 
@@ -329,8 +333,6 @@ class EditarUsuarioForm(forms.ModelForm):
         user = super().save(commit=False)
         if self.can_edit_role:
             rol = self.cleaned_data["rol"]
-            user.is_superuser = rol == "admin"
-            user.is_staff = rol == "admin"
 
         user.first_name = self.cleaned_data["primer_nombre"]
         user.last_name = self.cleaned_data["apellidos"]
@@ -341,6 +343,8 @@ class EditarUsuarioForm(forms.ModelForm):
 
         if commit:
             user.save()
+            if self.can_edit_role:
+                aplicar_rol(user, self.cleaned_data["rol"])
             self.save_profile(user)
         return user
 

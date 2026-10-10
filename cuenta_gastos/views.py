@@ -15,6 +15,7 @@ from django.urls import reverse
 from django.utils.http import content_disposition_header
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
+from solicitudes.permissions import puede_ver_todo
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from solicitudes_app.trash import enviar_a_papelera
@@ -192,7 +193,8 @@ def _cuentas_filtradas(usuario=None):
         Q(columna__activa=True) | Q(columna__isnull=True)
     )
     if usuario is not None:
-        queryset = queryset.filter(asignados=usuario).distinct()
+        if not puede_ver_todo(usuario):
+            queryset = queryset.filter(asignados=usuario).distinct()
     return queryset.order_by(*CUENTA_ORDERING)
 
 
@@ -588,7 +590,7 @@ def _json_pdf_invalido():
 @ensure_csrf_cookie
 @login_required
 def panel_cuenta_gastos(request):
-    usuario = _get_usuario_filter(request)
+    usuario = None if puede_ver_todo(request.user) and "usuario" not in request.GET else _get_usuario_filter(request)
     columnas = _columnas_panel(usuario)
     return render(
 

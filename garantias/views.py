@@ -16,6 +16,7 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from .decorators import admin_required
+from solicitudes.permissions import puede_ver_todo
 from solicitudes_app.trash import enviar_a_papelera
 from .forms import (
     GarantiaArchivosForm,
@@ -203,7 +204,8 @@ def _board_queryset(usuario=None):
         Q(columna__activa=True) | Q(columna__isnull=True)
     )
     if usuario is not None:
-        queryset = queryset.filter(asignados__id=usuario.id).distinct()
+        if not puede_ver_todo(usuario):
+            queryset = queryset.filter(asignados__id=usuario.id).distinct()
     return queryset.order_by(*GARANTIA_ORDERING)
 
 
@@ -485,7 +487,7 @@ def _detalle_template_name(layout: str) -> str:
 @admin_required
 @ensure_csrf_cookie
 def panel_garantias(request):
-    usuario = _get_usuario_filter(request)
+    usuario = None if puede_ver_todo(request.user) and "usuario" not in request.GET else _get_usuario_filter(request)
     return render(
         request,
         "garantias/panel_garantias.html",
@@ -512,7 +514,7 @@ def panel_garantias(request):
 @admin_required
 @require_GET
 def tablero_partial(request):
-    usuario = _get_usuario_filter(request)
+    usuario = None if puede_ver_todo(request.user) and "usuario" not in request.GET else _get_usuario_filter(request)
     return render(
         request,
         "garantias/_tablero.html",

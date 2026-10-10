@@ -43,6 +43,7 @@ from .services import (
     obtener_datos_panel_desde_solicitud,
     obtener_initial_referencia_desde_solicitud,
 )
+from .permissions import ROL_ADMIN, aplicar_rol, es_solo_lectura, rol_de_usuario
 
 ESTADOS_SIGUIENTES = {
     "Pendiente": "Cumplido",
@@ -1083,7 +1084,8 @@ def cambiar_ejecutivo(request, pk):
 
 @login_required
 def lista_usuarios(request):
-    _requiere_admin(request.user)
+    if not (_es_admin(request.user) or es_solo_lectura(request.user)):
+        _requiere_admin(request.user)
     usuarios_qs = (
         User.objects.select_related("perfil")
         .all()
@@ -1108,7 +1110,8 @@ def lista_usuarios(request):
 
 @login_required
 def crear_usuario(request):
-    _requiere_admin(request.user)
+    if not (request.method == "GET" and es_solo_lectura(request.user)):
+        _requiere_admin(request.user)
     next_url = _safe_next_url(request, "lista_usuarios")
     admin_count = User.objects.filter(is_superuser=True).count()
 
@@ -1121,9 +1124,8 @@ def crear_usuario(request):
                 form.add_error("rol", f"Solo se permiten {MAX_ADMIN_USERS} usuarios con rol Administrador.")
             else:
                 user = form.save(commit=False)
-                user.is_superuser = rol == "admin"
-                user.is_staff = rol == "admin"
                 user.save()
+                aplicar_rol(user, rol)
                 form.save_profile(user)
                 return redirect(next_url)
     else:
@@ -1158,7 +1160,7 @@ def editar_usuario(request, pk):
         if form.is_valid():
             if puede_editar_rol:
                 rol = form.cleaned_data["rol"]
-                promoviendo_a_admin = rol == "admin" and not usuario.is_superuser
+                promoviendo_a_admin = rol == ROL_ADMIN and not usuario.is_superuser
                 if promoviendo_a_admin and User.objects.filter(is_superuser=True).count() >= MAX_ADMIN_USERS:
                     form.add_error("rol", f"Solo se permiten {MAX_ADMIN_USERS} usuarios con rol Administrador.")
                 else:

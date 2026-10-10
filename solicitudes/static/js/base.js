@@ -176,3 +176,57 @@ window.csrfFetch = function (url, options = {}) {
         credentials: "same-origin",
     });
 };
+
+// Visual guardrail for SOLO LECTURA. Backend authorization remains the source
+// of truth; this only prevents accidental interaction with write controls.
+(() => {
+    if (document.body.dataset.readOnly !== "true") return;
+
+    const isWriteForm = (form) => {
+        if (!form) return false;
+        const method = (form.getAttribute("method") || "get").toLowerCase();
+        const action = form.getAttribute("action") || "";
+        return method !== "get" && !action.endsWith("/logout/");
+    };
+
+    const lock = (root = document) => {
+        root.querySelectorAll?.("form").forEach((form) => {
+            if (!isWriteForm(form)) return;
+            form.dataset.readOnlyLocked = "true";
+            form.querySelectorAll("input:not([type=hidden]), select, textarea, button, [contenteditable=true]")
+                .forEach((control) => {
+                    control.disabled = true;
+                    if (control.hasAttribute("contenteditable")) control.setAttribute("contenteditable", "false");
+                    control.setAttribute("aria-disabled", "true");
+                });
+        });
+
+        root.querySelectorAll?.("[draggable=true], [data-sortable], [data-sortable-container]").forEach((node) => {
+            node.setAttribute("draggable", "false");
+            node.classList.add("read-only-disabled");
+        });
+    };
+
+    lock();
+    new MutationObserver((records) => records.forEach((record) => record.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) lock(node);
+    }))).observe(document.body, { childList: true, subtree: true });
+
+    document.addEventListener("dragstart", (event) => event.preventDefault(), true);
+    document.addEventListener("drop", (event) => event.preventDefault(), true);
+    document.addEventListener("click", (event) => {
+        const button = event.target.closest?.("button");
+        if (!button || button.disabled) return;
+        const action = Object.entries(button.dataset)
+            .map(([key, value]) => `${key} ${value || ""}`)
+            .join(" ")
+            .toLowerCase();
+        const opensReadOnlyDetail = /open|detail|modal|drawer|cancel|close/.test(action)
+            || (button.type === "button" && /edit|create/.test(action));
+        const mutates = /create|save|submit|delete|remove|edit|update|upload|move|reorder|column|comment|tag|label|archivo|enlace|option|state|status|assign|copy|paste/.test(action);
+        if (mutates && !opensReadOnlyDetail) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    }, true);
+})();
