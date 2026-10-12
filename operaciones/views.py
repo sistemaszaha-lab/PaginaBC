@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
-from solicitudes.permissions import puede_ver_todo
+from solicitudes.permissions import es_solo_lectura, puede_ver_todo
 
 # pyrefly: ignore [missing-import]
 from .forms import (
@@ -700,7 +700,10 @@ def panel_operaciones(request):
     if "usuario" in request.GET:
         usuario = _get_usuario_filter(request)
     else:
-        usuario = None if puede_ver_todo(request.user) else request.user
+        # ADMIN/EJECUTIVO start on their own operations, while SOLO_LECTURA
+        # retains its complete visibility.  A GET filter remains an explicit
+        # selection and is never a permission restriction.
+        usuario = None if es_solo_lectura(request.user) else request.user
     columnas = _columnas_kanban(usuario)
 
     return render(request, "operaciones/panel_operaciones.html", {
@@ -729,7 +732,7 @@ def tablero_partial(request):
     if "usuario" in request.GET:
         usuario = _get_usuario_filter(request)
     else:
-        usuario = None if puede_ver_todo(request.user) else request.user
+        usuario = None if es_solo_lectura(request.user) else request.user
     return render(
         request,
         "operaciones/_tablero.html",

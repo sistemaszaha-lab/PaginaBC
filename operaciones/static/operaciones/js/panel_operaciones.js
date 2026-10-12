@@ -933,6 +933,14 @@
         const shouldShow = !selectedUserId || assignedUserIds.includes(selectedUserId);
         card.classList.toggle('operacion-user-filter-hidden', !shouldShow);
       });
+      root.querySelectorAll('[data-operaciones-column="1"]').forEach((shell) => {
+        const visibleCards = shell.querySelectorAll(
+          '[data-panel-operacion-card="1"]:not(.operacion-user-filter-hidden)'
+        ).length;
+        shell.dataset.total = String(visibleCards);
+        const countElement = shell.querySelector('[data-operaciones-column-count="1"]');
+        if (countElement) countElement.textContent = String(visibleCards);
+      });
     }
 
     function boardNeedsFilterSync() {
