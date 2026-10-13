@@ -697,7 +697,7 @@ def enviar_referencia_a_garantias(request, pk):
 def enviar_operacion_a_garantias(request, pk):
     from operaciones.models import Operacion
     from operaciones.views import _puede_modificar_operacion
-    operacion = get_object_or_404(Operacion.objects.select_related("cliente"), pk=pk, eliminado_en__isnull=True)
+    operacion = get_object_or_404(Operacion.objects.select_related("cliente").prefetch_related("asignados", "etiquetas", "comentarios", "enlaces", "archivos"), pk=pk, eliminado_en__isnull=True)
     if not _puede_modificar_operacion(request.user, operacion):
         return JsonResponse({"ok": False, "error": "No tienes permisos para enviar esta operación."}, status=403)
     if operacion.estado != Operacion.Estado.EXPEDIENTE_CG:
@@ -711,6 +711,20 @@ def enviar_operacion_a_garantias(request, pk):
         if creada:
             garantia = Garantia.objects.create(titulo=operacion.titulo, descripcion=operacion.descripcion, cliente=operacion.cliente, estado=Garantia.Estado.SOLICITUD_NAVIERA, columna=columna, prioridad=operacion.prioridad, creado_por=request.user, operacion_origen=operacion)
             garantia.asignados.set(operacion.asignados.all())
+            etiquetas = []
+            for etiqueta in operacion.etiquetas.all():
+                garantia_etiqueta, _ = GarantiaEtiqueta.objects.get_or_create(
+                    nombre=etiqueta.nombre,
+                    defaults={"color": etiqueta.color},
+                )
+                etiquetas.append(garantia_etiqueta)
+            garantia.etiquetas.set(etiquetas)
+            for comentario in operacion.comentarios.all():
+                GarantiaComentario.objects.create(garantia=garantia, usuario=comentario.usuario, comentario=comentario.comentario, fecha=comentario.fecha)
+            for enlace in operacion.enlaces.all():
+                GarantiaEnlace.objects.create(garantia=garantia, titulo=enlace.titulo, url=enlace.url, creado_por=enlace.creado_por, fecha=enlace.fecha)
+            for archivo in operacion.archivos.all():
+                GarantiaArchivo.objects.create(garantia=garantia, archivo=archivo.archivo.name, subido_por=archivo.subido_por, fecha=archivo.fecha)
     if not _es_ajax(request):
         messages.success(request, "La operación se envió a Garantías correctamente.")
         return redirect("operaciones:panel_operaciones")

@@ -268,6 +268,7 @@ class Referencia(models.Model):
     )
     agencia_aduanal = models.CharField(max_length=200, blank=True, null=True)
     fecha = models.DateField(blank=True, null=True)
+    factura = models.CharField(max_length=100, blank=True, default="")
     eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)
     eliminado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -314,6 +315,8 @@ class Referencia(models.Model):
 
     def save(self, *args, **kwargs):
         self.cliente = normalizar_texto_cliente(self.cliente)
+        factura = (self.factura or "").strip().upper()
+        self.factura = factura if not factura else (factura if factura.startswith("BC-") else f"BC-{factura}")
         return super().save(*args, **kwargs)
 
     @property

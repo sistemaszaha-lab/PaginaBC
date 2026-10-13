@@ -728,7 +728,7 @@
       });
     }
 
-    function updateColumnMetadata(shell, { name }) {
+    function updateColumnMetadata(shell, { name, visible_para_todos, usuarios_visibles_ids }) {
       if (!shell || !name) return;
       shell.dataset.columnaNombre = name;
       const title = shell.querySelector('[data-operacion-column-title="1"]');
@@ -737,6 +737,8 @@
       if (body) body.dataset.columnaNombre = name;
       const inlineButton = shell.querySelector('[data-operacion-inline-open="1"]');
       if (inlineButton) inlineButton.dataset.estadoLabel = name;
+      if (visible_para_todos !== undefined) shell.dataset.visibleParaTodos = visible_para_todos ? '1' : '0';
+      if (usuarios_visibles_ids) shell.dataset.usuariosVisibles = usuarios_visibles_ids.join(',');
     }
 
     function syncColumnVisibilityForm(form, allValue, userIds = []) {
@@ -2260,7 +2262,7 @@
             return data;
           })
           .then((data) => {
-            updateColumnMetadata(activeColumnShell, { name: data.nombre });
+            updateColumnMetadata(activeColumnShell, { name: data.nombre, visible_para_todos: data.visible_para_todos, usuarios_visibles_ids: data.usuarios_visibles_ids });
             columnEditModalInstance?.hide();
           })
           .catch((error) => {

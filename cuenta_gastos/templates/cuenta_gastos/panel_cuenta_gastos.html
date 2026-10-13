@@ -39,6 +39,10 @@
                 {% endfor %}
             </select>
         </form>
+        <div class="cuenta-toolbar__search">
+            <label class="form-label small text-muted mb-1" for="cuenta-gastos-search">Buscar tarjetas</label>
+            <input id="cuenta-gastos-search" type="search" class="form-control" placeholder="Buscar..." autocomplete="off">
+        </div>
     </div>
 
     {% include "cuenta_gastos/_repositorio.html" with documentos=repositorio_contexto.documentos documentos_total=repositorio_contexto.documentos_total total_documentos=repositorio_contexto.documentos_total documentos_visibles=repositorio_contexto.documentos_visibles mostrar_todos=repositorio_contexto.mostrar_todos hay_mas_documentos=repositorio_contexto.hay_mas_documentos initial_limit=repositorio_contexto.initial_limit only %}

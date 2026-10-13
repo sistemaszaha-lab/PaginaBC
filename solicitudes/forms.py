@@ -519,11 +519,12 @@ class ReferenciaForm(forms.ModelForm):
 
     class Meta:
         model = Referencia
-        fields = ["ejecutivo", "cliente", "servicio", "medio_operacion", "agencia_aduanal", "fecha"]
+        fields = ["ejecutivo", "cliente", "servicio", "medio_operacion", "agencia_aduanal", "fecha", "factura"]
         labels = {
             "medio_operacion": "Medio",
         }
         widgets = {
+            "factura": forms.TextInput(attrs={"class": "form-control", "placeholder": "BC-001", "prefix": "BC-"}),
             "fecha": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date", "class": "form-control"}),
             "cliente": forms.TextInput(
                 attrs={"class": "form-control js-uppercase-cliente", "list": "clientes_datalist", "autocomplete": "off"}
@@ -533,6 +534,7 @@ class ReferenciaForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["factura"].label = "Factura (BC-)"
         _configurar_ejecutivo_field(self.fields.get("ejecutivo"))
         if "medio_operacion" in self.fields:
             self.fields["medio_operacion"].required = False
@@ -543,6 +545,7 @@ class ReferenciaForm(forms.ModelForm):
                 self.fields["medio_operacion"].choices = [("", "Seleccionar (opcional)")] + choices[1:]
         if not self.instance.pk:
             self.fields["fecha"].initial = date.today()
+            self.fields["factura"].initial = "BC-"
         elif self.instance.servicio and self.instance.servicio not in self.CODIGOS_OPERACION:
             self.fields["servicio"].choices = (
                 [(self.instance.servicio, self.instance.servicio)]
@@ -575,6 +578,12 @@ class ReferenciaForm(forms.ModelForm):
                     if not debe_regenerar or intento == intentos - 1:
                         raise
         return referencia
+
+    def clean_factura(self):
+        value = (self.cleaned_data.get("factura") or "").strip().upper()
+        if not value:
+            return ""
+        return value if value.startswith("BC-") else f"BC-{value}"
 
     def clean_cliente(self):
         return normalizar_texto_cliente(_validar_cliente(self.cleaned_data.get("cliente")))

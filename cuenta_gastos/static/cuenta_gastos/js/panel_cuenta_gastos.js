@@ -1,5 +1,54 @@
   console.info('panel_cuenta_gastos.js cargado');
 
+  function aplicarBusquedaCuentaGastos() {
+    const input = document.getElementById('cuenta-gastos-search');
+    if (!input) return;
+    const terminos = input.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    document.querySelectorAll('[data-cuenta-card="1"]').forEach((card) => {
+      card.querySelectorAll('[data-cuenta-search-highlight="1"]').forEach((node) => node.replaceWith(document.createTextNode(node.textContent)));
+      const texto = card.textContent.toLocaleLowerCase();
+      const visible = terminos.every((termino) => texto.includes(termino));
+      card.hidden = !visible;
+      if (!visible || !terminos.length) return;
+      const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+      const nodos = [];
+      while (walker.nextNode()) nodos.push(walker.currentNode);
+      nodos.forEach((node) => {
+        if (!node.parentElement || ['SCRIPT', 'STYLE'].includes(node.parentElement.tagName)) return;
+        const original = node.nodeValue;
+        const lower = original.toLocaleLowerCase();
+        const matches = [];
+        terminos.forEach((term) => { let at = lower.indexOf(term); while (at >= 0) { matches.push([at, at + term.length]); at = lower.indexOf(term, at + term.length); } });
+        if (!matches.length) return;
+        matches.sort((a, b) => a[0] - b[0]);
+        const fragment = document.createDocumentFragment(); let cursor = 0;
+        matches.forEach(([start, end]) => { if (start < cursor) return; fragment.append(document.createTextNode(original.slice(cursor, start))); const mark = document.createElement('mark'); mark.dataset.cuentaSearchHighlight = '1'; mark.style.cssText = 'background-color:#EFFF00;color:#111111;'; mark.textContent = original.slice(start, end); fragment.append(mark); cursor = end; });
+        fragment.append(document.createTextNode(original.slice(cursor))); node.replaceWith(fragment);
+      });
+    });
+  }
+
+  document.addEventListener('input', (event) => {
+    if (event.target?.id === 'cuenta-gastos-search') aplicarBusquedaCuentaGastos();
+  });
+  document.addEventListener('change', (event) => {
+    if (event.target?.id === 'cuenta-gastos-search') aplicarBusquedaCuentaGastos();
+  });
+  const cuentaBoard = document.querySelector('[data-cuenta-board="1"]');
+  if (cuentaBoard) {
+    new MutationObserver((mutations) => {
+      const cambioTarjetas = mutations.some((mutation) =>
+        [...mutation.addedNodes, ...mutation.removedNodes].some((node) =>
+          node.nodeType === Node.ELEMENT_NODE && (
+            node.matches?.('[data-cuenta-card="1"]') ||
+            node.querySelector?.('[data-cuenta-card="1"]')
+          )
+        )
+      );
+      if (cambioTarjetas) aplicarBusquedaCuentaGastos();
+    }).observe(cuentaBoard, { childList: true, subtree: true });
+  }
+
   document.addEventListener("click", function (event) {
     const btnEliminar = event.target.closest('.repositorio-accion-eliminar');
     if (btnEliminar) {

@@ -1572,6 +1572,7 @@ def columna_crear(request):
         columna.orden = _siguiente_orden_columna()
         columna.creada_por = request.user
         columna.save()
+        form.save_m2m()
     html = render_to_string(
         "operaciones/_columna.html",
         {
@@ -1616,6 +1617,8 @@ def columna_editar(request, pk):
             "columna_id": columna.pk,
             "columna_codigo": columna.codigo,
             "nombre": columna.nombre,
+            "visible_para_todos": columna.visible_para_todos,
+            "usuarios_visibles_ids": list(columna.usuarios_visibles.values_list("id", flat=True)),
         }
     )
 
