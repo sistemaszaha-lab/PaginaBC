@@ -1547,10 +1547,25 @@ def agregar_movimientos_referencia(request, pk):
     def resumen():
         ingresos = movimientos.filter(tipo=MovimientoReferencia.INGRESO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
         gastos = movimientos.filter(tipo=MovimientoReferencia.GASTO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
-        return ingresos, gastos, [{"tipo": m.get_tipo_display(), "monto": str(m.monto), "usuario": m.registrado_por.get_full_name() or m.registrado_por.username, "fecha": timezone.localtime(m.creado_en).strftime("%d/%m/%Y %H:%M")} for m in movimientos[:50]]
+        return ingresos, gastos, [{"id": m.pk, "tipo": m.get_tipo_display(), "tipo_codigo": m.tipo, "monto": str(m.monto), "usuario": m.registrado_por.get_full_name() or m.registrado_por.username, "fecha": timezone.localtime(m.creado_en).strftime("%d/%m/%Y %H:%M")} for m in movimientos[:50]]
     if request.method == "GET":
         ingresos, gastos, historial = resumen()
         return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos-gastos), "movimientos": historial})
+    movimiento_id = request.POST.get("movimiento_id", "").strip()
+    if movimiento_id:
+        try:
+            movimiento = referencia.movimientos.get(pk=movimiento_id)
+            monto = Decimal(request.POST.get("monto", ""))
+            if monto <= 0:
+                raise ValidationError("El monto debe ser mayor que cero.")
+        except (MovimientoReferencia.DoesNotExist, ValueError, ArithmeticError, ValidationError):
+            return JsonResponse({"ok": False, "error": "El importe no es válido."}, status=400)
+        movimiento.monto = monto
+        movimiento.full_clean()
+        movimiento.save(update_fields=["monto"])
+        movimientos = referencia.movimientos.select_related("registrado_por").all()
+        ingresos, gastos, historial = resumen()
+        return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos-gastos), "movimientos": historial, "referencia": referencia.referencia})
     creados = []
     for campo, tipo in (("ingreso", MovimientoReferencia.INGRESO), ("gasto", MovimientoReferencia.GASTO)):
         valor = request.POST.get(campo, "").strip()
@@ -1569,6 +1584,21 @@ def agregar_movimientos_referencia(request, pk):
     movimientos = referencia.movimientos.select_related("registrado_por").all()
     ingresos, gastos, historial = resumen()
     return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos-gastos), "movimientos": historial, "referencia": referencia.referencia})
+
+
+@login_required
+@require_POST
+def eliminar_movimiento_referencia(request, pk, movimiento_id):
+    referencia = get_object_or_404(_referencias_activas(), pk=pk)
+    if not (request.user.is_superuser or getattr(request.user, "rol", "") == "ejecutivo"):
+        raise PermissionDenied("No tienes permisos para eliminar movimientos.")
+    movimiento = get_object_or_404(referencia.movimientos, pk=movimiento_id)
+    movimiento.delete()
+    movimientos = referencia.movimientos.select_related("registrado_por").all()
+    ingresos = movimientos.filter(tipo=MovimientoReferencia.INGRESO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
+    gastos = movimientos.filter(tipo=MovimientoReferencia.GASTO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
+    historial = [{"id": m.pk, "tipo": m.get_tipo_display(), "tipo_codigo": m.tipo, "monto": str(m.monto), "usuario": m.registrado_por.get_full_name() or m.registrado_por.username, "fecha": timezone.localtime(m.creado_en).strftime("%d/%m/%Y %H:%M")} for m in movimientos[:50]]
+    return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos - gastos), "movimientos": historial})
 
 
 @login_required

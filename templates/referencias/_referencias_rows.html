@@ -34,7 +34,7 @@
             Utilidad:
             {% if r.utilidad_calculada is not None %}${{ r.utilidad_calculada|floatformat:2 }}{% else %}—{% endif %}
         </div>
-        <button type="button" class="btn btn-sm btn-outline-primary js-movimientos-referencia" data-movimientos-url="{% url 'agregar_movimientos_referencia' r.id %}" data-referencia="{{ r.referencia }}">+ Agregar</button>
+        {% if request.user.is_superuser or user.rol == "ejecutivo" %}<button type="button" class="btn btn-sm btn-outline-primary js-movimientos-referencia" data-movimientos-url="{% url 'agregar_movimientos_referencia' r.id %}" data-referencia="{{ r.referencia }}">+ Agregar</button>{% endif %}
     </td>
     <td>
         {% if r.operacion_generada %}
