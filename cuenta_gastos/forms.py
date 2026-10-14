@@ -31,6 +31,15 @@ CUENTA_ARCHIVO_EXTENSIONS = {
 }
 
 
+def _registrar_agencia_seleccionada(nombre):
+    nombre = " ".join((nombre or "").split())
+    if nombre:
+        AgenciaAduanal.objects.get_or_create(
+            clave_normalizada=nombre.casefold(),
+            defaults={"nombre": nombre},
+        )
+
+
 class FirstNameUserMultipleChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
         return (obj.first_name or "").strip() or obj.get_full_name() or obj.username
@@ -97,6 +106,12 @@ class CuentaGastosForm(forms.ModelForm):
             if name in self.fields:
                 self.fields[name].required = False
         self.fields["etiquetas"].label_from_instance = lambda obj: obj.nombre
+
+    def save(self, commit=True):
+        instance = super().save(commit=commit)
+        if commit:
+            _registrar_agencia_seleccionada(self.cleaned_data.get("agencia_aduanal"))
+        return instance
 
 
 class CuentaGastosInlineCreateForm(forms.ModelForm):
@@ -218,6 +233,12 @@ class CuentaGastosInlineCreateForm(forms.ModelForm):
             }
             for index in range(total)
         ]
+
+    def save(self, commit=True):
+        instance = super().save(commit=commit)
+        if commit:
+            _registrar_agencia_seleccionada(self.cleaned_data.get("agencia_aduanal"))
+        return instance
 
     def clean_titulo(self):
         titulo = (self.cleaned_data.get("titulo") or "").strip()

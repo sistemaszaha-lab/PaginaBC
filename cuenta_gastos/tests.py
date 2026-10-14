@@ -21,7 +21,8 @@ from .services import (
     crear_cuenta_gastos_desde_operacion_si_corresponde,
 )
 from . import views
-from .models import CuentaGastos, CuentaGastosArchivo, CuentaGastosColumna, CuentaGastosComentario, CuentaGastosEnlace, CuentaGastosEtiqueta, CuentaGastosOpcion, DocumentoRepositorio
+from .forms import CuentaGastosForm
+from .models import AgenciaAduanal, CuentaGastos, CuentaGastosArchivo, CuentaGastosColumna, CuentaGastosComentario, CuentaGastosEnlace, CuentaGastosEtiqueta, CuentaGastosOpcion, DocumentoRepositorio
 
 PANEL_JS_PATH = (
     Path(__file__).resolve().parent
@@ -88,6 +89,39 @@ class CuentaGastosTests(TestCase):
                 "modulo": modulo,
             },
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+    def test_catalogo_inicial_no_se_alimenta_de_valores_historicos(self):
+        iniciales = {
+            "DEL BRAVO", "GADI", "ZARAGOZA", "HANO", "ESCALANTE", "RIOJA", "ESTRATEGIA"
+        }
+        self.assertEqual(set(AgenciaAduanal.objects.values_list("nombre", flat=True)), iniciales)
+
+        historica = "Agencia Histórica"
+        self.cuenta.agencia_aduanal = historica
+        self.cuenta.save(update_fields=["agencia_aduanal"])
+
+        self.assertFalse(AgenciaAduanal.objects.filter(nombre=historica).exists())
+        self.assertEqual(CuentaGastos.objects.get(pk=self.cuenta.pk).agencia_aduanal, historica)
+
+    def test_formulario_registra_agencia_nueva_explicita_sin_duplicados(self):
+        nombre = " Agencia Nueva  Explicitada "
+        form = CuentaGastosForm(
+            {"titulo": "Nueva cuenta", "agencia_aduanal": nombre},
+            instance=self.cuenta,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        form = CuentaGastosForm(
+            {"titulo": "Nueva cuenta", "agencia_aduanal": nombre.lower()},
+            instance=self.cuenta,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+
+        self.assertEqual(
+            AgenciaAduanal.objects.filter(clave_normalizada="agencia nueva explicitada").count(),
+            1,
         )
 
     def test_panel_cuenta_gastos_view(self):

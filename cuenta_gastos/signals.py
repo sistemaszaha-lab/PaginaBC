@@ -1,9 +1,6 @@
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from .models import AgenciaAduanal, CuentaGastos
+"""Signals for Cuenta de Gastos.
 
-@receiver(post_save, sender=CuentaGastos)
-def registrar_agencia_aduanal(sender, instance, **kwargs):
-    nombre = " ".join((instance.agencia_aduanal or "").split())
-    if nombre:
-        AgenciaAduanal.objects.get_or_create(clave_normalizada=nombre.casefold(), defaults={"nombre": nombre})
+The agency catalog is intentionally not synchronized from CuentaGastos saves:
+historical values must remain free text and must not become catalog entries.
+New catalog entries are created explicitly by the CuentaGastos forms.
+"""
