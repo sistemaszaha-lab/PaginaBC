@@ -6,6 +6,16 @@ from uuid import uuid4
 
 from clientes.models import Cliente
 
+class AgenciaAduanal(models.Model):
+    nombre = models.CharField(max_length=255)
+    clave_normalizada = models.CharField(max_length=255, unique=True, editable=False)
+    class Meta:
+        ordering = ["nombre", "id"]
+    def save(self, *args, **kwargs):
+        self.nombre = " ".join((self.nombre or "").split())
+        self.clave_normalizada = self.nombre.casefold()
+        return super().save(*args, **kwargs)
+
 
 operaciones_upload_storage = FileSystemStorage(
     location="uploads",

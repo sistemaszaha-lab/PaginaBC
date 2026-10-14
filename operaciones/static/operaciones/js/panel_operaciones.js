@@ -2264,6 +2264,9 @@
           .then((data) => {
             updateColumnMetadata(activeColumnShell, { name: data.nombre, visible_para_todos: data.visible_para_todos, usuarios_visibles_ids: data.usuarios_visibles_ids });
             columnEditModalInstance?.hide();
+            // La autorización se aplica al generar el tablero; recargar evita
+            // dejar visible una columna que acaba de quedar restringida.
+            window.location.reload();
           })
           .catch((error) => {
             console.error('No se pudo editar la columna:', error);

@@ -12,6 +12,7 @@ from .models import (
     CuentaGastosEnlace,
     CuentaGastosEtiqueta,
     CuentaGastosOpcion,
+    AgenciaAduanal,
 )
 
 
@@ -58,6 +59,7 @@ class MultipleFileField(forms.FileField):
 
 
 class CuentaGastosForm(forms.ModelForm):
+    agencia_aduanal = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control", "list": "agencias-aduanales"}))
     cliente = ClienteChoiceField(
         queryset=Cliente.objects.all().order_by("nombre", "empresa", "id"),
         required=False,
@@ -98,6 +100,7 @@ class CuentaGastosForm(forms.ModelForm):
 
 
 class CuentaGastosInlineCreateForm(forms.ModelForm):
+    agencia_aduanal = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm", "list": "agencias-aduanales"}))
     archivos = MultipleFileField(required=False)
     enlaces = forms.CharField(required=False, widget=forms.HiddenInput())
     cliente = ClienteChoiceField(

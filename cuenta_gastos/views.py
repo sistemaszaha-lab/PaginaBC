@@ -22,6 +22,7 @@ from solicitudes_app.trash import enviar_a_papelera
 
 
 from .models import (
+    AgenciaAduanal,
     CuentaGastos,
     CuentaGastosArchivo,
     CuentaGastosColumna,
@@ -345,6 +346,10 @@ def _es_ajax(request):
     return request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
 
+def _agencias_aduanales():
+    return AgenciaAduanal.objects.all()
+
+
 def _render_inline_create_form(request, form, columna):
     return render_to_string(
         "cuenta_gastos/_inline_create_form.html",
@@ -353,6 +358,7 @@ def _render_inline_create_form(request, form, columna):
             "estado": columna.codigo,
             "estado_label": columna.nombre,
             "columna_id": columna.pk,
+            "agencias_aduanales": _agencias_aduanales(),
         },
         request=request,
     )
@@ -523,6 +529,7 @@ def _detalle_contexto(cuenta, *, form=None, comentario_form=None, archivos_form=
         "opciones_count": len(opciones),
         "archivos": archivos,
         "files_count": len(archivos),
+        "agencias_aduanales": _agencias_aduanales(),
         "enlaces": enlaces,
         "links_count": len(enlaces),
         "layout": layout,
@@ -868,6 +875,7 @@ def formulario_cuenta_gastos_inline(request):
             "estado": columna.codigo,
             "estado_label": columna.nombre,
             "columna_id": columna.pk,
+            "agencias_aduanales": _agencias_aduanales(),
         },
     )
 

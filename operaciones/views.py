@@ -89,7 +89,16 @@ def _es_admin_operaciones(user):
     return bool(user and user.is_authenticated and (user.is_superuser or user.is_staff or user.groups.filter(name__iexact="admin").exists()))
 
 def _puede_ver_columna(user, columna):
-    return puede_ver_todo(user) or _es_admin_operaciones(user) or columna.visible_para_todos or columna.usuarios_visibles.filter(pk=user.pk).exists()
+    # La administración de una columna no concede acceso a su contenido.
+    return columna.visible_para_todos or columna.usuarios_visibles.filter(pk=user.pk).exists() or (
+        columna.creada_por_id is not None and columna.creada_por_id == getattr(user, "pk", None)
+    )
+
+
+def _puede_administrar_columna(user, columna=None):
+    if not user or not user.is_authenticated or es_solo_lectura(user):
+        return False
+    return columna is None or _es_admin_operaciones(user) or columna.creada_por_id == user.pk
 
 
 def _columnas_activas():
@@ -1555,6 +1564,8 @@ def quitar_opcion_operacion(request, operacion_id, opcion_id):
 @login_required
 @require_POST
 def columna_crear(request):
+    if not _puede_administrar_columna(request.user):
+        raise PermissionDenied("No tienes permisos para crear columnas.")
     if not _es_ajax(request):
         return JsonResponse(
             {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
@@ -1598,12 +1609,14 @@ def columna_crear(request):
 @login_required
 @require_POST
 def columna_editar(request, pk):
+    columna = get_object_or_404(OperacionColumna, pk=pk, activa=True)
+    if not _puede_administrar_columna(request.user, columna):
+        raise PermissionDenied("No tienes permisos para modificar esta columna.")
     if not _es_ajax(request):
         return JsonResponse(
             {"ok": False, "errors": {"__all__": ["Solicitud invalida."]}},
             status=400,
         )
-    columna = get_object_or_404(OperacionColumna, pk=pk, activa=True)
     form = OperacionColumnaUpdateForm(request.POST, instance=columna)
     if not form.is_valid():
         return JsonResponse(

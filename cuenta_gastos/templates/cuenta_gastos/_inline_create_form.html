@@ -66,6 +66,7 @@
     <div class="mb-2">
       <label class="form-label form-label-sm fw-semibold mb-1" for="{{ form.agencia_aduanal.id_for_label }}">Agencia aduanal</label>
       {{ form.agencia_aduanal }}
+      <datalist id="agencias-aduanales"><option>DEL BRAVO</option><option>GADI</option><option>ZARAGOZA</option><option>HANO</option><option>ESCALANTE</option><option>RIOJA</option><option>ESTRATEGIA</option></datalist>
       {% if form.agencia_aduanal.errors %}<div class="text-danger small mt-1">{{ form.agencia_aduanal.errors|join:", " }}</div>{% endif %}
     </div>
 
