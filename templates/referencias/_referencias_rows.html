@@ -28,12 +28,18 @@
     </td>
     <td>{{ r.agencia_aduanal }}</td>
     <td>{{ r.fecha }}</td>
-    <td>{{ r.factura }}</td>
+    <td class="referencia-facturas" data-facturas-url="{% url 'agregar_factura_referencia' r.id %}">
+        {% for factura in r.facturas.all %}<span class="d-block referencia-factura" data-id="{{ factura.id }}" data-url="{% url 'editar_factura_referencia' r.id factura.id %}">{{ factura.factura }}</span>{% empty %}{% if r.factura %}<span class="d-block">{{ r.factura }}</span>{% endif %}{% endfor %}
+        {% if request.user.is_superuser or user.rol == "ejecutivo" %}<button type="button" class="btn btn-link btn-sm p-0 js-agregar-factura" aria-label="Agregar factura">+</button>{% endif %}
+    </td>
     <td>
         <div class="small text-muted mb-1" data-utilidad-referencia="{{ r.id }}">
+            <div>Utilidad 1: ${{ r.utilidad_mxn|dinero }} MXN</div>
+            <div>Utilidad 2: ${{ r.utilidad_usd|dinero }} USD</div>
+            {% comment %}
             Utilidad:
             {% if r.utilidad_calculada is not None %}${{ r.utilidad_calculada|floatformat:2 }}{% else %}—{% endif %}
-        </div>
+            {% endcomment %}</div>
         {% if request.user.is_superuser or user.rol == "ejecutivo" %}<button type="button" class="btn btn-sm btn-outline-primary js-movimientos-referencia" data-movimientos-url="{% url 'agregar_movimientos_referencia' r.id %}" data-referencia="{{ r.referencia }}">+ Agregar</button>{% endif %}
     </td>
     <td>

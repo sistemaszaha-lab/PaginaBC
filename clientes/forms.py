@@ -22,9 +22,12 @@ class ClienteForm(forms.ModelForm):
             "representante_legal",
             "contacto",
             "correo",
-            "cuentas_por_cobrar",
             "telefono",
             "celular",
+            "cuentas_por_cobrar",
+            "cuentas_por_cobrar_telefono",
+            "cuentas_por_cobrar_celular",
+            "cuentas_por_cobrar_correo",
             "estado",
         ]
         labels = {
@@ -34,6 +37,9 @@ class ClienteForm(forms.ModelForm):
             "contacto": "Contacto",
             "correo": "Correo",
             "cuentas_por_cobrar": "Cuentas por cobrar",
+            "cuentas_por_cobrar_telefono": "Teléfono de cobranza",
+            "cuentas_por_cobrar_celular": "Celular de cobranza",
+            "cuentas_por_cobrar_correo": "Correo de cobranza",
             "telefono": "Teléfono",
             "celular": "Celular",
             "estado": "Status",
@@ -47,6 +53,15 @@ class ClienteForm(forms.ModelForm):
                 attrs={"class": "form-control", "autocomplete": "email"}
             ),
             "cuentas_por_cobrar": forms.TextInput(attrs={"class": "form-control"}),
+            "cuentas_por_cobrar_telefono": forms.TextInput(
+                attrs={"class": "form-control", "inputmode": "tel", "autocomplete": "tel"}
+            ),
+            "cuentas_por_cobrar_celular": forms.TextInput(
+                attrs={"class": "form-control", "inputmode": "tel", "autocomplete": "tel"}
+            ),
+            "cuentas_por_cobrar_correo": forms.EmailInput(
+                attrs={"class": "form-control", "autocomplete": "email"}
+            ),
             "telefono": forms.TextInput(
                 attrs={"class": "form-control", "inputmode": "tel", "autocomplete": "tel"}
             ),

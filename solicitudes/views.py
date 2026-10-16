@@ -37,7 +37,7 @@ from .forms import (
     ReferenciaForm,
     SolicitudForm,
 )
-from .models import Cotizacion, Referencia, Solicitud, MovimientoReferencia
+from .models import Cotizacion, Referencia, Solicitud, MovimientoReferencia, FacturaReferencia
 from .services import (
     aplicar_estados_vigentes_cotizaciones,
     obtener_datos_panel_desde_solicitud,
@@ -1480,11 +1480,10 @@ def lista_referencias(request):
         "ejecutivo",
         "operacion_generada",
         "garantia_generada",
-    ).annotate(utilidad_calculada=Sum(Case(
-        When(movimientos__tipo=MovimientoReferencia.INGRESO, then=F("movimientos__monto")),
-        When(movimientos__tipo=MovimientoReferencia.GASTO, then=-F("movimientos__monto")),
-        output_field=DecimalField(max_digits=14, decimal_places=2),
-    )))
+    ).prefetch_related("facturas").annotate(
+        utilidad_mxn=Sum(Case(When(movimientos__moneda="MXN", movimientos__tipo=MovimientoReferencia.INGRESO, then=F("movimientos__monto")), When(movimientos__moneda="MXN", movimientos__tipo=MovimientoReferencia.GASTO, then=-F("movimientos__monto")), default=Value(0), output_field=DecimalField(max_digits=14, decimal_places=2))),
+        utilidad_usd=Sum(Case(When(movimientos__moneda="USD", movimientos__tipo=MovimientoReferencia.INGRESO, then=F("movimientos__monto")), When(movimientos__moneda="USD", movimientos__tipo=MovimientoReferencia.GASTO, then=-F("movimientos__monto")), default=Value(0), output_field=DecimalField(max_digits=14, decimal_places=2))),
+    )
     q = request.GET.get("q", "").strip()
     orden = (request.GET.get("orden") or "").strip().lower()
     orden = "asc" if orden == "asc" else "desc"
@@ -1545,12 +1544,14 @@ def agregar_movimientos_referencia(request, pk):
         raise PermissionDenied("No tienes permisos para registrar movimientos.")
     movimientos = referencia.movimientos.select_related("registrado_por").all()
     def resumen():
-        ingresos = movimientos.filter(tipo=MovimientoReferencia.INGRESO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
-        gastos = movimientos.filter(tipo=MovimientoReferencia.GASTO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
-        return ingresos, gastos, [{"id": m.pk, "tipo": m.get_tipo_display(), "tipo_codigo": m.tipo, "monto": str(m.monto), "usuario": m.registrado_por.get_full_name() or m.registrado_por.username, "fecha": timezone.localtime(m.creado_en).strftime("%d/%m/%Y %H:%M")} for m in movimientos[:50]]
+        totales = {moneda: {"ingresos": Decimal("0"), "gastos": Decimal("0")} for moneda, _ in MovimientoReferencia.MONEDA_CHOICES}
+        for m in movimientos:
+            totales[m.moneda]["ingresos" if m.tipo == MovimientoReferencia.INGRESO else "gastos"] += m.monto
+        historial = [{"id": m.pk, "tipo": m.get_tipo_display(), "tipo_codigo": m.tipo, "monto": str(m.monto), "moneda": m.moneda, "usuario": m.registrado_por.get_full_name() or m.registrado_por.username, "fecha": timezone.localtime(m.creado_en).strftime("%d/%m/%Y %H:%M")} for m in movimientos[:50]]
+        return totales, historial
     if request.method == "GET":
-        ingresos, gastos, historial = resumen()
-        return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos-gastos), "movimientos": historial})
+        totales, historial = resumen()
+        return JsonResponse({"ok": True, "totales": {k: {x: str(v[x]) for x in v} for k, v in totales.items()}, "movimientos": historial})
     movimiento_id = request.POST.get("movimiento_id", "").strip()
     if movimiento_id:
         try:
@@ -1560,12 +1561,15 @@ def agregar_movimientos_referencia(request, pk):
                 raise ValidationError("El monto debe ser mayor que cero.")
         except (MovimientoReferencia.DoesNotExist, ValueError, ArithmeticError, ValidationError):
             return JsonResponse({"ok": False, "error": "El importe no es válido."}, status=400)
-        movimiento.monto = monto
+        moneda = request.POST.get("moneda", movimiento.moneda).upper()
+        if moneda not in dict(MovimientoReferencia.MONEDA_CHOICES):
+            return JsonResponse({"ok": False, "error": "La moneda no es válida."}, status=400)
+        movimiento.monto, movimiento.moneda = monto, moneda
         movimiento.full_clean()
         movimiento.save(update_fields=["monto"])
         movimientos = referencia.movimientos.select_related("registrado_por").all()
-        ingresos, gastos, historial = resumen()
-        return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos-gastos), "movimientos": historial, "referencia": referencia.referencia})
+        totales, historial = resumen()
+        return JsonResponse({"ok": True, "totales": {k: {x: str(v[x]) for x in v} for k, v in totales.items()}, "movimientos": historial, "referencia": referencia.referencia})
     creados = []
     for campo, tipo in (("ingreso", MovimientoReferencia.INGRESO), ("gasto", MovimientoReferencia.GASTO)):
         valor = request.POST.get(campo, "").strip()
@@ -1576,14 +1580,53 @@ def agregar_movimientos_referencia(request, pk):
                 return JsonResponse({"ok": False, "error": f"{campo.title()} inválido."}, status=400)
             if monto <= 0:
                 return JsonResponse({"ok": False, "error": "Los montos deben ser mayores que cero."}, status=400)
-            creados.append(MovimientoReferencia(referencia=referencia, tipo=tipo, monto=monto, registrado_por=request.user))
+            moneda = request.POST.get(f"{campo}_moneda", "").upper()
+            if moneda not in dict(MovimientoReferencia.MONEDA_CHOICES):
+                return JsonResponse({"ok": False, "error": "Selecciona MXN o USD para cada movimiento."}, status=400)
+            creados.append(MovimientoReferencia(referencia=referencia, tipo=tipo, monto=monto, moneda=moneda, registrado_por=request.user))
     if not creados:
         return JsonResponse({"ok": False, "error": "Captura al menos un ingreso o gasto."}, status=400)
     with transaction.atomic():
         MovimientoReferencia.objects.bulk_create(creados)
     movimientos = referencia.movimientos.select_related("registrado_por").all()
-    ingresos, gastos, historial = resumen()
-    return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos-gastos), "movimientos": historial, "referencia": referencia.referencia})
+    totales, historial = resumen()
+    return JsonResponse({"ok": True, "totales": {k: {x: str(v[x]) for x in v} for k, v in totales.items()}, "movimientos": historial, "referencia": referencia.referencia})
+
+
+def _puede_editar_referencia(request):
+    return request.user.is_superuser or getattr(request.user, "rol", "") == "ejecutivo"
+
+
+@login_required
+@require_POST
+def agregar_factura_referencia(request, pk):
+    referencia = get_object_or_404(_referencias_activas(), pk=pk)
+    if not _puede_editar_referencia(request):
+        raise PermissionDenied("No tienes permisos para editar referencias.")
+    factura = (request.POST.get("factura") or "").strip().upper()
+    factura = factura if factura.startswith("BC-") else f"BC-{factura}"
+    obj = FacturaReferencia(referencia=referencia, factura=factura)
+    try:
+        obj.full_clean(); obj.save()
+    except (ValidationError, IntegrityError):
+        return JsonResponse({"ok": False, "error": "La factura es inválida o ya existe."}, status=400)
+    return JsonResponse({"ok": True, "id": obj.pk, "factura": obj.factura})
+
+
+@login_required
+@require_POST
+def editar_factura_referencia(request, pk, factura_id):
+    referencia = get_object_or_404(_referencias_activas(), pk=pk)
+    if not _puede_editar_referencia(request):
+        raise PermissionDenied("No tienes permisos para editar referencias.")
+    obj = get_object_or_404(FacturaReferencia, pk=factura_id, referencia=referencia)
+    value = (request.POST.get("factura") or "").strip().upper()
+    obj.factura = value if value.startswith("BC-") else f"BC-{value}"
+    try:
+        obj.full_clean(); obj.save(update_fields=["factura"])
+    except (ValidationError, IntegrityError):
+        return JsonResponse({"ok": False, "error": "La factura es inválida o ya existe."}, status=400)
+    return JsonResponse({"ok": True, "factura": obj.factura})
 
 
 @login_required
@@ -1595,10 +1638,11 @@ def eliminar_movimiento_referencia(request, pk, movimiento_id):
     movimiento = get_object_or_404(referencia.movimientos, pk=movimiento_id)
     movimiento.delete()
     movimientos = referencia.movimientos.select_related("registrado_por").all()
-    ingresos = movimientos.filter(tipo=MovimientoReferencia.INGRESO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
-    gastos = movimientos.filter(tipo=MovimientoReferencia.GASTO).aggregate(total=Sum("monto"))["total"] or Decimal("0")
-    historial = [{"id": m.pk, "tipo": m.get_tipo_display(), "tipo_codigo": m.tipo, "monto": str(m.monto), "usuario": m.registrado_por.get_full_name() or m.registrado_por.username, "fecha": timezone.localtime(m.creado_en).strftime("%d/%m/%Y %H:%M")} for m in movimientos[:50]]
-    return JsonResponse({"ok": True, "ingresos": str(ingresos), "gastos": str(gastos), "utilidad": str(ingresos - gastos), "movimientos": historial})
+    totales = {moneda: {"ingresos": Decimal("0"), "gastos": Decimal("0")} for moneda, _ in MovimientoReferencia.MONEDA_CHOICES}
+    for m in movimientos:
+        totales[m.moneda]["ingresos" if m.tipo == MovimientoReferencia.INGRESO else "gastos"] += m.monto
+    historial = [{"id": m.pk, "tipo": m.get_tipo_display(), "tipo_codigo": m.tipo, "monto": str(m.monto), "moneda": m.moneda, "usuario": m.registrado_por.get_full_name() or m.registrado_por.username, "fecha": timezone.localtime(m.creado_en).strftime("%d/%m/%Y %H:%M")} for m in movimientos[:50]]
+    return JsonResponse({"ok": True, "totales": {k: {x: str(v[x]) for x in v} for k, v in totales.items()}, "movimientos": historial})
 
 
 @login_required

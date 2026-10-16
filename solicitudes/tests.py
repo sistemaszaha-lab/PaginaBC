@@ -14,7 +14,52 @@ from clientes.models import Cliente
 from operaciones.models import Operacion
 from panel_cotizaciones.models import PanelCotizacion, PanelCotizacionColumna
 from .forms import CLIENTE_NUEVO_LABEL, CLIENTE_NUEVO_VALUE, CotizacionForm, ReferenciaForm, SolicitudForm
-from .models import Cotizacion, Referencia, Solicitud, UserProfile
+from .models import Cotizacion, Referencia, Solicitud, UserProfile, MovimientoReferencia, FacturaReferencia
+
+
+class ReferenciaFacturaYMonedaTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="facturas-admin", password="pass")
+        self.otro = User.objects.create_user(username="facturas-otro", password="pass")
+        self.ref = Referencia.objects.create(referencia="REF-FACT", consecutivo=991, factura="BC-HIST")
+
+    def test_facturas_multiples_normalizacion_edicion_y_aislamiento(self):
+        self.client.force_login(self.admin)
+        url = reverse("agregar_factura_referencia", args=[self.ref.pk])
+        response = self.client.post(url, {"factura": "12345"})
+        self.assertEqual(response.status_code, 200)
+        factura = FacturaReferencia.objects.get(referencia=self.ref, factura="BC-12345")
+        self.assertEqual(self.client.post(url, {"factura": "BC-12345"}).status_code, 400)
+        edit = reverse("editar_factura_referencia", args=[self.ref.pk, factura.pk])
+        self.assertEqual(self.client.post(edit, {"factura": "67890"}).json()["factura"], "BC-67890")
+        self.assertEqual(FacturaReferencia.objects.filter(referencia=self.ref).count(), 1)
+
+    def test_facturas_rechazan_usuario_sin_permiso(self):
+        self.client.force_login(self.otro)
+        response = self.client.post(reverse("agregar_factura_referencia", args=[self.ref.pk]), {"factura": "22"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_movimientos_validan_moneda_y_no_mezclan_totales(self):
+        self.client.force_login(self.admin)
+        url = reverse("agregar_movimientos_referencia", args=[self.ref.pk])
+        response = self.client.post(url, {"ingreso": "100", "ingreso_moneda": "MXN", "gasto": "10", "gasto_moneda": "USD"})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["totales"]
+        self.assertEqual(data["MXN"]["ingresos"], "100")
+        self.assertEqual(data["USD"]["gastos"], "10")
+        self.assertNotIn("utilidad", response.json())
+        invalid = self.client.post(url, {"ingreso": "1", "ingreso_moneda": "EUR"})
+        self.assertEqual(invalid.status_code, 400)
+
+    def test_modal_entrega_tarjetas_y_no_resumen_corrido(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("lista_referencias"))
+        self.assertContains(response, 'id="mov-resumen" class="utilidad-cards mb-3"')
+        self.assertContains(response, "Utilidad MXN")
+        self.assertContains(response, "Utilidad USD")
+        self.assertNotContains(response, "MXN — Ingresos:")
+        self.assertNotContains(response, "USD — Ingresos:")
+        self.assertContains(response, "toLocaleString('en-US'")
 from .services import actualizar_estados_cotizaciones
 from .views import _importar_referencias_desde_filas
 

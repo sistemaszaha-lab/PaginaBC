@@ -50,6 +50,9 @@ class Cliente(models.Model):
     celular = models.CharField(max_length=20, blank=True, default="")
     correo = models.CharField(max_length=255, blank=True, default="")
     cuentas_por_cobrar = models.CharField(max_length=255, blank=True, default="")
+    cuentas_por_cobrar_telefono = models.CharField(max_length=20, blank=True, default="")
+    cuentas_por_cobrar_celular = models.CharField(max_length=20, blank=True, default="")
+    cuentas_por_cobrar_correo = models.EmailField(blank=True, default="")
     ingresos = models.DecimalField(
         max_digits=12,
         decimal_places=2,

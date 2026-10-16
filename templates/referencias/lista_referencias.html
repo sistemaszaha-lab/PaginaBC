@@ -44,11 +44,13 @@
   #movimientosReferenciaModal .movimientos-modal__header { display:flex; align-items:center; justify-content:space-between; padding:1rem 1.25rem; border-bottom:1px solid #dee2e6; }
   #movimientosReferenciaModal .movimientos-modal__body { padding:1.25rem; }
   #movimientosReferenciaModal .movimientos-modal__history { overflow-x:auto; }
+  .utilidad-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; }
+  .utilidad-card { background:#f8f9fa; border:1px solid #dee2e6; border-radius:.75rem; padding:1rem; }
+  .utilidad-card__amount { font-size:1.5rem; font-weight:700; }
 </style>
 <div class="movimientos-modal" id="movimientosReferenciaModal" hidden aria-hidden="true" role="dialog" aria-modal="true" style="background:rgba(0,0,0,.5);position:fixed;inset:0;z-index:1055;padding:1rem">
   <div class="movimientos-modal__dialog"><div class="movimientos-modal__header"><h5 class="mb-0">Ingresos y gastos — <span id="mov-ref"></span></h5><button type="button" class="btn-close" data-movimientos-close aria-label="Cerrar"></button></div>
-  <div class="movimientos-modal__body"><div id="mov-resumen" class="mb-3">Cargando movimientos...</div><form id="mov-form">{% csrf_token %}<label for="mov-ingreso">Agregar ingreso</label><input id="mov-ingreso" name="ingreso" type="text" inputmode="decimal" value="$0.0" autocomplete="off" class="form-control mb-2"><label for="mov-gasto">Agregar gasto</label><input id="mov-gasto" name="gasto" type="text" inputmode="decimal" value="$0.0" autocomplete="off" class="form-control mb-2"><div id="mov-error" class="text-danger small"></div><button type="submit" class="btn btn-primary">Calcular</button></form><hr><h6>Últimos movimientos</h6><div id="mov-historial" class="small movimientos-modal__history"></div></div></div></div>
-</div>
+  <div class="movimientos-modal__body"><div id="mov-resumen" class="utilidad-cards mb-3"><div class="utilidad-card"><div>Utilidad MXN</div><div class="utilidad-card__amount">$0.00 MXN</div><small>Ingresos: $0.00 MXN · Gastos: $0.00 MXN</small></div><div class="utilidad-card"><div>Utilidad USD</div><div class="utilidad-card__amount">$0.00 USD</div><small>Ingresos: $0.00 USD · Gastos: $0.00 USD</small></div></div><form id="mov-form">{% csrf_token %}<label for="mov-ingreso">Agregar ingreso</label><select name="ingreso_moneda" class="form-select mb-1"><option value="MXN">MXN</option><option value="USD">USD</option></select><input id="mov-ingreso" name="ingreso" type="text" inputmode="decimal" value="$0.00" autocomplete="off" class="form-control mb-2"><label for="mov-gasto">Agregar gasto</label><select name="gasto_moneda" class="form-select mb-1"><option value="MXN">MXN</option><option value="USD">USD</option></select><input id="mov-gasto" name="gasto" type="text" inputmode="decimal" value="$0.00" autocomplete="off" class="form-control mb-2"><div id="mov-error" class="text-danger small"></div><button type="submit" class="btn btn-primary">Guardar</button></form><hr><h6>Últimos movimientos</h6><div id="mov-historial" class="small movimientos-modal__history"></div></div></div></div>
 <div id="eliminarMovimientoModal" hidden aria-hidden="true" role="dialog" aria-modal="true" style="background:rgba(0,0,0,.5);position:fixed;inset:0;z-index:1060;padding:1rem;align-items:center;justify-content:center">
   <div class="bg-white rounded p-4" style="max-width:420px;width:100%"><h5>¿Estás seguro de eliminar este movimiento?</h5><p>Esta opción no se puede deshacer.</p><div id="eliminar-mov-error" class="text-danger small mb-2"></div><div class="d-flex justify-content-end gap-2"><button type="button" class="btn btn-secondary" data-eliminar-cancelar>Cancelar</button><button type="button" class="btn btn-danger" data-eliminar-confirmar>Eliminar</button></div></div>
 </div>
@@ -98,13 +100,15 @@
         const modal = document.getElementById('movimientosReferenciaModal');
         const form = document.getElementById('mov-form'), resumen = document.getElementById('mov-resumen'), historial = document.getElementById('mov-historial'), error = document.getElementById('mov-error'), csrf = form.querySelector('input[name="csrfmiddlewaretoken"]');
         document.getElementById('mov-ref').textContent = button.dataset.referencia; form.dataset.url = button.dataset.movimientosUrl;
-        const money = v => '$' + Number(v || 0).toLocaleString('es-MX',{minimumFractionDigits:1,maximumFractionDigits:2});
+        const money = v => '$' + Number(v || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
         const normalizeMoney = value => value.replace(/[$,\s]/g,'');
         const formatInput = input => { const raw=normalizeMoney(input.value); if (!raw || raw === '0') { input.value='$0.0'; return; } const n=Number(raw); input.value=Number.isFinite(n) ? money(n) : '$0.0'; };
         form.querySelectorAll('input[name="ingreso"], input[name="gasto"]').forEach(input => { input.addEventListener('focus', () => { if (input.value === '$0.0') input.select(); }); input.addEventListener('blur', () => formatInput(input)); });
         function render(data) {
             lastData = data;
-            resumen.textContent = `Ingresos acumulados: ${money(data.ingresos)} | Gastos acumulados: ${money(data.gastos)} | Utilidad: ${money(data.utilidad)}`;
+            const mxn=data.totales?.MXN||{ingresos:0,gastos:0}, usd=data.totales?.USD||{ingresos:0,gastos:0};
+            resumen.className='utilidad-cards mb-3';
+            resumen.innerHTML = [['MXN',mxn],['USD',usd]].map(([currency,t]) => `<div class="utilidad-card"><div>Utilidad ${currency}</div><div class="utilidad-card__amount">${money(Number(t.ingresos)-Number(t.gastos))} ${currency}</div><small>Ingresos: ${money(t.ingresos)} ${currency} · Gastos: ${money(t.gastos)} ${currency}</small></div>`).join('');
             historial.replaceChildren();
             if (!data.movimientos.length) { historial.textContent = 'No hay movimientos registrados.'; return; }
             const table = document.createElement('table'); table.className = 'table table-sm';
@@ -112,7 +116,7 @@
             const tbody = table.querySelector('tbody');
             data.movimientos.forEach(m => {
                 const row = document.createElement('tr');
-                [m.tipo, m.usuario, m.fecha].forEach(value => { const cell = document.createElement('td'); cell.textContent = value; row.appendChild(cell); });
+                [m.tipo, m.moneda, m.usuario, m.fecha].forEach(value => { const cell = document.createElement('td'); cell.textContent = value; row.appendChild(cell); });
                 const amount = document.createElement('td'); const value = document.createElement('button');
                 value.type = 'button'; value.className = 'btn btn-link p-0 js-movimiento-monto'; value.textContent = money(m.monto);
                 value.dataset.id = m.id; value.dataset.tipo = m.tipo_codigo; value.dataset.monto = m.monto; amount.appendChild(value); row.insertBefore(amount, row.children[1]); tbody.appendChild(row);
@@ -142,11 +146,17 @@
             fetch(url, {method:'POST', headers:{'X-CSRFToken':csrf ? csrf.value : '', 'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.json().then(data=>({ok:r.ok,data}))).then(result=>{ if(!result.ok || !result.data.ok) throw new Error(result.data.error || 'No se pudo eliminar el movimiento.'); render(result.data); updateUtility(result.data); movimientoPendiente=null; eliminarModal.hidden=true; eliminarModal.style.display='none'; }).catch(err=>{ eliminarError.textContent=err.message; }).finally(()=>{ eliminando=false; this.disabled=false; });
         };
         let lastData = {};
-        function updateUtility(data) { const utility = document.querySelector(`[data-utilidad-referencia="${form.dataset.url.match(/referencias\/(\d+)\//)?.[1] || ''}"]`); if (utility) utility.textContent = `Utilidad: ${money(data.utilidad)}`; }
+        function updateUtility(data) { const utility = document.querySelector(`[data-utilidad-referencia="${form.dataset.url.match(/referencias\/(\d+)\//)?.[1] || ''}"]`); if (utility && data.totales) utility.innerHTML = ['MXN','USD'].map(currency => `<div>Utilidad ${currency}: ${money(Number(data.totales[currency].ingresos)-Number(data.totales[currency].gastos))} ${currency}</div>`).join(''); }
         modal.hidden=false; modal.setAttribute('aria-hidden','false');
         fetch(form.dataset.url, {headers:{'Accept':'application/json'}}).then(r=>r.ok ? r.json() : Promise.reject()).then(render).catch(()=>{ resumen.textContent='No se pudieron cargar los movimientos.'; });
         form.onsubmit = function (ev) { ev.preventDefault(); error.textContent=''; const submit=form.querySelector('button[type="submit"]'); submit.disabled=true; const ingreso=form.elements.ingreso, gasto=form.elements.gasto; const rawIngreso=normalizeMoney(ingreso.value), rawGasto=normalizeMoney(gasto.value); const payload=new FormData(form); payload.set('ingreso', rawIngreso === '0' ? '' : rawIngreso); payload.set('gasto', rawGasto === '0' ? '' : rawGasto); fetch(form.dataset.url,{method:'POST',body:payload,headers:{'X-CSRFToken':csrf ? csrf.value : ''}}).then(r=>r.json()).then(data=>{if(!data.ok){error.textContent=data.error;return;} render(data); updateUtility(data); ingreso.value='$0.0'; gasto.value='$0.0';}).catch(()=>error.textContent='No se pudo guardar el movimiento.').finally(()=>submit.disabled=false); };
         document.querySelector('[data-movimientos-close]').onclick = () => { modal.hidden=true; modal.setAttribute('aria-hidden','true'); };
+        if (document.body.dataset.facturaHandlers !== '1') { document.body.dataset.facturaHandlers='1'; document.addEventListener('click', function (event) {
+            const add=event.target.closest('.js-agregar-factura');
+            if (add) { const cell=add.closest('.referencia-facturas'), input=document.createElement('input'); input.className='form-control form-control-sm'; input.placeholder='BC-12345'; add.before(input); input.focus(); input.onkeydown=ev=>{if(ev.key==='Escape'){input.remove();} if(ev.key==='Enter'){ev.preventDefault();saveFactura(input,cell.dataset.facturasUrl,add,null);}}; return; }
+            const text=event.target.closest('.referencia-factura'); if(!text || text.dataset.editing)return; text.dataset.editing='1'; const input=document.createElement('input'); input.className='form-control form-control-sm'; input.value=text.textContent; text.replaceWith(input); input.focus(); input.select(); input.onkeydown=ev=>{if(ev.key==='Escape'){input.replaceWith(text);} if(ev.key==='Enter'){ev.preventDefault();saveFactura(input,text.dataset.url,text,text);}};
+        }); }
+        function saveFactura(input,url,anchor,original){const token=document.querySelector('[name=csrfmiddlewaretoken]').value; fetch(url,{method:'POST',body:new URLSearchParams({factura:input.value,csrfmiddlewaretoken:token}),headers:{'X-CSRFToken':token}}).then(r=>r.json()).then(data=>{if(!data.ok)throw Error(data.error); if(original){original.textContent=data.factura;input.replaceWith(original);}else{const span=document.createElement('span');span.className='d-block referencia-factura';span.textContent=data.factura;span.dataset.id=data.id;span.dataset.url=url.replace(/facturas\/$/,'facturas/'+data.id+'/');input.replaceWith(span);}}).catch(err=>{alert(err.message);if(original)input.replaceWith(original);else input.remove();});}
     });
 </script>
 {% endblock %}

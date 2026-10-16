@@ -1,70 +1,13 @@
-<div class="table-responsive">
-    <table class="table table-bordered table-striped align-middle">
-        <thead class="table-light">
-            <tr>
-                <th>Número</th>
-                <th>Cliente</th>
-                <th>Razón social</th>
-                <th>Representante legal</th>
-                <th>Contacto</th>
-                <th>Correo</th>
-                <th>Cuentas por cobrar</th>
-                <th>Teléfono</th>
-                <th>Celular</th>
-                <th>Utilidades</th>
-                <th>Status</th>
-                <th>Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for cliente in clientes %}
-            <tr class="{% if cliente.estado != 'activo' %}table-warning{% endif %}">
-                <td>{{ cliente.numero_cliente_formateado }}</td>
-                <td>
-                    <strong>{{ cliente.nombre }}</strong>
-                </td>
-                <td>{{ cliente.empresa|default:"-" }}</td>
-                <td>{{ cliente.representante_legal|default:"-" }}</td>
-                <td>{{ cliente.contacto|default:"-" }}</td>
-                <td>{{ cliente.correo|default:"-" }}</td>
-                <td>{{ cliente.cuentas_por_cobrar|default:"-" }}</td>
-                <td>{{ cliente.telefono|default:"-" }}</td>
-                <td>{{ cliente.celular|default:"-" }}</td>
-                <td class="small">
-                    <div><strong>Utilidad: ${{ cliente.utilidad_calculada|floatformat:2 }}</strong></div>
-                </td>
-                <td>
-                    <form method="post" action="{% url 'cliente_cambiar_estado' cliente.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="next" value="{{ return_url }}">
-                        {% if cliente.estado == 'activo' %}
-                            <button type="submit" class="btn btn-sm btn-success">Activo</button>
-                        {% else %}
-                            <button type="submit" class="btn btn-sm btn-warning">Inactivo</button>
-                        {% endif %}
-                    </form>
-                </td>
-                <td class="d-flex gap-2 flex-wrap">
-                    <a class="btn btn-sm btn-primary" href="{% url 'cliente_editar' cliente.pk %}?next={{ return_url|urlencode }}">Editar</a>
-                    <form method="post" action="{% url 'cliente_eliminar' cliente.pk %}" class="d-inline" onsubmit="return confirm('Eliminar este cliente? Si tiene registros relacionados no se eliminara.');">
-                        {% csrf_token %}
-                        <input type="hidden" name="next" value="{{ return_url }}">
-                        <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
-                    </form>
-                    {% if mostrar_convertir and cliente.tipo_cliente == 'nuevo' %}
-                        <form method="post" action="{% url 'cliente_convertir_existente' cliente.pk %}" class="d-inline">
-                            {% csrf_token %}
-                            <input type="hidden" name="next" value="{{ return_url }}">
-                            <button type="submit" class="btn btn-sm btn-outline-primary">Convertir a cliente existente</button>
-                        </form>
-                    {% endif %}
-                </td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="12" class="text-center">No hay clientes registrados.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+{% load usuario_tags %}<div class="table-responsive">
+<table class="table table-bordered table-striped align-middle">
+<thead class="table-light"><tr><th>Número</th><th>Cliente</th><th>Razón social</th><th>Representante legal</th><th>Contacto</th><th>Cuentas por cobrar</th><th>Utilidades</th><th>Status</th><th>Acciones</th></tr></thead>
+<tbody>
+{% for cliente in clientes %}<tr class="{% if cliente.estado != 'activo' %}table-warning{% endif %}">
+<td>{{ cliente.numero_cliente_formateado }}</td><td><strong>{{ cliente.nombre }}</strong></td><td>{{ cliente.empresa|default:"-" }}</td><td>{{ cliente.representante_legal|default:"-" }}</td>
+<td>{% if cliente.contacto %}<strong>{{ cliente.contacto }}</strong><br>{% endif %}{% if cliente.telefono %}Teléfono: {{ cliente.telefono }}<br>{% endif %}{% if cliente.celular %}Celular: {{ cliente.celular }}<br>{% endif %}{% if cliente.correo %}Correo: {{ cliente.correo }}{% endif %}{% if not cliente.contacto and not cliente.telefono and not cliente.celular and not cliente.correo %}-{% endif %}</td>
+<td>{% if cliente.cuentas_por_cobrar %}<strong>{{ cliente.cuentas_por_cobrar }}</strong><br>{% endif %}{% if cliente.cuentas_por_cobrar_telefono %}Teléfono: {{ cliente.cuentas_por_cobrar_telefono }}<br>{% endif %}{% if cliente.cuentas_por_cobrar_celular %}Celular: {{ cliente.cuentas_por_cobrar_celular }}<br>{% endif %}{% if cliente.cuentas_por_cobrar_correo %}Correo: {{ cliente.cuentas_por_cobrar_correo }}{% endif %}{% if not cliente.cuentas_por_cobrar and not cliente.cuentas_por_cobrar_telefono and not cliente.cuentas_por_cobrar_celular and not cliente.cuentas_por_cobrar_correo %}-{% endif %}</td>
+<td class="small"><div>Utilidad 1: ${{ cliente.utilidad_mxn|dinero }} MXN</div><div>Utilidad 2: ${{ cliente.utilidad_usd|dinero }} USD</div></td>
+<td><form method="post" action="{% url 'cliente_cambiar_estado' cliente.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ return_url }}"><button type="submit" class="btn btn-sm {% if cliente.estado == 'activo' %}btn-success{% else %}btn-warning{% endif %}">{{ cliente.estado|capfirst }}</button></form></td>
+<td class="d-flex gap-2 flex-wrap"><a class="btn btn-sm btn-primary" href="{% url 'cliente_editar' cliente.pk %}?next={{ return_url|urlencode }}">Editar</a><form method="post" action="{% url 'cliente_eliminar' cliente.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ return_url }}"><button type="submit" class="btn btn-sm btn-danger">Eliminar</button></form>{% if mostrar_convertir and cliente.tipo_cliente == 'nuevo' %}<form method="post" action="{% url 'cliente_convertir_existente' cliente.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ return_url }}"><button type="submit" class="btn btn-sm btn-outline-primary">Convertir a cliente existente</button></form>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="9" class="text-center">No hay clientes registrados.</td></tr>{% endfor %}
+</tbody></table></div>

@@ -174,21 +174,16 @@ def cliente_lista(request):
             eliminado_en__isnull=True,
             cliente=Concat(OuterRef("nombre"), Value(" ("), OuterRef("empresa"), Value(")")),
         ).values("cliente").annotate(total=Count("pk")).values("total")[:1]
-        utilidad_base = Referencia.objects.filter(
-            eliminado_en__isnull=True, cliente=OuterRef("nombre")
-        ).values("cliente").annotate(total=Sum(Case(
-            When(movimientos__tipo="INGRESO", then=F("movimientos__monto")),
-            When(movimientos__tipo="GASTO", then=-F("movimientos__monto")),
-            output_field=DecimalField(max_digits=14, decimal_places=2),
-        ))).values("total")[:1]
-        utilidad_compuesta = Referencia.objects.filter(
-            eliminado_en__isnull=True,
-            cliente=Concat(OuterRef("nombre"), Value(" ("), OuterRef("empresa"), Value(")")),
-        ).values("cliente").annotate(total=Sum(Case(
-            When(movimientos__tipo="INGRESO", then=F("movimientos__monto")),
-            When(movimientos__tipo="GASTO", then=-F("movimientos__monto")),
-            output_field=DecimalField(max_digits=14, decimal_places=2),
-        ))).values("total")[:1]
+        def utilidad_subquery(cliente_expr, moneda):
+            return Referencia.objects.filter(eliminado_en__isnull=True, cliente=cliente_expr).values("cliente").annotate(total=Sum(Case(
+                When(movimientos__moneda=moneda, movimientos__tipo="INGRESO", then=F("movimientos__monto")),
+                When(movimientos__moneda=moneda, movimientos__tipo="GASTO", then=-F("movimientos__monto")),
+                default=Value(0), output_field=DecimalField(max_digits=14, decimal_places=2),
+            ))).values("total")[:1]
+        utilidad_base_mxn = utilidad_subquery(OuterRef("nombre"), "MXN")
+        utilidad_base_usd = utilidad_subquery(OuterRef("nombre"), "USD")
+        utilidad_compuesta_mxn = utilidad_subquery(Concat(OuterRef("nombre"), Value(" ("), OuterRef("empresa"), Value(")")), "MXN")
+        utilidad_compuesta_usd = utilidad_subquery(Concat(OuterRef("nombre"), Value(" ("), OuterRef("empresa"), Value(")")), "USD")
         clientes = clientes.annotate(
             referencias_count=Coalesce(Subquery(referencia_base, output_field=IntegerField()), Value(0))
             + Case(
@@ -197,11 +192,17 @@ def cliente_lista(request):
                 output_field=IntegerField(),
             )
         ).annotate(
-            utilidad_calculada=Coalesce(Subquery(utilidad_base, output_field=DecimalField(max_digits=14, decimal_places=2)), Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)))
+            utilidad_mxn=Coalesce(Subquery(utilidad_base_mxn, output_field=DecimalField(max_digits=14, decimal_places=2)), Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)))
             + Case(
-                When(empresa__gt="", then=Coalesce(Subquery(utilidad_compuesta, output_field=DecimalField(max_digits=14, decimal_places=2)), Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)))),
+                When(empresa__gt="", then=Coalesce(Subquery(utilidad_compuesta_mxn, output_field=DecimalField(max_digits=14, decimal_places=2)), Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)))),
                 default=Value(0),
                 output_field=DecimalField(max_digits=14, decimal_places=2),
+            )
+        ).annotate(
+            utilidad_usd=Coalesce(Subquery(utilidad_base_usd, output_field=DecimalField(max_digits=14, decimal_places=2)), Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)))
+            + Case(
+                When(empresa__gt="", then=Coalesce(Subquery(utilidad_compuesta_usd, output_field=DecimalField(max_digits=14, decimal_places=2)), Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)))),
+                default=Value(0), output_field=DecimalField(max_digits=14, decimal_places=2),
             )
         ).order_by("nombre", "pk")
         existentes_paginator = Paginator(

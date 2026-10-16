@@ -35,5 +35,7 @@ urlpatterns = [
     path("referencias/cambiar-ejecutivo/<int:pk>/", views.cambiar_ejecutivo_referencia, name="cambiar_ejecutivo_referencia"),
     path("referencias/<int:pk>/movimientos/", views.agregar_movimientos_referencia, name="agregar_movimientos_referencia"),
     path("referencias/<int:pk>/movimientos/<int:movimiento_id>/eliminar/", views.eliminar_movimiento_referencia, name="eliminar_movimiento_referencia"),
+    path("referencias/<int:pk>/facturas/", views.agregar_factura_referencia, name="agregar_factura_referencia"),
+    path("referencias/<int:pk>/facturas/<int:factura_id>/", views.editar_factura_referencia, name="editar_factura_referencia"),
 ]
 

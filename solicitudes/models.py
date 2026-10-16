@@ -334,13 +334,31 @@ class Referencia(models.Model):
         return total or 0
 
 
+class FacturaReferencia(models.Model):
+    referencia = models.ForeignKey(Referencia, on_delete=models.CASCADE, related_name="facturas")
+    factura = models.CharField(max_length=100)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["referencia", "factura"], name="factura_unica_por_referencia")]
+        ordering = ["pk"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        valor = (self.factura or "").strip().upper()
+        if not valor or valor == "BC-":
+            raise ValidationError({"factura": "La factura no puede estar vacía."})
+        self.factura = valor if valor.startswith("BC-") else f"BC-{valor}"
+
+
 class MovimientoReferencia(models.Model):
     INGRESO = "INGRESO"
     GASTO = "GASTO"
     TIPO_CHOICES = [(INGRESO, "Ingreso"), (GASTO, "Gasto")]
+    MONEDA_CHOICES = [("MXN", "MXN — Peso mexicano"), ("USD", "USD — Dólar estadounidense")]
     referencia = models.ForeignKey(Referencia, on_delete=models.CASCADE, related_name="movimientos")
     tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
     monto = models.DecimalField(max_digits=14, decimal_places=2)
+    moneda = models.CharField(max_length=3, choices=MONEDA_CHOICES, default="MXN")
     registrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="movimientos_referencia")
     creado_en = models.DateTimeField(auto_now_add=True)
 

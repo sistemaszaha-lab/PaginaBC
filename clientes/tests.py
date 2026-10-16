@@ -18,6 +18,45 @@ from solicitudes.models import Cotizacion, MovimientoReferencia, Referencia
 
 
 class ClienteFormTests(TestCase):
+    def test_formulario_agregar_muestra_contacto_y_cobranza_en_orden(self):
+        usuario = User.objects.create_user(username="cliente-alta", password="pass")
+        self.client.force_login(usuario)
+        response = self.client.get(reverse("cliente_crear"))
+        contenido = response.content.decode()
+        campos = [
+            "id_contacto", "id_correo", "id_telefono", "id_celular",
+            "id_cuentas_por_cobrar", "id_cuentas_por_cobrar_telefono",
+            "id_cuentas_por_cobrar_celular", "id_cuentas_por_cobrar_correo",
+        ]
+        posiciones = [contenido.index(f'name="{campo.removeprefix("id_")}"') for campo in campos]
+        self.assertEqual(posiciones, sorted(posiciones))
+        for campo in campos[4:]:
+            self.assertIn(f'id="{campo}"', contenido)
+            self.assertIn('class="form-control"', contenido[contenido.index(f'id="{campo}"') - 180:contenido.index(f'id="{campo}"') + 20])
+
+    def test_formulario_editar_muestra_contacto_y_cobranza_en_orden(self):
+        usuario = User.objects.create_user(username="cliente-edicion", password="pass")
+        cliente = Cliente.objects.create(nombre="Cliente edición", contacto="Ana", correo="ana@example.com")
+        self.client.force_login(usuario)
+        response = self.client.get(reverse("cliente_editar", args=[cliente.pk]))
+        contenido = response.content.decode()
+        campos = [
+            "id_contacto", "id_correo", "id_telefono", "id_celular",
+            "id_cuentas_por_cobrar", "id_cuentas_por_cobrar_telefono",
+            "id_cuentas_por_cobrar_celular", "id_cuentas_por_cobrar_correo",
+        ]
+        posiciones = [contenido.index(f'name="{campo.removeprefix("id_")}"') for campo in campos]
+        self.assertEqual(posiciones, sorted(posiciones))
+        for campo in campos[4:]:
+            self.assertIn(f'id="{campo}"', contenido)
+            self.assertIn('class="form-control"', contenido[contenido.index(f'id="{campo}"') - 180:contenido.index(f'id="{campo}"') + 20])
+
+    def test_cuentas_por_cobrar_tiene_contacto_independiente_y_opcional(self):
+        form = ClienteForm(data={"nombre": "Cobranza", "cuentas_por_cobrar": "Ana", "cuentas_por_cobrar_telefono": "555", "cuentas_por_cobrar_celular": "666", "cuentas_por_cobrar_correo": "cobranza@example.com", "estado": "activo"})
+        self.assertTrue(form.is_valid(), form.errors)
+        cliente = form.save()
+        self.assertEqual(cliente.cuentas_por_cobrar_correo, "cobranza@example.com")
+
     def test_utilidad_calcula_ingresos_menos_gastos(self):
         cliente = Cliente.objects.create(
             nombre="CLIENTE UTILIDAD",
@@ -877,13 +916,14 @@ class ClientePaginationTests(TestCase):
 
         response = self.client.get(reverse("cliente_lista"))
 
-        self.assertContains(response, "<th>Celular</th>", html=True)
+        self.assertContains(response, "<th>Contacto</th>", html=True)
         self.assertContains(response, "<th>Utilidades</th>", html=True)
         self.assertContains(response, "<th>Status</th>", html=True)
         contenido = response.content.decode()
-        self.assertLess(contenido.index("<th>Celular</th>"), contenido.index("<th>Utilidades</th>"))
+        self.assertLess(contenido.index("<th>Contacto</th>"), contenido.index("<th>Utilidades</th>"))
         self.assertLess(contenido.index("<th>Utilidades</th>"), contenido.index("<th>Status</th>"))
-        self.assertContains(response, "Utilidad: $20000.00")
+        self.assertContains(response, "Utilidad 1: $20,000.00 MXN")
+        self.assertContains(response, "Utilidad 2: $0.00 USD")
 
     def test_listado_muestra_cuentas_por_cobrar_entre_correo_y_telefono(self):
         Cliente.objects.create(

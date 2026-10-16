@@ -1,8 +1,16 @@
 from django import template
+from decimal import Decimal
 from django.core.exceptions import ObjectDoesNotExist
 from solicitudes.permissions import rol_de_usuario, ROL_ADMIN, ROL_SOLO_LECTURA
 
 register = template.Library()
+
+@register.filter
+def dinero(valor):
+    try:
+        return f"{Decimal(str(valor or 0)):,.2f}"
+    except Exception:
+        return "0.00"
 
 @register.filter
 def etiqueta_rol(user):
