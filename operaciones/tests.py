@@ -2832,6 +2832,10 @@ class DuplicarTarjetasPendientesCommandTests(TestCase):
             fecha_vencimiento="2026-09-01",
         )
         self.op_pendiente.asignados.add(self.usuario)
+        crear_cuenta_gastos_desde_operacion_si_corresponde(
+            self.op_pendiente,
+            creado_por=self.usuario,
+        )
 
         # Operacion en otra columna que NO debe procesarse
         self.columna_otra = OperacionColumna.objects.get(

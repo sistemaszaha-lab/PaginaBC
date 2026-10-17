@@ -7,4 +7,5 @@ class OperacionesConfig(AppConfig):
     verbose_name = "Operaciones"
 
     def ready(self):
-        import operaciones.signals
+        # La transferencia se invoca explícitamente después de save_m2m().
+        return None

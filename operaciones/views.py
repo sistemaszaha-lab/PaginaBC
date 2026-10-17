@@ -56,7 +56,10 @@ from .services import (
     copiar_operacion_a_columna,
     obtener_initial_operacion_desde_referencia,
 )
-from cuenta_gastos.services import crear_cuenta_gastos_desde_operacion_si_corresponde
+from cuenta_gastos.services import (
+    CuentaGastosTransferError,
+    crear_cuenta_gastos_desde_operacion_si_corresponde,
+)
 from garantias.services import enviar_operacion_a_garantias
 
 User = get_user_model()
@@ -776,9 +779,13 @@ def crear_operacion(request):
                 form.save_m2m()
                 if archivos_form.is_valid() and enlace_form.is_valid():
                     _guardar_adjuntos_enlaces(request, operacion, enlace_form)
-                crear_cuenta_gastos_desde_operacion_si_corresponde(
-                    operacion, creado_por=request.user
-                )
+                try:
+                    crear_cuenta_gastos_desde_operacion_si_corresponde(
+                        operacion, creado_por=request.user
+                    )
+                except CuentaGastosTransferError as exc:
+                    transaction.set_rollback(True)
+                    return JsonResponse({"ok": False, "error": str(exc)}, status=400)
             
             if _es_ajax(request):
                 return JsonResponse({
@@ -929,9 +936,13 @@ def crear_operacion_inline(request):
         operacion.save()
         form.save_m2m()
         _guardar_archivos_y_enlaces_inline(request, operacion, form)
-        cuenta_gastos, cuenta_gastos_creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
-            operacion, creado_por=request.user
-        )
+        try:
+            cuenta_gastos, cuenta_gastos_creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
+                operacion, creado_por=request.user
+            )
+        except CuentaGastosTransferError as exc:
+            transaction.set_rollback(True)
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
     return JsonResponse(
         {
@@ -1665,6 +1676,8 @@ def columna_eliminar(request, pk):
     if not _es_ajax(request):
         return JsonResponse({"ok": False, "error": "Solicitud invalida."}, status=400)
     columna = get_object_or_404(OperacionColumna, pk=pk, activa=True)
+    if not _puede_administrar_columna(request.user, columna):
+        raise PermissionDenied("No tienes permisos para eliminar esta columna.")
     if _es_columna_base(columna):
         return JsonResponse(
             {
@@ -1710,6 +1723,15 @@ def columna_eliminar(request, pk):
                     operacion.columna = destino
                     operacion.estado = destino.codigo
                     operacion.save(update_fields=["columna", "estado"])
+                    if operacion.estado == Operacion.Estado.SOLICITUD_CUENTA_GASTOS:
+                        try:
+                            crear_cuenta_gastos_desde_operacion_si_corresponde(
+                                operacion,
+                                creado_por=request.user,
+                            )
+                        except CuentaGastosTransferError as exc:
+                            transaction.set_rollback(True)
+                            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
                     if destino.codigo == Operacion.Estado.EXPEDIENTE_CG:
                         enviar_operacion_a_garantias(
                             operacion,
@@ -1822,6 +1844,16 @@ def tarjeta_pegar(request, columna_id):
         nueva_operacion.asignados.set(operacion_original.asignados.all())
         nueva_operacion.etiquetas.set(operacion_original.etiquetas.all())
         nueva_operacion.opciones.set(operacion_original.opciones.all())
+        cuenta_gastos_obj = None
+        cuenta_gastos_creada = False
+        if nueva_operacion.estado == Operacion.Estado.SOLICITUD_CUENTA_GASTOS:
+            try:
+                cuenta_gastos_obj, cuenta_gastos_creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
+                    nueva_operacion, creado_por=request.user
+                )
+            except CuentaGastosTransferError as exc:
+                transaction.set_rollback(True)
+                return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         garantia_obj = None
         garantia_creada = False
         if nueva_operacion.estado == Operacion.Estado.EXPEDIENTE_CG:
@@ -1849,6 +1881,8 @@ def tarjeta_pegar(request, columna_id):
             "column_count": _column_count(columna_destino),
             "garantia_creada": garantia_creada,
             "garantia_id": garantia_obj.pk if garantia_obj else None,
+            "cuenta_gastos_creada": cuenta_gastos_creada,
+            "cuenta_gastos_id": cuenta_gastos_obj.pk if cuenta_gastos_obj else None,
         },
         status=201,
     )
@@ -1916,10 +1950,14 @@ def mover_operacion(request, operacion_id):
         operacion.columna = columna_obj
         operacion.posicion = posicion
         operacion.save(update_fields=["estado", "columna", "posicion"])
-        crear_cuenta_gastos_desde_operacion_si_corresponde(
-            operacion,
-            creado_por=request.user,
-        )
+        try:
+            crear_cuenta_gastos_desde_operacion_si_corresponde(
+                operacion,
+                creado_por=request.user,
+            )
+        except CuentaGastosTransferError as exc:
+            transaction.set_rollback(True)
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         garantia_creada = False
         garantia_obj = None
         if (
