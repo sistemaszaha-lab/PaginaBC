@@ -730,6 +730,55 @@
   color: #6d6256;
 }
 
+.cuenta-card__origin-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 1.9rem;
+  padding: 0 0.58rem;
+  height: 1.9rem;
+  border: 1px solid #d8cdbd;
+  border-radius: 999px;
+  background: #faf7f1;
+  color: #7f6746;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.cuenta-card__origin-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.cuenta-card__origin-label {
+  white-space: nowrap;
+}
+
+.cuenta-card__origin-detail {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.9rem;
+  padding: 0 0.58rem;
+  border: 1px solid #e2d8ca;
+  border-radius: 999px;
+  background: #fcfaf7;
+  color: #6d6256;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.cuenta-card__origin-detail--agency {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cuenta-chip--state {
   background: #dbeafe;
   color: #1d4ed8;

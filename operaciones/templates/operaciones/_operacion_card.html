@@ -37,9 +37,6 @@
       {% endfor %}
     </div>
 
-    <div class="operacion-card-state">
-      <span class="operaciones-chip operaciones-chip--state" data-operacion-state-badge="1">{{ operacion.get_estado_display }}</span>
-    </div>
     <div class="operacion-card-dates">
       {% if operacion.fecha_vencimiento %}<span>ETD: {{ operacion.fecha_vencimiento|date:"d M Y" }}</span>{% endif %}
       {% if operacion.eta %}<span>ETA: {{ operacion.eta|date:"d M Y" }}</span>{% endif %}

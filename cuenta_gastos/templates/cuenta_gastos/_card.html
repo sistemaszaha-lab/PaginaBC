@@ -49,13 +49,43 @@
         </div>
 
         <div class="cuenta-card__meta">
-            <div data-cuenta-inline-slot="prioridad">
-                {% include "cuenta_gastos/_inline_field_prioridad.html" with cuenta=cuenta only %}
-            </div>
+            {% with operacion_origen=cuenta.operacion_origen %}
+                {% with referencia_origen=operacion_origen.referencia_origen %}
+                    {% if referencia_origen %}
+                        <div data-cuenta-inline-slot="prioridad">
+                            {% include "cuenta_gastos/_inline_field_prioridad.html" with cuenta=cuenta only %}
+                        </div>
 
-            <span class="cuenta-chip cuenta-chip--state" data-cuenta-state-badge="1">
-                {{ cuenta.get_estado_display }}
-            </span>
+                        {% if referencia_origen.medio_operacion == "maritima" %}
+                            <span class="cuenta-card__origin-indicator" title="Medio de transporte: Marítima" aria-label="Medio de transporte: Marítima">
+                                <span class="cuenta-card__origin-emoji" aria-hidden="true">🚢</span>
+                                <span class="cuenta-card__origin-label">Marítima</span>
+                                <span class="visually-hidden">Marítima</span>
+                            </span>
+                        {% elif referencia_origen.medio_operacion == "aerea" %}
+                            <span class="cuenta-card__origin-indicator" title="Medio de transporte: Aérea" aria-label="Medio de transporte: Aérea">
+                                <span class="cuenta-card__origin-emoji" aria-hidden="true">✈️</span>
+                                <span class="cuenta-card__origin-label">Aérea</span>
+                                <span class="visually-hidden">Aérea</span>
+                            </span>
+                        {% elif referencia_origen.medio_operacion == "terrestre" %}
+                            <span class="cuenta-card__origin-indicator" title="Medio de transporte: Terrestre" aria-label="Medio de transporte: Terrestre">
+                                <span class="cuenta-card__origin-emoji" aria-hidden="true">🚛</span>
+                                <span class="cuenta-card__origin-label">Terrestre</span>
+                                <span class="visually-hidden">Terrestre</span>
+                            </span>
+                        {% endif %}
+                        {% if referencia_origen.servicio == "importacion" %}
+                            <span class="cuenta-card__origin-detail">Importación</span>
+                        {% elif referencia_origen.servicio == "exportacion" %}
+                            <span class="cuenta-card__origin-detail">Exportación</span>
+                        {% endif %}
+                        {% if referencia_origen.agencia_aduanal %}
+                            <span class="cuenta-card__origin-detail cuenta-card__origin-detail--agency">{{ referencia_origen.agencia_aduanal }}</span>
+                        {% endif %}
+                    {% endif %}
+                {% endwith %}
+            {% endwith %}
 
             <div data-cuenta-inline-slot="fecha_vencimiento">
                 {% include "cuenta_gastos/_inline_field_vencimiento.html" with cuenta=cuenta only %}

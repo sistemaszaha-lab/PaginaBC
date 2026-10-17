@@ -11,11 +11,13 @@ from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext, override_settings
 from django.middleware.csrf import get_token
 from django.http import HttpRequest
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
 from clientes.models import Cliente
-from operaciones.models import Operacion
+from operaciones.models import Operacion, OperacionColumna
+from solicitudes.models import Referencia
 from .services import (
     copiar_cuenta_gastos_a_columna,
     crear_cuenta_gastos_desde_operacion_si_corresponde,
@@ -1979,3 +1981,162 @@ class RepositorioCuentaGastosTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment", response["Content-Disposition"])
         self.assertEqual(response["Content-Type"], "application/pdf")
+
+
+class KanbanCardOriginVisualTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username="kanban-visual",
+            password="pass",
+            first_name="Visual",
+        )
+        self.cliente = Cliente.objects.create(nombre="Cliente visual")
+        self.columna_cuenta = CuentaGastosColumna.objects.get(
+            codigo=CuentaGastos.Estado.SOLICITUD_PAGO,
+        )
+        self.operacion_columna = OperacionColumna.objects.first()
+
+    def _cuenta_desde_referencia(self, medio, prioridad, *, servicio="importacion", agencia="Agencia de prueba"):
+        referencia = Referencia.objects.create(
+            referencia=f"REF-{medio}",
+            consecutivo={"maritima": 1, "aerea": 2, "terrestre": 3, "": 4}[medio],
+            cliente=self.cliente.nombre,
+            medio_operacion=medio,
+            servicio=servicio,
+            agencia_aduanal=agencia,
+        )
+        operacion = Operacion.objects.create(
+            titulo=f"Operación {medio}",
+            cliente=self.cliente,
+            prioridad=prioridad,
+            creado_por=self.user,
+            columna=self.operacion_columna,
+            referencia_origen=referencia,
+        )
+        return CuentaGastos.objects.create(
+            titulo=f"Cuenta {medio}",
+            cliente=self.cliente,
+            prioridad=prioridad,
+            creado_por=self.user,
+            estado=self.columna_cuenta.codigo,
+            columna=self.columna_cuenta,
+            operacion_origen=operacion,
+        )
+
+    def test_operacion_y_cuenta_no_muestran_etiqueta_de_columna(self):
+        operacion = Operacion.objects.create(
+            titulo="Operación sin etiqueta de columna",
+            cliente=self.cliente,
+            creado_por=self.user,
+            columna=self.operacion_columna,
+        )
+        cuenta = CuentaGastos.objects.create(
+            titulo="Cuenta sin etiqueta de columna",
+            cliente=self.cliente,
+            creado_por=self.user,
+            estado=self.columna_cuenta.codigo,
+            columna=self.columna_cuenta,
+        )
+
+        operacion_html = render_to_string(
+            "operaciones/_operacion_card.html",
+            {"operacion": operacion, "estados": []},
+        )
+        cuenta_html = render_to_string(
+            "cuenta_gastos/_card.html",
+            {"cuenta": cuenta, "estados_ui": []},
+        )
+
+        self.assertNotIn("operacion-card-state", operacion_html)
+        self.assertNotIn("data-operacion-state-badge", operacion_html)
+        self.assertNotIn("cuenta-chip--state", cuenta_html)
+        self.assertNotIn("data-cuenta-state-badge", cuenta_html)
+
+    def test_referencia_muestra_icono_de_transporte_y_prioridad(self):
+        expected = {
+            "maritima": "Medio de transporte: Marítima",
+            "aerea": "Medio de transporte: Aérea",
+            "terrestre": "Medio de transporte: Terrestre",
+        }
+        emojis = {
+            "maritima": "🚢",
+            "aerea": "✈️",
+            "terrestre": "🚛",
+        }
+        priorities = {
+            "maritima": "ALTA",
+            "aerea": "MEDIA",
+            "terrestre": "BAJA",
+        }
+
+        for medio, title in expected.items():
+            with self.subTest(medio=medio):
+                cuenta = self._cuenta_desde_referencia(medio, priorities[medio])
+                html = render_to_string(
+                    "cuenta_gastos/_card.html",
+                    {"cuenta": cuenta, "estados_ui": []},
+                )
+                self.assertIn(title, html)
+                self.assertIn(title.split(": ", 1)[1], html)
+                self.assertIn(emojis[medio], html)
+                self.assertNotIn('class="cuenta-card__origin-icon"', html)
+                self.assertIn("Agencia de prueba", html)
+                self.assertIn("Importación", html)
+                self.assertIn(
+                    f"cuenta-chip--priority cuenta-chip--{priorities[medio].lower()}",
+                    html,
+                )
+
+    def test_referencia_aerea_exportacion_muestra_tipo_y_agencia(self):
+        cuenta = self._cuenta_desde_referencia(
+            "aerea",
+            "MEDIA",
+            servicio="exportacion",
+            agencia="Agencia del Pacífico",
+        )
+        html = render_to_string(
+            "cuenta_gastos/_card.html",
+            {"cuenta": cuenta, "estados_ui": []},
+        )
+
+        self.assertIn("Aérea", html)
+        self.assertIn("Exportación", html)
+        self.assertIn("Agencia del Pacífico", html)
+        self.assertIn("cuenta-chip--priority cuenta-chip--media", html)
+
+    def test_datos_de_referencia_vacios_o_servicio_no_clasificable_se_omiten(self):
+        cuenta = self._cuenta_desde_referencia(
+            "",
+            "BAJA",
+            servicio="servicios_transporte",
+            agencia="",
+        )
+        html = render_to_string(
+            "cuenta_gastos/_card.html",
+            {"cuenta": cuenta, "estados_ui": []},
+        )
+
+        self.assertNotIn("cuenta-card__origin-indicator", html)
+        self.assertNotIn("Importación", html)
+        self.assertNotIn("Exportación", html)
+        self.assertNotIn("cuenta-card__origin-detail--agency", html)
+        self.assertIn("cuenta-chip--priority cuenta-chip--baja", html)
+
+    def test_cuenta_manual_no_muestra_indicador_de_referencia(self):
+        cuenta = CuentaGastos.objects.create(
+            titulo="Cuenta manual",
+            cliente=self.cliente,
+            prioridad=CuentaGastos.Prioridad.MEDIA,
+            creado_por=self.user,
+            estado=self.columna_cuenta.codigo,
+            columna=self.columna_cuenta,
+        )
+        html = render_to_string(
+            "cuenta_gastos/_card.html",
+            {"cuenta": cuenta, "estados_ui": []},
+        )
+
+        self.assertNotIn("cuenta-card__origin-indicator", html)
+        self.assertNotIn("Medio de transporte:", html)
+        self.assertNotIn("cuenta-chip--priority", html)
