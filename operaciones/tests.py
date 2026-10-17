@@ -1,16 +1,18 @@
 from pathlib import Path
 import json
 import re
+import threading
 from datetime import timedelta
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase
+from django.test import Client, TestCase, TransactionTestCase
 from django.test.utils import override_settings
 from django.test.utils import CaptureQueriesContext
-from django.db import connection
+from django.db import close_old_connections, connection
 from django.middleware.csrf import get_token
 from django.http import HttpRequest
 from django.db.models.signals import post_save
@@ -30,6 +32,7 @@ from .models import (
 from solicitudes.models import Referencia
 from clientes.models import Cliente
 from cuenta_gastos.models import CuentaGastos
+from garantias.models import Garantia, GarantiaColumna
 from cuenta_gastos.services import crear_cuenta_gastos_desde_operacion_si_corresponde
 from operaciones.signals import duplicar_a_cuenta_gastos_si_corresponde
 
@@ -666,6 +669,56 @@ class OperacionesMovimientoTests(TestCase):
 
         self.assertEqual(response.status_code, 405)
 
+    def test_mover_a_expediente_crea_garantia_idempotente(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            self.move_url,
+            {"estado": Operacion.Estado.EXPEDIENTE_CG},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["garantia_creada"])
+        garantia = Garantia.objects.get(operacion_origen=self.operacion)
+        self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
+        self.assertEqual(garantia.columna.codigo, Garantia.Estado.SOLICITUD_NAVIERA)
+        self.operacion.refresh_from_db()
+        self.assertEqual(self.operacion.estado, Operacion.Estado.EXPEDIENTE_CG)
+        self.assertEqual(self.operacion.columna.codigo, Operacion.Estado.EXPEDIENTE_CG)
+
+        self.client.post(
+            self.move_url,
+            {"estado": Operacion.Estado.PENDIENTE},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        second = self.client.post(
+            self.move_url,
+            {"estado": Operacion.Estado.EXPEDIENTE_CG},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(second.json()["garantia_creada"])
+        self.assertEqual(Garantia.objects.filter(operacion_origen=self.operacion).count(), 1)
+
+    def test_mover_a_expediente_falla_controlado_si_falta_columna_destino(self):
+        self.client.force_login(self.owner)
+        GarantiaColumna.objects.filter(
+            codigo=Garantia.Estado.SOLICITUD_NAVIERA,
+        ).update(activa=False)
+
+        response = self.client.post(
+            self.move_url,
+            {"estado": Operacion.Estado.EXPEDIENTE_CG},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Garantia.objects.filter(operacion_origen=self.operacion).exists())
+        self.operacion.refresh_from_db()
+        self.assertEqual(self.operacion.estado, Operacion.Estado.PENDIENTE)
+
 
 @override_settings(
     STORAGES={
@@ -767,6 +820,121 @@ class OperacionesColumnasDinamicasTests(TestCase):
         self.assertEqual(operacion.columna_id, destino.pk)
         self.assertTrue(
             CuentaGastos.objects.filter(operacion_origen=operacion).exists()
+        )
+
+    def test_eliminar_columna_reasigna_a_expediente_y_crea_una_garantia(self):
+        origen = OperacionColumna.objects.create(
+            nombre="Temporal CG",
+            codigo="TEMPORAL_CG",
+            orden=50,
+            creada_por=self.user,
+        )
+        destino = OperacionColumna.objects.get(
+            codigo=Operacion.Estado.EXPEDIENTE_CG
+        )
+        operacion = Operacion.objects.create(
+            titulo="Reasignar a garantías",
+            columna=origen,
+            estado=origen.codigo,
+            creado_por=self.user,
+        )
+
+        response = self.client.post(
+            reverse("operaciones:columna_eliminar", args=[origen.pk]),
+            {"columna_destino_id": destino.pk},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        operacion.refresh_from_db()
+        self.assertEqual(operacion.estado, destino.codigo)
+        self.assertEqual(operacion.columna_id, destino.pk)
+        self.assertEqual(
+            Garantia.objects.filter(operacion_origen=operacion).count(), 1
+        )
+
+    def test_eliminar_columna_a_expediente_revierte_si_falta_columna_garantias(self):
+        origen = OperacionColumna.objects.create(
+            nombre="Temporal CG rollback",
+            codigo="TEMPORAL_CG_ROLLBACK",
+            orden=50,
+            creada_por=self.user,
+        )
+        destino = OperacionColumna.objects.get(
+            codigo=Operacion.Estado.EXPEDIENTE_CG
+        )
+        operacion = Operacion.objects.create(
+            titulo="Debe revertirse",
+            columna=origen,
+            estado=origen.codigo,
+            creado_por=self.user,
+        )
+        GarantiaColumna.objects.filter(
+            codigo=Garantia.Estado.SOLICITUD_NAVIERA,
+        ).update(activa=False)
+
+        response = self.client.post(
+            reverse("operaciones:columna_eliminar", args=[origen.pk]),
+            {"columna_destino_id": destino.pk},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        operacion.refresh_from_db()
+        origen.refresh_from_db()
+        self.assertEqual(operacion.estado, origen.codigo)
+        self.assertEqual(operacion.columna_id, origen.pk)
+        self.assertTrue(origen.activa)
+        self.assertFalse(
+            Garantia.objects.filter(operacion_origen=operacion).exists()
+        )
+
+
+@skipUnless(
+    connection.vendor == "postgresql",
+    "La concurrencia real requiere PostgreSQL; SQLite bloquea el escenario representativo.",
+)
+class OperacionesGarantiaConcurrencyTests(TransactionTestCase):
+    reset_sequences = True
+
+    def test_dos_transacciones_concurrentes_crean_una_sola_garantia(self):
+        from garantias.services import enviar_operacion_a_garantias
+
+        User = get_user_model()
+        usuario = User.objects.create_user(username="concurrent", password="pass")
+        operacion = Operacion.objects.create(
+            titulo="Operacion concurrente",
+            estado=Operacion.Estado.EXPEDIENTE_CG,
+            creado_por=usuario,
+        )
+        start = threading.Barrier(2)
+        resultados = []
+        errores = []
+
+        def ejecutar():
+            close_old_connections()
+            try:
+                start.wait(timeout=10)
+                garantia, creada = enviar_operacion_a_garantias(
+                    Operacion.objects.get(pk=operacion.pk),
+                    creado_por=usuario,
+                )
+                resultados.append((garantia.pk, creada))
+            except Exception as exc:  # pragma: no cover - solo diagnostico de hilos
+                errores.append(exc)
+            finally:
+                close_old_connections()
+
+        hilos = [threading.Thread(target=ejecutar) for _ in range(2)]
+        for hilo in hilos:
+            hilo.start()
+        for hilo in hilos:
+            hilo.join(timeout=20)
+
+        self.assertFalse(errores, errores)
+        self.assertEqual(len(resultados), 2)
+        self.assertEqual(
+            Garantia.objects.filter(operacion_origen=operacion).count(), 1
         )
 
 
@@ -900,6 +1068,29 @@ class OperacionesCopiarPegarTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
         self.assertEqual(move_response.status_code, 200)
+
+    def test_copiar_a_expediente_crea_garantia_para_la_nueva_operacion(self):
+        from garantias.models import Garantia
+
+        columna_cg, _ = OperacionColumna.objects.update_or_create(
+            codigo=Operacion.Estado.EXPEDIENTE_CG,
+            defaults={"nombre": "Personalizado CG", "orden": 40, "activa": True},
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            self._paste_url(columna_cg),
+            {"tarjeta_id": self.original.pk, "modulo": "operaciones"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        copia = Operacion.objects.get(pk=response.json()["tarjeta_id"])
+        garantia = Garantia.objects.get(operacion_origen=copia)
+        self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
+        self.assertIsNone(copia.referencia_origen_id)
+        self.assertEqual(copia.columna_id, columna_cg.pk)
+        self.assertEqual(copia.estado, columna_cg.codigo)
 
     def test_ejecutivo_puede_pegar_y_la_cuenta_gastos_se_crea_para_la_copia(self):
         self.original.asignados.add(self.ejecutivo)

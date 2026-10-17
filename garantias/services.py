@@ -1,11 +1,98 @@
 from __future__ import annotations
 
-from django.db import transaction
+import logging
+
+from django.db import IntegrityError, transaction
 
 from clientes.models import Cliente, normalizar_texto_cliente
 
-from .models import Garantia, GarantiaColumna
+from .models import (
+    Garantia,
+    GarantiaArchivo,
+    GarantiaColumna,
+    GarantiaComentario,
+    GarantiaEnlace,
+    GarantiaEtiqueta,
+)
 from cuenta_gastos.models import CuentaGastos, CuentaGastosColumna
+
+logger = logging.getLogger(__name__)
+
+
+@transaction.atomic
+def enviar_operacion_a_garantias(operacion, *, creado_por):
+    """Create the single Guarantee mirror for an operation, idempotently."""
+    from operaciones.models import Operacion
+
+    operacion = (
+        Operacion.objects.select_for_update()
+        .select_related("cliente")
+        .prefetch_related("asignados", "etiquetas", "comentarios", "enlaces", "archivos")
+        .get(pk=operacion.pk)
+    )
+    if operacion.estado != Operacion.Estado.EXPEDIENTE_CG:
+        raise ValueError("La operacion debe estar en Expediente CG.")
+
+    existente = Garantia.objects.select_for_update().filter(
+        operacion_origen=operacion,
+    ).first()
+    if existente is not None:
+        return existente, False
+
+    columna = GarantiaColumna.objects.filter(
+        codigo=Garantia.Estado.SOLICITUD_NAVIERA,
+        activa=True,
+    ).first()
+    if columna is None:
+        raise ValueError("No existe una columna activa con codigo SOLICITUD_NAVIERA.")
+
+    try:
+        with transaction.atomic():
+            garantia = Garantia.objects.create(
+                titulo=operacion.titulo,
+                descripcion=operacion.descripcion,
+                cliente=operacion.cliente,
+                estado=columna.codigo,
+                columna=columna,
+                prioridad=operacion.prioridad,
+                creado_por=creado_por,
+                operacion_origen=operacion,
+            )
+    except IntegrityError:
+        garantia = Garantia.objects.get(operacion_origen=operacion)
+        return garantia, False
+
+    garantia.asignados.set(operacion.asignados.all())
+    garantia.etiquetas.set([
+        GarantiaEtiqueta.objects.get_or_create(
+            nombre=etiqueta.nombre,
+            defaults={"color": etiqueta.color},
+        )[0]
+        for etiqueta in operacion.etiquetas.all()
+    ])
+    for comentario in operacion.comentarios.all():
+        GarantiaComentario.objects.create(
+            garantia=garantia,
+            usuario=comentario.usuario,
+            comentario=comentario.comentario,
+            fecha=comentario.fecha,
+        )
+    for enlace in operacion.enlaces.all():
+        GarantiaEnlace.objects.create(
+            garantia=garantia,
+            titulo=enlace.titulo,
+            url=enlace.url,
+            creado_por=enlace.creado_por,
+            fecha=enlace.fecha,
+        )
+    for archivo in operacion.archivos.all():
+        GarantiaArchivo.objects.create(
+            garantia=garantia,
+            archivo=archivo.archivo.name,
+            subido_por=archivo.subido_por,
+            fecha=archivo.fecha,
+        )
+    return garantia, True
 
 @transaction.atomic
 def enviar_garantia_a_cuenta_gastos(garantia, *, creado_por):

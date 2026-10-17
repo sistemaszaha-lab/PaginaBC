@@ -4,6 +4,7 @@ from django.db import transaction
 
 from clientes.models import Cliente, normalizar_texto_cliente
 from cuenta_gastos.services import crear_cuenta_gastos_desde_operacion_si_corresponde
+from garantias.services import enviar_operacion_a_garantias
 
 from .models import Operacion
 
@@ -54,4 +55,6 @@ def copiar_operacion_a_columna(operacion_original, columna_destino, usuario):
             nueva_operacion,
             creado_por=usuario,
         )
+        if nueva_operacion.estado == Operacion.Estado.EXPEDIENTE_CG:
+            enviar_operacion_a_garantias(nueva_operacion, creado_por=usuario)
         return nueva_operacion

@@ -39,7 +39,11 @@ from .models import (
     GarantiaEnlace,
     GarantiaEtiqueta,
 )
-from .services import copiar_garantia_a_columna, enviar_garantia_a_cuenta_gastos
+from .services import (
+    copiar_garantia_a_columna,
+    enviar_garantia_a_cuenta_gastos,
+    enviar_operacion_a_garantias as enviar_operacion_a_garantias_service,
+)
 from .services import obtener_datos_garantia_desde_referencia
 from solicitudes.models import Referencia
 
@@ -697,34 +701,15 @@ def enviar_referencia_a_garantias(request, pk):
 def enviar_operacion_a_garantias(request, pk):
     from operaciones.models import Operacion
     from operaciones.views import _puede_modificar_operacion
-    operacion = get_object_or_404(Operacion.objects.select_related("cliente").prefetch_related("asignados", "etiquetas", "comentarios", "enlaces", "archivos"), pk=pk, eliminado_en__isnull=True)
+    operacion = get_object_or_404(Operacion.objects.filter(eliminado_en__isnull=True), pk=pk)
     if not _puede_modificar_operacion(request.user, operacion):
         return JsonResponse({"ok": False, "error": "No tienes permisos para enviar esta operación."}, status=403)
     if operacion.estado != Operacion.Estado.EXPEDIENTE_CG:
         return JsonResponse({"ok": False, "error": "Solo se pueden enviar operaciones en Expediente CG."}, status=400)
-    columna = _buscar_columna_activa_por_codigo(Garantia.Estado.SOLICITUD_NAVIERA)
-    if columna is None:
-        return JsonResponse({"ok": False, "error": "No existe la columna Solicitud naviera."}, status=400)
-    with transaction.atomic():
-        garantia = Garantia.objects.select_for_update().filter(operacion_origen=operacion, eliminado_en__isnull=True).first()
-        creada = garantia is None
-        if creada:
-            garantia = Garantia.objects.create(titulo=operacion.titulo, descripcion=operacion.descripcion, cliente=operacion.cliente, estado=Garantia.Estado.SOLICITUD_NAVIERA, columna=columna, prioridad=operacion.prioridad, creado_por=request.user, operacion_origen=operacion)
-            garantia.asignados.set(operacion.asignados.all())
-            etiquetas = []
-            for etiqueta in operacion.etiquetas.all():
-                garantia_etiqueta, _ = GarantiaEtiqueta.objects.get_or_create(
-                    nombre=etiqueta.nombre,
-                    defaults={"color": etiqueta.color},
-                )
-                etiquetas.append(garantia_etiqueta)
-            garantia.etiquetas.set(etiquetas)
-            for comentario in operacion.comentarios.all():
-                GarantiaComentario.objects.create(garantia=garantia, usuario=comentario.usuario, comentario=comentario.comentario, fecha=comentario.fecha)
-            for enlace in operacion.enlaces.all():
-                GarantiaEnlace.objects.create(garantia=garantia, titulo=enlace.titulo, url=enlace.url, creado_por=enlace.creado_por, fecha=enlace.fecha)
-            for archivo in operacion.archivos.all():
-                GarantiaArchivo.objects.create(garantia=garantia, archivo=archivo.archivo.name, subido_por=archivo.subido_por, fecha=archivo.fecha)
+    try:
+        garantia, creada = enviar_operacion_a_garantias_service(operacion, creado_por=request.user)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     if not _es_ajax(request):
         messages.success(request, "La operación se envió a Garantías correctamente.")
         return redirect("operaciones:panel_operaciones")
