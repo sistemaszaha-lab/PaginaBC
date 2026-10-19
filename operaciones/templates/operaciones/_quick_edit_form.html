@@ -6,28 +6,28 @@
     data-operacion-quick-edit-form="1"
   >
     {% csrf_token %}
-    <input type="hidden" name="asignados_present" value="1">
+    {% if not solo_fechas %}<input type="hidden" name="asignados_present" value="1">{% endif %}
     <div class="operaciones-quick-edit-form__header">
       <strong>Edicion rapida</strong>
       <span class="text-muted small">{{ operacion.get_estado_display }}</span>
     </div>
 
-    <div class="mb-2">
+    {% if not solo_fechas %}<div class="mb-2">
       <label class="form-label small mb-1" for="{{ form.titulo.id_for_label }}">Titulo</label>
       {{ form.titulo }}
       {% if form.titulo.errors %}<div class="text-danger small mt-1">{{ form.titulo.errors|join:", " }}</div>{% endif %}
-    </div>
+    </div>{% endif %}
 
-    <div class="mb-2">
+    {% if not solo_fechas %}<div class="mb-2">
       <label class="form-label small mb-1" for="{{ form.cliente.id_for_label }}">Cliente</label>
       {{ form.cliente }}
       {% if form.cliente.errors %}<div class="text-danger small mt-1">{{ form.cliente.errors|join:", " }}</div>{% endif %}
-    </div>
+    </div>{% endif %}
 
-    <div class="mb-2">
+    {% if not solo_fechas %}<div class="mb-2">
       <label class="form-label small mb-1" for="{{ form.prioridad.id_for_label }}">Prioridad</label>
       {{ form.prioridad }}
-    </div>
+    </div>{% endif %}
 
     <div class="row g-2 mb-2">
       <div class="col-6">
@@ -40,11 +40,11 @@
       </div>
     </div>
 
-    <div class="mb-3">
+    {% if not solo_fechas %}<div class="mb-3">
       <label class="form-label small mb-1" for="{{ form.asignados.id_for_label }}">Asignados</label>
       {{ form.asignados }}
       {% if form.asignados.errors %}<div class="text-danger small mt-1">{{ form.asignados.errors|join:", " }}</div>{% endif %}
-    </div>
+    </div>{% endif %}
 
     {% if form.non_field_errors %}
       <div class="text-danger small mb-2">{{ form.non_field_errors|join:", " }}</div>

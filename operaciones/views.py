@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
-from solicitudes.permissions import es_solo_lectura, puede_ver_todo
+from solicitudes.permissions import es_ejecutivo, es_solo_lectura, puede_ver_todo
 
 # pyrefly: ignore [missing-import]
 from .forms import (
@@ -690,12 +690,22 @@ def _json_error(error_code, *, message=None, errors=None, status=400, **extra):
     return JsonResponse(payload, status=status)
 
 
-def _render_quick_edit_form(request, operacion, form=None):
+def _operacion_visible_para_edicion_de_fechas(user, operacion):
+    if not es_ejecutivo(user):
+        return False
+    columna = operacion.columna
+    if columna is None:
+        columna = _columnas_activas_queryset().filter(codigo=operacion.estado).first()
+    return bool(columna and columna.activa and _puede_ver_columna(user, columna))
+
+
+def _render_quick_edit_form(request, operacion, form=None, *, solo_fechas=False):
     return render_to_string(
         "operaciones/_quick_edit_form.html",
         {
             "operacion": operacion,
             "form": form or OperacionQuickEditForm(instance=operacion),
+            "solo_fechas": solo_fechas,
         },
         request=request,
     )
@@ -964,26 +974,55 @@ def crear_operacion_inline(request):
 @require_http_methods(["GET", "POST"])
 def editar_operacion_rapida(request, operacion_id):
     operacion = get_object_or_404(_operacion_queryset(), id=operacion_id)
+    puede_editar_completo = _puede_modificar_operacion(request.user, operacion)
+    puede_editar_fechas = (
+        not puede_editar_completo
+        and _operacion_visible_para_edicion_de_fechas(request.user, operacion)
+    )
 
-    if not _puede_modificar_operacion(request.user, operacion):
+    if not puede_editar_completo and not puede_editar_fechas:
         raise PermissionDenied("No tienes permisos para modificar esta operacion.")
 
     if request.method == "GET":
         return JsonResponse(
-            {"ok": True, "html": _render_quick_edit_form(request, operacion)}
+            {
+                "ok": True,
+                "html": _render_quick_edit_form(
+                    request,
+                    operacion,
+                    solo_fechas=puede_editar_fechas,
+                ),
+            }
         )
 
     post_data = request.POST.copy()
+    if puede_editar_fechas:
+        campos_permitidos = {"csrfmiddlewaretoken", "fecha_vencimiento", "eta"}
+        campos_no_permitidos = set(post_data) - campos_permitidos
+        if campos_no_permitidos:
+            return _json_error(
+                "FIELDS_NOT_ALLOWED",
+                message="Solo puedes modificar ETD y ETA.",
+                status=403,
+            )
     form = OperacionQuickEditForm(post_data, instance=operacion)
-    _preservar_campos_no_enviados(form, post_data, "titulo", "cliente", "prioridad", "fecha_vencimiento", "eta", "asignados")
+    if puede_editar_fechas:
+        for field_name in ("titulo", "cliente", "prioridad", "asignados"):
+            form.fields.pop(field_name, None)
+    else:
+        _preservar_campos_no_enviados(form, post_data, "titulo", "cliente", "prioridad", "fecha_vencimiento", "eta", "asignados")
 
     if not form.is_valid():
         return _json_error(
             "FORM_INVALID",
             message="No se pudo guardar la edicion rapida.",
             errors=form.errors.get_json_data(escape_html=True),
-            html_form=_render_quick_edit_form(request, operacion, form),
-            html=_render_quick_edit_form(request, operacion, form),
+            html_form=_render_quick_edit_form(
+                request, operacion, form, solo_fechas=puede_editar_fechas
+            ),
+            html=_render_quick_edit_form(
+                request, operacion, form, solo_fechas=puede_editar_fechas
+            ),
             status=400,
         )
 

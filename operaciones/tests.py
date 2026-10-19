@@ -1665,6 +1665,14 @@ class OperacionesQuickEditTests(TestCase):
         self.owner = User.objects.create_user(username="quick_owner", password="pass")
         self.assigned_user = User.objects.create_user(username="quick_assigned", password="pass")
         self.other_user = User.objects.create_user(username="quick_other", password="pass")
+        self.executive_without_group = User.objects.create_user(
+            username="quick_executive_without_group", password="pass"
+        )
+        self.admin = User.objects.create_user(
+            username="quick_admin", password="pass", is_superuser=True, is_staff=True
+        )
+        self.executive = User.objects.create_user(username="quick_executive", password="pass")
+        self.executive.groups.add(Group.objects.create(name="ejecutivo"))
         self.operacion = Operacion.objects.create(
             titulo="Operacion original",
             descripcion="Descripcion que no se edita rapido",
@@ -1676,6 +1684,163 @@ class OperacionesQuickEditTests(TestCase):
         self.edit_url = reverse("operaciones:editar_operacion_rapida", args=[self.operacion.id])
         self.client = Client()
         self.client.force_login(self.owner)
+
+    def test_admin_puede_actualizar_la_fecha_y_la_tarjeta_refleja_el_cambio(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            self.edit_url,
+            {
+                "titulo": self.operacion.titulo,
+                "fecha_vencimiento": "2026-06-12",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.operacion.refresh_from_db()
+        self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-06-12")
+        self.assertIn("12 Jun 2026", response.json()["html"])
+        self.assertEqual(self.operacion.descripcion, "Descripcion que no se edita rapido")
+
+    def test_ejecutivo_autorizado_puede_actualizar_la_fecha(self):
+        self.client.force_login(self.executive)
+
+        response = self.client.post(
+            self.edit_url,
+            {
+                "titulo": self.operacion.titulo,
+                "fecha_vencimiento": "2026-07-18",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.operacion.refresh_from_db()
+        self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-07-18")
+
+    def test_ejecutivo_sin_grupo_y_no_asignado_puede_actualizar_solo_fechas(self):
+        self.client.force_login(self.executive_without_group)
+
+        response = self.client.get(self.edit_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.json()["html"]
+        self.assertIn('name="fecha_vencimiento"', html)
+        self.assertIn('name="eta"', html)
+        self.assertNotIn('name="titulo"', html)
+        self.assertNotIn('name="asignados"', html)
+
+        response = self.client.post(
+            self.edit_url,
+            {"fecha_vencimiento": "2026-07-18", "eta": "2026-07-21"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.operacion.refresh_from_db()
+        self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-07-18")
+        self.assertEqual(str(self.operacion.eta), "2026-07-21")
+        self.assertEqual(self.operacion.titulo, "Operacion original")
+
+    def test_ejecutivo_con_acceso_exclusivo_no_puede_modificar_otro_campo_por_post(self):
+        self.client.force_login(self.executive_without_group)
+
+        response = self.client.post(
+            self.edit_url,
+            {
+                "fecha_vencimiento": "2026-07-18",
+                "titulo": "Intento no permitido",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.operacion.refresh_from_db()
+        self.assertEqual(self.operacion.titulo, "Operacion original")
+        self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-05-22")
+
+    def test_usuario_solo_lectura_no_puede_actualizar_fechas(self):
+        User = get_user_model()
+        read_only = User.objects.create_user(username="quick_read_only", password="pass")
+        read_only.groups.add(Group.objects.get_or_create(name="SOLO_LECTURA")[0])
+        self.client.force_login(read_only)
+
+        response = self.client.post(
+            self.edit_url,
+            {"fecha_vencimiento": "2026-07-18"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.operacion.refresh_from_db()
+        self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-05-22")
+
+    def test_ejecutivo_sin_acceso_a_columna_no_puede_actualizar_fechas(self):
+        columna_privada = OperacionColumna.objects.create(
+            codigo="COLUMNA_PRIVADA_QUICK",
+            nombre="Privada",
+            orden=99,
+            visible_para_todos=False,
+        )
+        operacion_privada = Operacion.objects.create(
+            titulo="Operacion privada",
+            estado=columna_privada.codigo,
+            columna=columna_privada,
+            creado_por=self.owner,
+            fecha_vencimiento="2026-05-22",
+        )
+        self.client.force_login(self.executive_without_group)
+
+        response = self.client.post(
+            reverse("operaciones:editar_operacion_rapida", args=[operacion_privada.id]),
+            {"fecha_vencimiento": "2026-07-18"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        operacion_privada.refresh_from_db()
+        self.assertEqual(str(operacion_privada.fecha_vencimiento), "2026-05-22")
+
+    def test_fecha_invalida_no_modifica_la_fecha_existente(self):
+        response = self.client.post(
+            self.edit_url,
+            {
+                "titulo": self.operacion.titulo,
+                "fecha_vencimiento": "18/07/2026",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.operacion.refresh_from_db()
+        self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-05-22")
+        self.assertFalse(response.json()["ok"])
+
+    def test_formulario_rapido_expone_la_fecha_actual_y_el_js_reemplaza_la_tarjeta(self):
+        response = self.client.get(self.edit_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.json()["html"]
+        self.assertIn('name="fecha_vencimiento"', html)
+        self.assertIn('value="2026-05-22"', html)
+        javascript = PANEL_JS_PATH.read_text(encoding="utf-8")
+        self.assertIn("new FormData(form)", javascript)
+        self.assertIn("replaceCardFromHtml(card, data.html)", javascript)
+
+    def test_edicion_rapida_no_invoca_transferencias(self):
+        with patch("operaciones.views.crear_cuenta_gastos_desde_operacion_si_corresponde") as cuenta_mock, \
+             patch("operaciones.views.enviar_operacion_a_garantias") as garantia_mock:
+            response = self.client.post(
+                self.edit_url,
+                {"titulo": self.operacion.titulo, "fecha_vencimiento": "2026-06-12"},
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        cuenta_mock.assert_not_called()
+        garantia_mock.assert_not_called()
 
     def test_carga_formulario_rapido_con_campos_permitidos(self):
         response = self.client.get(self.edit_url, HTTP_X_REQUESTED_WITH="XMLHttpRequest")

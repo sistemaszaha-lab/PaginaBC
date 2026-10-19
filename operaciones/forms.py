@@ -283,6 +283,8 @@ class OperacionQuickEditForm(forms.ModelForm):
         self.fields["prioridad"].required = False
         self.fields["fecha_vencimiento"].required = False
         self.fields["eta"].required = False
+        self.fields["fecha_vencimiento"].input_formats = ["%Y-%m-%d"]
+        self.fields["eta"].input_formats = ["%Y-%m-%d"]
         self.fields["asignados"].required = False
         self.fields["cliente"].queryset = Cliente.objects.all().order_by("nombre", "empresa", "id")
         User = get_user_model()
