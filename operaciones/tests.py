@@ -187,6 +187,25 @@ class OperacionACuentaGastosTests(TestCase):
         self.assertTrue(response.json()["cuenta_gastos_creada"])
         self.assertTrue(CuentaGastos.objects.filter(operacion_origen=self.operacion).exists())
 
+    @skipUnless(connection.vendor == "postgresql", "PostgreSQL regression")
+    def test_transferencia_cuenta_gastos_bloquea_solo_operacion_con_cliente_nullable(self):
+        operacion = Operacion.objects.create(
+            titulo="Operacion sin cliente",
+            estado=Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+            columna=self.columna_cg,
+            creado_por=self.usuario,
+        )
+        operacion.asignados.add(self.asignado)
+
+        cuenta, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
+            operacion,
+            creado_por=self.usuario,
+        )
+
+        self.assertTrue(creada)
+        self.assertEqual(cuenta.operacion_origen_id, operacion.pk)
+        self.assertEqual(list(cuenta.asignados.all()), [self.asignado])
+
     def test_servicio_es_idempotente_y_no_crea_fuera_del_estado_destino(self):
         cuenta, creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
             self.operacion, creado_por=self.usuario

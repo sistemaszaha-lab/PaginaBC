@@ -25,7 +25,7 @@ def enviar_operacion_a_garantias(operacion, *, creado_por):
     from operaciones.models import Operacion
 
     operacion = (
-        Operacion.objects.select_for_update()
+        Operacion.objects.select_for_update(of=("self",))
         .select_related("cliente")
         .prefetch_related("asignados", "etiquetas", "comentarios", "enlaces", "archivos")
         .get(pk=operacion.pk)

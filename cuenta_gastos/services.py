@@ -22,7 +22,7 @@ def crear_cuenta_gastos_desde_operacion_si_corresponde(operacion, *, creado_por)
 
     with transaction.atomic():
         operacion_bloqueada = (
-            Operacion.objects.select_for_update()
+            Operacion.objects.select_for_update(of=("self",))
             .select_related("cliente")
             .get(pk=operacion.pk)
         )
