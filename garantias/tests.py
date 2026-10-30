@@ -2354,6 +2354,75 @@ class GarantiaAcuentaGastosTests(TestCase):
         self.garantia.etiquetas.add(self.etiqueta)
         self.client.force_login(self.usuario)
 
+    def test_transferencias_repetidas_no_crean_garantias_ni_alteran_origenes(self):
+        from operaciones.models import Operacion
+
+        operacion = Operacion.objects.create(titulo="Origen", creado_por=self.usuario)
+        self.garantia.operacion_origen = operacion
+        self.garantia.save(update_fields=["operacion_origen"])
+        comentario = GarantiaComentario.objects.create(
+            garantia=self.garantia, usuario=self.usuario, comentario="Conservar comentario",
+        )
+        garantias_antes = list(Garantia.objects.order_by("pk").values())
+        operaciones_antes = list(Operacion.objects.order_by("pk").values())
+        columnas_antes = list(GarantiaColumna.objects.order_by("pk").values())
+        url = reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk])
+        with patch("garantias.services.enviar_operacion_a_garantias") as enviar_operacion, patch(
+            "garantias.services.copiar_garantia_a_columna"
+        ) as copiar, patch(
+            "cuenta_gastos.services.crear_cuenta_gastos_desde_operacion_si_corresponde"
+        ) as enviar_cuenta:
+            for creada in (True, False, False):
+                response = self.client.post(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["creada"], creada)
+            enviar_operacion.assert_not_called()
+            copiar.assert_not_called()
+            enviar_cuenta.assert_not_called()
+        self.assertEqual(list(Garantia.objects.order_by("pk").values()), garantias_antes)
+        self.assertEqual(list(Operacion.objects.order_by("pk").values()), operaciones_antes)
+        self.assertEqual(list(GarantiaColumna.objects.order_by("pk").values()), columnas_antes)
+        self.assertEqual(list(self.garantia.asignados.all()), [self.asignado])
+        self.assertEqual(list(self.garantia.etiquetas.all()), [self.etiqueta])
+        self.assertEqual(list(self.garantia.comentarios.all()), [comentario])
+        cuenta = CuentaGastos.objects.get(garantia_origen=self.garantia)
+        self.assertEqual(CuentaGastos.objects.count(), 1)
+        self.assertEqual(list(cuenta.asignados.all()), [self.asignado])
+        self.assertIsNone(cuenta.operacion_origen_id)
+
+    def test_reutiliza_cuenta_sin_sobrescribir_datos_asignados_o_comentarios(self):
+        from cuenta_gastos.models import CuentaGastosComentario
+        from .services import enviar_garantia_a_cuenta_gastos
+
+        cuenta, _ = enviar_garantia_a_cuenta_gastos(self.garantia, creado_por=self.usuario)
+        cuenta.titulo = "Título editado en cuenta"
+        cuenta.save(update_fields=["titulo"])
+        cuenta.asignados.set([self.usuario])
+        comentario = CuentaGastosComentario.objects.create(
+            cuenta_gasto=cuenta, usuario=self.usuario, comentario="Comentario propio",
+        )
+        datos_antes = CuentaGastos.objects.values().get(pk=cuenta.pk)
+        reutilizada, creada = enviar_garantia_a_cuenta_gastos(self.garantia, creado_por=self.usuario)
+        self.assertFalse(creada)
+        self.assertEqual(reutilizada.pk, cuenta.pk)
+        self.assertEqual(CuentaGastos.objects.values().get(pk=cuenta.pk), datos_antes)
+        self.assertEqual(list(reutilizada.asignados.all()), [self.usuario])
+        self.assertEqual(list(reutilizada.comentarios.all()), [comentario])
+        self.assertEqual(Garantia.objects.count(), 1)
+
+    def test_error_al_asignar_revierte_transferencia_completa(self):
+        from .services import enviar_garantia_a_cuenta_gastos
+
+        datos_antes = Garantia.objects.values().get(pk=self.garantia.pk)
+        manager_class = CuentaGastos.asignados.related_manager_cls
+        with patch.object(manager_class, "set", side_effect=RuntimeError("Fallo de asignados")):
+            with self.assertRaisesMessage(RuntimeError, "Fallo de asignados"):
+                enviar_garantia_a_cuenta_gastos(self.garantia, creado_por=self.usuario)
+        self.assertFalse(CuentaGastos.objects.exists())
+        self.assertEqual(Garantia.objects.count(), 1)
+        self.assertEqual(Garantia.objects.values().get(pk=self.garantia.pk), datos_antes)
+        self.assertEqual(list(self.garantia.asignados.all()), [self.asignado])
+
     def test_envio_crea_cuenta_en_destino_con_trazabilidad_y_campos(self):
         response = self.client.post(reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk]))
         self.assertEqual(response.status_code, 200)

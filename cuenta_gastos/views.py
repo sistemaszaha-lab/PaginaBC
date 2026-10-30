@@ -7,6 +7,7 @@ from django.db.models import Count, F, Q, Window
 from django.db.models.functions import RowNumber
 from pathlib import Path
 from datetime import date
+from itertools import chain
 
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
@@ -19,6 +20,7 @@ from solicitudes.permissions import puede_ver_todo
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from solicitudes_app.trash import enviar_a_papelera
+from operaciones.models import OperacionComentario
 
 
 from .models import (
@@ -182,7 +184,10 @@ def _cuenta_queryset():
             "enlaces",
         )\
         .annotate(
-            comentarios_count=Count("comentarios", distinct=True),
+            comentarios_count=(
+                Count("comentarios", distinct=True)
+                + Count("operacion_origen__comentarios", distinct=True)
+            ),
             archivos_count=Count("archivos", distinct=True),
             enlaces_count=Count("enlaces", distinct=True),
         )\
@@ -418,7 +423,14 @@ def _detalle_template_name(layout: str) -> str:
 
 
 def _comentarios_queryset(cuenta):
-    return cuenta.comentarios.select_related("usuario").order_by("-fecha", "-id")
+    propios = cuenta.comentarios.select_related("usuario").all()
+    originales = (
+        OperacionComentario.objects.filter(operacion_id=cuenta.operacion_origen_id)
+        .select_related("usuario")
+        if cuenta.operacion_origen_id else ()
+    )
+    # Solo lectura: cada registro aparece una vez y conserva autor y fecha.
+    return sorted(chain(propios, originales), key=lambda c: (c.fecha, c.pk), reverse=True)
 
 
 def _render_comentarios_section(request, cuenta, *, comentario_form=None, layout="modal"):
@@ -1429,7 +1441,7 @@ def agregar_comentario(request, pk):
                 {
                     "success": True,
                     "comments_html": _render_comentarios_section(request, cuenta, layout=layout),
-                    "comments_count": cuenta.comentarios.count(),
+                    "comments_count": cuenta.comentarios_count,
                     "id": cuenta.pk,
                 }
             )
@@ -1438,7 +1450,7 @@ def agregar_comentario(request, pk):
                 {
                     "success": False,
                     "comments_html": _render_comentarios_section(request, cuenta, comentario_form=form, layout=layout),
-                    "comments_count": cuenta.comentarios.count(),
+                    "comments_count": cuenta.comentarios_count,
                     "id": cuenta.pk,
                 },
                 status=400,
