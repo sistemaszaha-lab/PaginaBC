@@ -688,7 +688,7 @@ class OperacionesMovimientoTests(TestCase):
 
         self.assertEqual(response.status_code, 405)
 
-    def test_mover_a_expediente_crea_garantia_idempotente(self):
+    def test_mover_a_expediente_no_crea_garantia(self):
         self.client.force_login(self.owner)
 
         response = self.client.post(
@@ -698,10 +698,8 @@ class OperacionesMovimientoTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["garantia_creada"])
-        garantia = Garantia.objects.get(operacion_origen=self.operacion)
-        self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
-        self.assertEqual(garantia.columna.codigo, Garantia.Estado.SOLICITUD_NAVIERA)
+        self.assertFalse(response.json()["garantia_creada"])
+        self.assertFalse(Garantia.objects.filter(operacion_origen=self.operacion).exists())
         self.operacion.refresh_from_db()
         self.assertEqual(self.operacion.estado, Operacion.Estado.EXPEDIENTE_CG)
         self.assertEqual(self.operacion.columna.codigo, Operacion.Estado.EXPEDIENTE_CG)
@@ -719,9 +717,9 @@ class OperacionesMovimientoTests(TestCase):
 
         self.assertEqual(second.status_code, 200)
         self.assertFalse(second.json()["garantia_creada"])
-        self.assertEqual(Garantia.objects.filter(operacion_origen=self.operacion).count(), 1)
+        self.assertEqual(Garantia.objects.filter(operacion_origen=self.operacion).count(), 0)
 
-    def test_mover_a_expediente_falla_controlado_si_falta_columna_destino(self):
+    def test_mover_a_expediente_no_depende_de_columna_garantias(self):
         self.client.force_login(self.owner)
         GarantiaColumna.objects.filter(
             codigo=Garantia.Estado.SOLICITUD_NAVIERA,
@@ -733,10 +731,10 @@ class OperacionesMovimientoTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
         self.assertFalse(Garantia.objects.filter(operacion_origen=self.operacion).exists())
         self.operacion.refresh_from_db()
-        self.assertEqual(self.operacion.estado, Operacion.Estado.PENDIENTE)
+        self.assertEqual(self.operacion.estado, Operacion.Estado.EXPEDIENTE_CG)
 
 
 @override_settings(
@@ -841,7 +839,7 @@ class OperacionesColumnasDinamicasTests(TestCase):
             CuentaGastos.objects.filter(operacion_origen=operacion).exists()
         )
 
-    def test_eliminar_columna_reasigna_a_expediente_y_crea_una_garantia(self):
+    def test_eliminar_columna_reasigna_a_expediente_sin_crear_garantia(self):
         origen = OperacionColumna.objects.create(
             nombre="Temporal CG",
             codigo="TEMPORAL_CG",
@@ -869,10 +867,10 @@ class OperacionesColumnasDinamicasTests(TestCase):
         self.assertEqual(operacion.estado, destino.codigo)
         self.assertEqual(operacion.columna_id, destino.pk)
         self.assertEqual(
-            Garantia.objects.filter(operacion_origen=operacion).count(), 1
+            Garantia.objects.filter(operacion_origen=operacion).count(), 0
         )
 
-    def test_eliminar_columna_a_expediente_revierte_si_falta_columna_garantias(self):
+    def test_eliminar_columna_a_expediente_no_depende_de_garantias(self):
         origen = OperacionColumna.objects.create(
             nombre="Temporal CG rollback",
             codigo="TEMPORAL_CG_ROLLBACK",
@@ -898,12 +896,12 @@ class OperacionesColumnasDinamicasTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
         operacion.refresh_from_db()
         origen.refresh_from_db()
-        self.assertEqual(operacion.estado, origen.codigo)
-        self.assertEqual(operacion.columna_id, origen.pk)
-        self.assertTrue(origen.activa)
+        self.assertEqual(operacion.estado, destino.codigo)
+        self.assertEqual(operacion.columna_id, destino.pk)
+        self.assertFalse(origen.activa)
         self.assertFalse(
             Garantia.objects.filter(operacion_origen=operacion).exists()
         )
@@ -1088,7 +1086,7 @@ class OperacionesCopiarPegarTests(TestCase):
         )
         self.assertEqual(move_response.status_code, 200)
 
-    def test_copiar_a_expediente_crea_garantia_para_la_nueva_operacion(self):
+    def test_copiar_a_expediente_no_crea_garantia(self):
         from garantias.models import Garantia
 
         columna_cg, _ = OperacionColumna.objects.update_or_create(
@@ -1105,8 +1103,7 @@ class OperacionesCopiarPegarTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         copia = Operacion.objects.get(pk=response.json()["tarjeta_id"])
-        garantia = Garantia.objects.get(operacion_origen=copia)
-        self.assertEqual(garantia.estado, Garantia.Estado.SOLICITUD_NAVIERA)
+        self.assertFalse(Garantia.objects.filter(operacion_origen=copia).exists())
         self.assertIsNone(copia.referencia_origen_id)
         self.assertEqual(copia.columna_id, columna_cg.pk)
         self.assertEqual(copia.estado, columna_cg.codigo)
@@ -1831,7 +1828,7 @@ class OperacionesQuickEditTests(TestCase):
 
     def test_edicion_rapida_no_invoca_transferencias(self):
         with patch("operaciones.views.crear_cuenta_gastos_desde_operacion_si_corresponde") as cuenta_mock, \
-             patch("operaciones.views.enviar_operacion_a_garantias") as garantia_mock:
+             patch("garantias.services.enviar_operacion_a_garantias") as garantia_mock:
             response = self.client.post(
                 self.edit_url,
                 {"titulo": self.operacion.titulo, "fecha_vencimiento": "2026-06-12"},

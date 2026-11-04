@@ -46,6 +46,7 @@ from .services import (
 )
 from .services import obtener_datos_garantia_desde_referencia
 from solicitudes.models import Referencia
+from cuenta_gastos.models import CuentaGastosColumna
 
 User = get_user_model()
 
@@ -980,18 +981,22 @@ def columna_eliminar(request, pk):
         destino = get_object_or_404(GarantiaColumna, pk=int(destino_id), activa=True)
     else:
         destino = None
-    with transaction.atomic():
-        if destino is not None:
-            garantias_qs.update(columna=destino, estado=destino.codigo)
-        columna.activa = False
-        columna.save(update_fields=["activa", "fecha_actualizacion"])
-        for orden, columna_id in enumerate(
-            GarantiaColumna.objects.filter(activa=True)
-            .order_by("orden", "id")
-            .values_list("pk", flat=True),
-            start=1,
-        ):
-            GarantiaColumna.objects.filter(pk=columna_id).update(orden=orden)
+    try:
+        with transaction.atomic():
+            if destino is not None:
+                for garantia in garantias_qs:
+                    _mover_garantia_a_columna(garantia, destino, usuario=request.user)
+            columna.activa = False
+            columna.save(update_fields=["activa", "fecha_actualizacion"])
+            for orden, columna_id in enumerate(
+                GarantiaColumna.objects.filter(activa=True)
+                .order_by("orden", "id")
+                .values_list("pk", flat=True),
+                start=1,
+            ):
+                GarantiaColumna.objects.filter(pk=columna_id).update(orden=orden)
+    except (ValueError, CuentaGastosColumna.DoesNotExist) as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     response_data = {"ok": True, "columna_id": columna.pk}
     if destino is not None:
         response_data.update(
@@ -1059,6 +1064,19 @@ def tarjeta_pegar(request, columna_id):
     )
 
 
+@transaction.atomic
+def _mover_garantia_a_columna(garantia, columna, *, usuario):
+    # Bloquear antes de comprobar la transición también serializa movimientos concurrentes.
+    garantia = Garantia.objects.select_for_update().get(pk=garantia.pk)
+    if garantia.estado != columna.codigo or garantia.columna_id != columna.pk:
+        garantia.columna = columna
+        garantia.estado = columna.codigo
+        garantia.save(update_fields=["columna", "estado"])
+        if columna.codigo == Garantia.Estado.DEVOLUCION_CLIENTE:
+            enviar_garantia_a_cuenta_gastos(garantia, creado_por=usuario)
+    return garantia
+
+
 @login_required
 @admin_required
 @require_POST
@@ -1069,10 +1087,10 @@ def actualizar_estado_garantia(request):
     columna = _buscar_columna_activa_por_codigo(nuevo_estado)
     if columna is None:
         raise PermissionDenied("Estado inválido.")
-    if garantia.estado != nuevo_estado or garantia.columna_id != columna.pk:
-        garantia.columna = columna
-        garantia.estado = columna.codigo
-        garantia.save(update_fields=["columna", "estado"])
+    try:
+        garantia = _mover_garantia_a_columna(garantia, columna, usuario=request.user)
+    except (ValueError, CuentaGastosColumna.DoesNotExist) as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
     if _es_ajax(request):
         return JsonResponse(
@@ -1097,10 +1115,10 @@ def cambiar_estado_garantia(request, pk):
     columna = _buscar_columna_activa_por_codigo(nuevo_estado)
     if columna is None:
         raise PermissionDenied("Estado inválido.")
-    if garantia.estado != nuevo_estado or garantia.columna_id != columna.pk:
-        garantia.columna = columna
-        garantia.estado = columna.codigo
-        garantia.save(update_fields=["columna", "estado"])
+    try:
+        garantia = _mover_garantia_a_columna(garantia, columna, usuario=request.user)
+    except (ValueError, CuentaGastosColumna.DoesNotExist) as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
     if _es_ajax(request):
         return JsonResponse(

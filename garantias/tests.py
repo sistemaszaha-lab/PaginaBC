@@ -2458,9 +2458,9 @@ class GarantiaAcuentaGastosTests(TestCase):
         response = self.client.post(reverse("garantias:enviar_garantia_a_cuenta", args=[self.garantia.pk]))
         self.assertEqual(response.status_code, 302)
 
-    def test_boton_aparece_en_tarjeta_y_no_en_detalle(self):
+    def test_boton_manual_no_aparece_en_tarjeta_ni_en_detalle(self):
         panel = self.client.get(reverse("garantias:panel_garantias"))
-        self.assertContains(panel, 'data-garantia-send-cuenta="1"')
+        self.assertNotContains(panel, 'data-garantia-send-cuenta="1"')
         detalle = self.client.get(reverse("garantias:detalle_garantia_parcial", args=[self.garantia.pk]))
         self.assertNotContains(detalle, "Enviar a Devolución a garantías")
 

@@ -60,7 +60,6 @@ from cuenta_gastos.services import (
     CuentaGastosTransferError,
     crear_cuenta_gastos_desde_operacion_si_corresponde,
 )
-from garantias.services import enviar_operacion_a_garantias
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -1771,11 +1770,6 @@ def columna_eliminar(request, pk):
                         except CuentaGastosTransferError as exc:
                             transaction.set_rollback(True)
                             return JsonResponse({"ok": False, "error": str(exc)}, status=400)
-                    if destino.codigo == Operacion.Estado.EXPEDIENTE_CG:
-                        enviar_operacion_a_garantias(
-                            operacion,
-                            creado_por=request.user,
-                        )
             columna.activa = False
             columna.save(update_fields=["activa", "fecha_actualizacion"])
             for orden, columna_id in enumerate(
@@ -1895,20 +1889,6 @@ def tarjeta_pegar(request, columna_id):
                 return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         garantia_obj = None
         garantia_creada = False
-        if nueva_operacion.estado == Operacion.Estado.EXPEDIENTE_CG:
-            try:
-                garantia_obj, garantia_creada = enviar_operacion_a_garantias(
-                    nueva_operacion,
-                    creado_por=request.user,
-                )
-            except ValueError as exc:
-                logger.warning(
-                    "No se pudo automatizar copia de Operacion id=%s hacia Garantias: %s",
-                    operacion_original.pk,
-                    exc,
-                )
-                transaction.set_rollback(True)
-                return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
     return JsonResponse(
         {
@@ -1982,7 +1962,6 @@ def mover_operacion(request, operacion_id):
 
     with transaction.atomic():
         from cuenta_gastos.models import CuentaGastos
-        estado_anterior = operacion.estado
         antes_existia = CuentaGastos.objects.filter(operacion_origen=operacion).exists()
 
         operacion.estado = estado
@@ -1999,27 +1978,6 @@ def mover_operacion(request, operacion_id):
             return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         garantia_creada = False
         garantia_obj = None
-        if (
-            estado_anterior != Operacion.Estado.EXPEDIENTE_CG
-            and estado == Operacion.Estado.EXPEDIENTE_CG
-        ):
-            try:
-                garantia_obj, garantia_creada = enviar_operacion_a_garantias(
-                    operacion,
-                    creado_por=request.user,
-                )
-            except ValueError as exc:
-                logger.warning(
-                    "No se pudo automatizar Operacion id=%s hacia Garantias: %s",
-                    operacion.pk,
-                    exc,
-                )
-                transaction.set_rollback(True)
-                return JsonResponse(
-                    {"ok": False, "status": "error", "error": str(exc)},
-                    status=400,
-                )
-
         operaciones = list(
             _operacion_queryset().filter(
                 Q(columna=columna_obj) | Q(columna__isnull=True, estado=columna_obj.codigo)

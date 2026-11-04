@@ -99,8 +99,19 @@ def enviar_garantia_a_cuenta_gastos(garantia, *, creado_por):
     garantia = Garantia.objects.select_for_update().get(pk=garantia.pk)
     if garantia.estado != Garantia.Estado.DEVOLUCION_CLIENTE:
         raise ValueError("La garantía debe estar en Devolución a cliente.")
-    columna = CuentaGastosColumna.objects.get(codigo="DEVOLUCION_A_GARANTIAS", activa=True)
-    cuenta, creada = CuentaGastos.objects.get_or_create(garantia_origen=garantia, defaults={
+    columnas_destino = list(
+        CuentaGastosColumna.objects.filter(
+            nombre="Devolución a garantías",
+            activa=True,
+        )[:2]
+    )
+    if len(columnas_destino) != 1:
+        raise ValueError(
+            "Debe existir exactamente una columna activa de Cuenta de Gastos "
+            "llamada 'Devolución a garantías'."
+        )
+    columna = columnas_destino[0]
+    cuenta, creada = CuentaGastos.objects.select_for_update().get_or_create(garantia_origen=garantia, defaults={
         "titulo": garantia.titulo, "descripcion": garantia.descripcion, "cliente": garantia.cliente,
         "prioridad": garantia.prioridad if garantia.prioridad in dict(CuentaGastos.Prioridad.choices) else CuentaGastos.Prioridad.MEDIA,
         "fecha_vencimiento": garantia.fecha_vencimiento, "estado": columna.codigo, "columna": columna,
@@ -108,6 +119,10 @@ def enviar_garantia_a_cuenta_gastos(garantia, *, creado_por):
     })
     if creada:
         cuenta.asignados.set(garantia.asignados.all())
+    elif cuenta.estado != columna.codigo or cuenta.columna_id != columna.pk:
+        cuenta.estado = columna.codigo
+        cuenta.columna = columna
+        cuenta.save(update_fields=["estado", "columna"])
     return cuenta, creada
 
 
