@@ -37,6 +37,36 @@
       {% endfor %}
     </div>
 
+    {% with referencia=operacion.referencia_origen %}
+      {% if referencia %}
+        {% if referencia.medio_operacion == "maritima" or referencia.medio_operacion == "aerea" or referencia.medio_operacion == "terrestre" or referencia.agencia_aduanal %}
+          <div class="operacion-card-meta">
+        {% if referencia.medio_operacion == "maritima" %}
+          <span class="operaciones-card__origin-indicator" title="Medio de transporte: Marítima" aria-label="Medio de transporte: Marítima">
+            <span class="operaciones-card__origin-emoji" aria-hidden="true">🚢</span>
+            <span class="operaciones-card__origin-label">Marítima</span>
+            <span class="visually-hidden">Marítima</span>
+          </span>
+        {% elif referencia.medio_operacion == "aerea" %}
+          <span class="operaciones-card__origin-indicator" title="Medio de transporte: Aérea" aria-label="Medio de transporte: Aérea">
+            <span class="operaciones-card__origin-emoji" aria-hidden="true">✈️</span>
+            <span class="operaciones-card__origin-label">Aérea</span>
+            <span class="visually-hidden">Aérea</span>
+          </span>
+        {% elif referencia.medio_operacion == "terrestre" %}
+          <span class="operaciones-card__origin-indicator" title="Medio de transporte: Terrestre" aria-label="Medio de transporte: Terrestre">
+            <span class="operaciones-card__origin-emoji" aria-hidden="true">🚛</span>
+            <span class="operaciones-card__origin-label">Terrestre</span>
+            <span class="visually-hidden">Terrestre</span>
+          </span>
+        {% endif %}
+        {% if referencia.agencia_aduanal %}
+          <span class="operaciones-card__origin-detail operaciones-card__origin-detail--agency">{{ referencia.agencia_aduanal }}</span>
+        {% endif %}
+          </div>
+        {% endif %}
+      {% endif %}
+    {% endwith %}
     <div class="operacion-card-dates">
       {% if operacion.fecha_vencimiento %}<span>ETD: {{ operacion.fecha_vencimiento|date:"d M Y" }}</span>{% endif %}
       {% if operacion.eta %}<span>ETA: {{ operacion.eta|date:"d M Y" }}</span>{% endif %}

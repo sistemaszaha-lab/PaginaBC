@@ -220,7 +220,7 @@ def _es_ajax(request):
 def _operacion_queryset():
     return (
         Operacion.objects.filter(eliminado_en__isnull=True)
-        .select_related("cliente", "creado_por", "columna")
+        .select_related("cliente", "creado_por", "columna", "referencia_origen")
         .prefetch_related(
             "asignados",
             "etiquetas",

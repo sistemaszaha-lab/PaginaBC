@@ -58,6 +58,11 @@
 .operacion-card-state { display: flex; align-items: center; margin-top: 0.8rem; }
 .operacion-card-dates { display: grid; grid-template-columns: 1fr; gap: 0.25rem; margin-top: 0.7rem; color: var(--operaciones-text-muted); font-size: 0.78rem; }
 .operacion-card-meta { display: flex; flex-wrap: wrap; gap: 0.45rem 0.75rem; margin-top: 0.75rem; color: var(--operaciones-text-muted); font-size: 0.78rem; }
+.operaciones-card__origin-indicator { display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; min-height: 1.9rem; height: 1.9rem; padding: 0 0.58rem; border: 1px solid #d8cdbd; border-radius: 999px; background: #faf7f1; color: #7f6746; font-size: 0.74rem; font-weight: 700; }
+.operaciones-card__origin-emoji { display: inline-flex; align-items: center; justify-content: center; width: 1rem; font-size: 0.95rem; line-height: 1; }
+.operaciones-card__origin-label { white-space: nowrap; }
+.operaciones-card__origin-detail { display: inline-flex; align-items: center; min-height: 1.9rem; padding: 0 0.58rem; border: 1px solid #e2d8ca; border-radius: 999px; background: #fcfaf7; color: #6d6256; font-size: 0.74rem; font-weight: 700; }
+.operaciones-card__origin-detail--agency { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .operacion-card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; margin-top: 0.9rem; padding-top: 0.85rem; border-top: 1px solid rgba(22, 129, 125, 0.12); }
 .operacion-card-actions__buttons { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; min-width: 0; }
 .operaciones-card__assignees { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; min-width: 0; }
