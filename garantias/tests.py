@@ -321,6 +321,7 @@ class GarantiasInlineCreateTests(TestCase):
         self.assertIn("CSRF token not found in garantia state update", javascript)
         self.assertNotIn("getAjaxErrorMessage", javascript)
         self.assertIn("const message = requestErrorMessage(error)", javascript)
+        self.assertIn("const serverMessage = error?.data?.error", javascript)
         self.assertIn("console.error(\n          '[Garantias] Error cambiando estado:'", javascript)
         self.assertIn("console.error('[Garantias] Error creando garantia inline:', error)", javascript)
         self.assertIn("console.error('[Garantias] Error actualizando UI tras crear garantia inline:', uiError)", javascript)

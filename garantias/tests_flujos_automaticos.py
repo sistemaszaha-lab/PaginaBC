@@ -48,7 +48,8 @@ class TransferenciaAutomaticaTests(TestCase):
     def test_destino_se_resuelve_por_nombre_y_usa_el_codigo_del_catalogo_activo(self):
         destino = CuentaGastosColumna.objects.get(nombre='Devolución a garantías')
         destino.codigo = 'CODIGO_PRODUCCION'
-        destino.save(update_fields=['codigo'])
+        destino.nombre = '  DEVOLUCIÓN   A GARANTÍAS  '
+        destino.save(update_fields=['codigo', 'nombre'])
 
         self.assertEqual(self.mover().status_code, 200)
 
@@ -56,13 +57,59 @@ class TransferenciaAutomaticaTests(TestCase):
         self.assertEqual(cuenta.columna_id, destino.pk)
         self.assertEqual(cuenta.estado, 'CODIGO_PRODUCCION')
 
+    def test_destino_renombrado_conserva_identificacion_por_codigo(self):
+        destino = CuentaGastosColumna.objects.get(codigo='DEVOLUCION_A_GARANTIAS')
+        destino.nombre = 'Retorno documental'
+        destino.save(update_fields=['nombre'])
+
+        response = self.mover()
+
+        self.assertEqual(response.status_code, 200)
+        cuenta = CuentaGastos.objects.get(garantia_origen=self.garantia)
+        self.assertEqual(cuenta.columna_id, destino.pk)
+        self.assertEqual(cuenta.estado, destino.codigo)
+
     def test_destino_ambiguo_no_adivina_y_revierte_el_movimiento(self):
         CuentaGastosColumna.objects.create(
             nombre='Devolución a garantías', codigo='OTRO_CODIGO', orden=999,
         )
 
-        self.assertEqual(self.mover().status_code, 400)
+        response = self.mover()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("contradice", response.json()["error"])
 
+        self.garantia.refresh_from_db()
+        self.assertEqual(self.garantia.columna_id, self.origen.pk)
+        self.assertFalse(CuentaGastos.objects.exists())
+
+    def test_nombre_normalizado_ambiguo_rechaza_sin_elegir_columna(self):
+        CuentaGastosColumna.objects.filter(
+            codigo='DEVOLUCION_A_GARANTIAS'
+        ).delete()
+        CuentaGastosColumna.objects.create(
+            nombre='Devolución a garantías', codigo='DEVOLUCION_UNO', orden=999,
+        )
+        CuentaGastosColumna.objects.create(
+            nombre='  DEVOLUCIÓN   A GARANTÍAS  ', codigo='DEVOLUCION_DOS', orden=1000,
+        )
+
+        response = self.mover()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("varias columnas activas", response.json()["error"])
+        self.garantia.refresh_from_db()
+        self.assertEqual(self.garantia.columna_id, self.origen.pk)
+        self.assertFalse(CuentaGastos.objects.exists())
+
+    def test_destino_inexistente_rechaza_y_revierte_movimiento(self):
+        CuentaGastosColumna.objects.filter(
+            codigo='DEVOLUCION_A_GARANTIAS'
+        ).delete()
+
+        response = self.mover()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("No existe una columna activa", response.json()["error"])
         self.garantia.refresh_from_db()
         self.assertEqual(self.garantia.columna_id, self.origen.pk)
         self.assertFalse(CuentaGastos.objects.exists())

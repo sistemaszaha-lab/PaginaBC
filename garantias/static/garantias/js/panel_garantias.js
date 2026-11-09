@@ -120,7 +120,12 @@
 
     function requestErrorMessage(error) {
       const status = error?.status;
-      if (status === 400) return 'Revisa los datos enviados e intenta de nuevo.';
+      if (status === 400) {
+        const serverMessage = error?.data?.error;
+        return typeof serverMessage === 'string' && serverMessage.trim()
+          ? serverMessage
+          : 'Revisa los datos enviados e intenta de nuevo.';
+      }
       if (status === 403) return 'Tu sesion no tiene permiso para esta accion.';
       if (status === 404) return 'La garantia o el recurso ya no existe.';
       if (status === 405) return 'La accion no esta permitida.';

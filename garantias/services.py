@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import unicodedata
 
 from django.db import IntegrityError, transaction
 
@@ -17,6 +18,65 @@ from .models import (
 from cuenta_gastos.models import CuentaGastos, CuentaGastosColumna
 
 logger = logging.getLogger(__name__)
+CUENTA_GASTOS_DEVOLUCION_GARANTIAS_CODIGO = "DEVOLUCION_A_GARANTIAS"
+CUENTA_GASTOS_DEVOLUCION_GARANTIAS_NOMBRE = "Devolución a garantías"
+
+
+def _normalizar_nombre_columna(nombre):
+    nombre_normalizado = unicodedata.normalize("NFKC", nombre or "")
+    return " ".join(nombre_normalizado.casefold().split())
+
+
+def _obtener_columna_devolucion_garantias():
+    columnas_activas = list(
+        CuentaGastosColumna.objects.select_for_update()
+        .filter(activa=True)
+        .only("id", "codigo", "nombre")
+    )
+    columnas_por_codigo = [
+        columna
+        for columna in columnas_activas
+        if columna.codigo == CUENTA_GASTOS_DEVOLUCION_GARANTIAS_CODIGO
+    ]
+    nombre_destino = _normalizar_nombre_columna(
+        CUENTA_GASTOS_DEVOLUCION_GARANTIAS_NOMBRE
+    )
+    columnas_por_nombre = [
+        columna
+        for columna in columnas_activas
+        if _normalizar_nombre_columna(columna.nombre) == nombre_destino
+    ]
+
+    if len(columnas_por_codigo) > 1:
+        raise ValueError(
+            "Hay varias columnas activas de Cuenta de Gastos con el código "
+            f"'{CUENTA_GASTOS_DEVOLUCION_GARANTIAS_CODIGO}'."
+        )
+    if columnas_por_codigo:
+        columna_por_codigo = columnas_por_codigo[0]
+        if any(
+            columna.pk != columna_por_codigo.pk
+            for columna in columnas_por_nombre
+        ):
+            raise ValueError(
+                "La columna activa identificada por código contradice otra "
+                "columna activa identificada por el nombre de devolución "
+                "a garantías."
+            )
+        return columna_por_codigo
+
+    if len(columnas_por_nombre) > 1:
+        raise ValueError(
+            "Hay varias columnas activas de Cuenta de Gastos cuyo nombre "
+            "corresponde a 'Devolución a garantías'."
+        )
+    if columnas_por_nombre:
+        return columnas_por_nombre[0]
+
+    raise ValueError(
+        "No existe una columna activa de Cuenta de Gastos para la devolución "
+        "a garantías (código 'DEVOLUCION_A_GARANTIAS' o nombre reconocible)."
+    )
 
 
 @transaction.atomic
@@ -99,18 +159,7 @@ def enviar_garantia_a_cuenta_gastos(garantia, *, creado_por):
     garantia = Garantia.objects.select_for_update().get(pk=garantia.pk)
     if garantia.estado != Garantia.Estado.DEVOLUCION_CLIENTE:
         raise ValueError("La garantía debe estar en Devolución a cliente.")
-    columnas_destino = list(
-        CuentaGastosColumna.objects.filter(
-            nombre="Devolución a garantías",
-            activa=True,
-        )[:2]
-    )
-    if len(columnas_destino) != 1:
-        raise ValueError(
-            "Debe existir exactamente una columna activa de Cuenta de Gastos "
-            "llamada 'Devolución a garantías'."
-        )
-    columna = columnas_destino[0]
+    columna = _obtener_columna_devolucion_garantias()
     cuenta, creada = CuentaGastos.objects.select_for_update().get_or_create(garantia_origen=garantia, defaults={
         "titulo": garantia.titulo, "descripcion": garantia.descripcion, "cliente": garantia.cliente,
         "prioridad": garantia.prioridad if garantia.prioridad in dict(CuentaGastos.Prioridad.choices) else CuentaGastos.Prioridad.MEDIA,
