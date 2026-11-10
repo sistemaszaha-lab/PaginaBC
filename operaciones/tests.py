@@ -767,6 +767,7 @@ class OperacionesColumnasDinamicasTests(TestCase):
                 Operacion.Estado.TRANSITO_INTERNACIONAL,
                 Operacion.Estado.EXPEDIENTE_CG,
                 Operacion.Estado.SOLICITUD_CUENTA_GASTOS,
+                "FACTURA_FLETES_1",
             ],
         )
 

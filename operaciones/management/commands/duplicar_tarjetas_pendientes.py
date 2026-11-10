@@ -4,8 +4,10 @@ Management command: duplicar_tarjetas_pendientes
 Recorre todas las Operaciones activas en la columna SOLICITUD_CUENTA_GASTOS
 y crea (si aún no existe) la tarjeta espejo en CuentaGastos.
 
-Reutiliza exactamente la misma función que el signal y la vista mover,
-por lo que es idempotente: ejecutarlo N veces produce el mismo resultado.
+Reutiliza el servicio histórico de la vista mover. No invoca señales ni las
+automatizaciones Fletes/Geo, ni mueve o actualiza espejos que ya existen.
+La simulación y la ejecución consideran esos espejos como SKIP, incluso si
+después fueron movidos a VoBo Angie o enviados a la papelera.
 
 Uso:
     python manage.py duplicar_tarjetas_pendientes

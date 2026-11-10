@@ -158,6 +158,16 @@ class CuentaGastos(models.Model):
         on_delete=models.SET_NULL, related_name="cuenta_gastos_generada",
         editable=False,
     )
+    operacion_flete_origen = models.OneToOneField(
+        "operaciones.Operacion", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="cuenta_gastos_flete",
+        editable=False,
+    )
+    vobo_angie_origen = models.OneToOneField(
+        "self", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="cuenta_gastos_solicitud_geo",
+        editable=False,
+    )
     garantia_origen = models.OneToOneField(
         "garantias.Garantia", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="cuenta_gastos_generada", editable=False,

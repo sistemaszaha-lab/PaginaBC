@@ -223,6 +223,13 @@ def enviar_a_papelera(objeto, usuario):
 
 @transaction.atomic
 def restaurar_desde_papelera(objeto, usuario=None):
+    """Recupera la tarjeta sin iniciar transferencias, como históricamente.
+
+    Tampoco dispara automatizaciones si la columna inactiva obliga a usar la
+    primera activa. Restaurar no equivale a crear ni a mover desde el tablero;
+    una entrada posterior explícita sí pasa por los servicios de ese tablero.
+    Las copias existentes y sus vínculos se conservan sin recrearlas.
+    """
     _get_tipo_from_object(objeto)
     if getattr(objeto, "eliminado_en", None) is None:
         raise TrashOperationError("El elemento no está en la papelera.")
@@ -242,16 +249,15 @@ def restaurar_desde_papelera(objeto, usuario=None):
     return objeto
 
 
-def _eliminar_archivos_relacionados(objeto, related_name: str | None):
+def _archivos_para_eliminar(objeto, related_name: str | None):
     if not related_name:
-        return
+        return []
     manager = getattr(objeto, related_name, None)
     if manager is None:
-        return
-    for archivo in manager.all():
-        campo = getattr(archivo, "archivo", None)
-        if campo:
-            campo.delete(save=False)
+        return []
+    # Capturar storage/nombre antes de que CASCADE elimine los registros.
+    return [(archivo.archivo.storage, archivo.archivo.name)
+            for archivo in manager.all() if archivo.archivo]
 
 
 @transaction.atomic
@@ -262,13 +268,20 @@ def eliminar_definitivamente(objeto, usuario=None):
             "El elemento debe estar en la papelera antes de eliminarse definitivamente."
         )
     config = get_trash_config(tipo)
-    _eliminar_archivos_relacionados(objeto, config.archivo_related_name)
+    archivos = _archivos_para_eliminar(objeto, config.archivo_related_name)
     try:
         objeto.delete()
     except (ProtectedError, RestrictedError) as exc:
         raise TrashOperationError(
             "No se puede eliminar definitivamente porque existen relaciones protegidas."
         ) from exc
+    # Solo después del commit exterior: PROTECT, RESTRICT, una FK diferida o
+    # cualquier rollback conservan los archivos. Un error del storage se registra
+    # sin afirmar que una eliminación ya confirmada en BD se puede revertir.
+    for storage, nombre in archivos:
+        transaction.on_commit(
+            lambda storage=storage, nombre=nombre: storage.delete(nombre), robust=True
+        )
 
 
 def obtener_resumen_papelera(objeto, tipo: str):

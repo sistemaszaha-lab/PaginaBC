@@ -531,7 +531,9 @@ class CuentaGastosTests(TestCase):
 
     def test_columnas_base_registradas_con_orden_original(self):
         esperadas = list(views.COLUMNAS_INICIALES) + [
-            ("DEVOLUCION_A_GARANTIAS", "Devoluci\u00f3n a garant\u00edas")
+            ("DEVOLUCION_A_GARANTIAS", "Devoluci\u00f3n a garant\u00edas"),
+            ("FACTURA_FLETES_1", "Factura de Fletes 1"),
+            ("SOLICITUDES_GEO_1", "Solicitudes a Geo 1"),
         ]
         self.assertEqual(
             list(

@@ -58,6 +58,8 @@ from .services import (
 )
 from cuenta_gastos.services import (
     CuentaGastosTransferError,
+    CuentaGastosFleteTransferError,
+    crear_copia_flete_desde_operacion,
     crear_cuenta_gastos_desde_operacion_si_corresponde,
 )
 
@@ -792,7 +794,10 @@ def crear_operacion(request):
                     crear_cuenta_gastos_desde_operacion_si_corresponde(
                         operacion, creado_por=request.user
                     )
-                except CuentaGastosTransferError as exc:
+                    crear_copia_flete_desde_operacion(
+                        operacion, creado_por=request.user
+                    )
+                except (CuentaGastosTransferError, CuentaGastosFleteTransferError) as exc:
                     transaction.set_rollback(True)
                     return JsonResponse({"ok": False, "error": str(exc)}, status=400)
             
@@ -850,6 +855,14 @@ def enviar_referencia_a_operaciones(request, pk):
                     form.save_m2m()
                     if archivos_form.is_valid() and enlace_form.is_valid():
                         _guardar_adjuntos_enlaces(request, operacion, enlace_form)
+                    try:
+                        crear_copia_flete_desde_operacion(
+                            operacion, creado_por=request.user
+                        )
+                    except CuentaGastosFleteTransferError as exc:
+                        transaction.set_rollback(True)
+                        messages.error(request, str(exc))
+                        return redirect("operaciones:panel_operaciones")
             except IntegrityError:
                 messages.error(request, "Esta referencia ya fue enviada a Operaciones.")
                 return redirect("operaciones:panel_operaciones")
@@ -949,7 +962,8 @@ def crear_operacion_inline(request):
             cuenta_gastos, cuenta_gastos_creada = crear_cuenta_gastos_desde_operacion_si_corresponde(
                 operacion, creado_por=request.user
             )
-        except CuentaGastosTransferError as exc:
+            crear_copia_flete_desde_operacion(operacion, creado_por=request.user)
+        except (CuentaGastosTransferError, CuentaGastosFleteTransferError) as exc:
             transaction.set_rollback(True)
             return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
@@ -1761,6 +1775,13 @@ def columna_eliminar(request, pk):
                     operacion.columna = destino
                     operacion.estado = destino.codigo
                     operacion.save(update_fields=["columna", "estado"])
+                    try:
+                        crear_copia_flete_desde_operacion(
+                            operacion, creado_por=request.user
+                        )
+                    except CuentaGastosFleteTransferError as exc:
+                        transaction.set_rollback(True)
+                        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
                     if operacion.estado == Operacion.Estado.SOLICITUD_CUENTA_GASTOS:
                         try:
                             crear_cuenta_gastos_desde_operacion_si_corresponde(
@@ -1887,6 +1908,13 @@ def tarjeta_pegar(request, columna_id):
             except CuentaGastosTransferError as exc:
                 transaction.set_rollback(True)
                 return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+        try:
+            crear_copia_flete_desde_operacion(
+                nueva_operacion, creado_por=request.user
+            )
+        except CuentaGastosFleteTransferError as exc:
+            transaction.set_rollback(True)
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         garantia_obj = None
         garantia_creada = False
 
@@ -1963,7 +1991,10 @@ def mover_operacion(request, operacion_id):
     with transaction.atomic():
         from cuenta_gastos.models import CuentaGastos
         antes_existia = CuentaGastos.objects.filter(operacion_origen=operacion).exists()
+        cuenta_flete_obj = None
+        cuenta_flete_creada = False
 
+        cambia_columna = operacion.columna_id != columna_obj.pk
         operacion.estado = estado
         operacion.columna = columna_obj
         operacion.posicion = posicion
@@ -1973,7 +2004,11 @@ def mover_operacion(request, operacion_id):
                 operacion,
                 creado_por=request.user,
             )
-        except CuentaGastosTransferError as exc:
+            if cambia_columna:
+                cuenta_flete_obj, cuenta_flete_creada = crear_copia_flete_desde_operacion(
+                    operacion, creado_por=request.user
+                )
+        except (CuentaGastosTransferError, CuentaGastosFleteTransferError) as exc:
             transaction.set_rollback(True)
             return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         garantia_creada = False
@@ -2019,6 +2054,8 @@ def mover_operacion(request, operacion_id):
         "columna_codigo": columna_obj.codigo,
         "cuenta_gastos_creada": cuenta_gastos_creada,
         "cuenta_gastos_id": cuenta_gastos_obj.pk if cuenta_gastos_obj else None,
+        "cuenta_gastos_flete_creada": cuenta_flete_creada,
+        "cuenta_gastos_flete_id": cuenta_flete_obj.pk if cuenta_flete_obj else None,
         "garantia_creada": garantia_creada,
         "garantia_id": garantia_obj.pk if garantia_obj else None,
     })

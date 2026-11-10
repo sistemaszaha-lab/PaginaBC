@@ -55,7 +55,11 @@ from .forms import (
     CuentaGastosOpcionForm,
     CuentaGastosQuickEditForm,
 )
-from .services import copiar_cuenta_gastos_a_columna
+from .services import (
+    CuentaGastosAutomationError,
+    copiar_cuenta_gastos_a_columna,
+    crear_copia_vobo_angie_si_corresponde,
+)
 
 INLINE_FIELD_FORMS = {
     "titulo": CuentaGastosTituloInlineForm,
@@ -847,15 +851,19 @@ def crear_cuenta_gastos(request):
             request.user
             )
 
-            cuenta.save()
-
-            form.save_m2m()
-
-            if next_url:
-                return redirect(next_url)
-            return redirect(
-            "cuenta_gastos:panel_cuenta_gastos"
-            )       
+            try:
+                with transaction.atomic():
+                    cuenta.save()
+                    form.save_m2m()
+                    crear_copia_vobo_angie_si_corresponde(
+                        cuenta, creado_por=request.user
+                    )
+            except CuentaGastosAutomationError as exc:
+                form.add_error(None, str(exc))
+            else:
+                if next_url:
+                    return redirect(next_url)
+                return redirect("cuenta_gastos:panel_cuenta_gastos")
 
     else:
 
@@ -992,6 +1000,13 @@ def crear_cuenta_gastos_inline(request):
         cuenta.creado_por = request.user
         cuenta.save()
         form.save_m2m()
+        try:
+            crear_copia_vobo_angie_si_corresponde(
+                cuenta, creado_por=request.user
+            )
+        except CuentaGastosAutomationError as exc:
+            transaction.set_rollback(True)
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
         for archivo in request.FILES.getlist("archivos"):
             CuentaGastosArchivo.objects.create(
@@ -1716,7 +1731,16 @@ def columna_eliminar(request, pk):
         destino = None
     with transaction.atomic():
         if destino is not None:
+            # El queryset deja de coincidir al mover las tarjetas; capturarlas
+            # primero permite ejecutar también las automatizaciones de entrada.
+            cuentas = list(cuentas_qs.select_for_update())
             cuentas_qs.update(columna=destino, estado=destino.codigo)
+            try:
+                for cuenta in cuentas:
+                    crear_copia_vobo_angie_si_corresponde(cuenta, creado_por=request.user)
+            except CuentaGastosAutomationError as exc:
+                transaction.set_rollback(True)
+                return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         columna.activa = False
         columna.save(update_fields=["activa", "fecha_actualizacion"])
         for orden, columna_id in enumerate(
@@ -1766,11 +1790,14 @@ def tarjeta_pegar(request, columna_id):
     if not _puede_modificar_cuenta(request.user, cuenta_original):
         return JsonResponse({"ok": False, "error": "No autorizado."}, status=403)
 
-    nueva = copiar_cuenta_gastos_a_columna(
-        cuenta_original=cuenta_original,
-        columna_destino=columna_destino,
-        usuario=request.user,
-    )
+    try:
+        nueva = copiar_cuenta_gastos_a_columna(
+            cuenta_original=cuenta_original,
+            columna_destino=columna_destino,
+            usuario=request.user,
+        )
+    except CuentaGastosAutomationError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     nueva = get_object_or_404(_cuenta_queryset(), pk=nueva.pk)
     return JsonResponse(
         {
@@ -1835,9 +1862,19 @@ def mover_cuenta_gastos(
     if columna is None:
         return JsonResponse({"ok": False, "error": "Columna no encontrada."}, status=404)
 
-    cuenta.columna = columna
-    cuenta.estado = columna.codigo
-    cuenta.save(update_fields=["columna", "estado"])
+    try:
+        with transaction.atomic():
+            cuenta = CuentaGastos.objects.select_for_update().get(pk=cuenta.pk)
+            cambia_columna = cuenta.columna_id != columna.pk
+            cuenta.columna = columna
+            cuenta.estado = columna.codigo
+            cuenta.save(update_fields=["columna", "estado"])
+            if cambia_columna:
+                crear_copia_vobo_angie_si_corresponde(
+                    cuenta, creado_por=request.user
+                )
+    except CuentaGastosAutomationError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
 
     return JsonResponse({

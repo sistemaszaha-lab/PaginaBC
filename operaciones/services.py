@@ -3,7 +3,10 @@
 from django.db import transaction
 
 from clientes.models import Cliente, normalizar_texto_cliente
-from cuenta_gastos.services import crear_cuenta_gastos_desde_operacion_si_corresponde
+from cuenta_gastos.services import (
+    crear_copia_flete_desde_operacion,
+    crear_cuenta_gastos_desde_operacion_si_corresponde,
+)
 
 from .models import Operacion
 
@@ -54,4 +57,5 @@ def copiar_operacion_a_columna(operacion_original, columna_destino, usuario):
             nueva_operacion,
             creado_por=usuario,
         )
+        crear_copia_flete_desde_operacion(nueva_operacion, creado_por=usuario)
         return nueva_operacion

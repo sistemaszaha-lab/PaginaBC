@@ -31,6 +31,10 @@ def _obtener_columna_devolucion_garantias():
     columnas_activas = list(
         CuentaGastosColumna.objects.select_for_update()
         .filter(activa=True)
+        # Estas columnas pertenecen exclusivamente a los flujos nuevos. Un
+        # renombrado no debe convertirlas en candidatas del resolver histórico,
+        # ni volver ambiguo un destino histórico válido (incluso con otro código).
+        .exclude(codigo__in=("FACTURA_FLETES_1", "SOLICITUDES_GEO_1"))
         .only("id", "codigo", "nombre")
     )
     columnas_por_codigo = [
