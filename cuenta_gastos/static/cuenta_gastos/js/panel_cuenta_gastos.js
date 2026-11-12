@@ -1399,6 +1399,71 @@
       }
     }
 
+    function refreshCuentaColumn(column) {
+      const url = column?.dataset.loadUrl;
+      if (!url) return Promise.reject(new Error('Columna no disponible.'));
+      const columnId = String(column.dataset.columnaId);
+      const existing = columnLoadRequests.get(columnId);
+      if (existing) return existing.promise.catch(() => {}).then(() => refreshCuentaColumn(column));
+
+      const version = filterVersion;
+      const requestUrl = new URL(url, window.location.origin);
+      requestUrl.searchParams.set('offset', '0');
+      const selectedUserId = document.getElementById('CuentaGastosUserFilter')?.value || '';
+      if (selectedUserId) requestUrl.searchParams.set('usuario', selectedUserId);
+      const controller = new AbortController();
+      const request = fetch(`${requestUrl.pathname}${requestUrl.search}`, {
+        credentials: 'same-origin',
+        signal: controller.signal,
+        headers: {'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+      }).then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || `Error ${response.status}`);
+        if (version !== filterVersion || !column.isConnected) return;
+        if (String(data.columna_id) !== columnId || data.estado !== column.dataset.estado) {
+          throw new Error('Respuesta de columna inesperada.');
+        }
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = data.html || '';
+        const cards = Array.from(wrapper.querySelectorAll('[data-cuenta-card="1"]'));
+        const ids = cards.map(getCardId);
+        if (cards.length !== data.total || ids.some((id) => !id) || new Set(ids).size !== ids.length) {
+          throw new Error('Respuesta de tarjetas incompleta.');
+        }
+        const fragment = document.createDocumentFragment();
+        cards.forEach((card) => fragment.appendChild(card));
+        column.replaceChildren(fragment);
+        syncColumnState(column, data.total);
+      }).finally(() => {
+        if (columnLoadRequests.get(columnId)?.promise === request) columnLoadRequests.delete(columnId);
+      });
+      columnLoadRequests.set(columnId, {promise: request, controller});
+      return request;
+    }
+
+    function showColumnSyncError(column) {
+      showInlineNotification('La tarjeta se guardó, pero no se pudo actualizar la columna. Usa Sincronizar para recuperarla.', 'danger');
+      const shell = getColumnShell(column);
+      const header = shell?.querySelector('[data-cuenta-column-count="1"]')?.parentElement;
+      if (!header || header.querySelector('[data-cuenta-column-sync="1"]')) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-sm btn-outline-danger';
+      button.dataset.cuentaColumnSync = '1';
+      button.textContent = 'Sincronizar';
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          await refreshCuentaColumn(column);
+          button.remove();
+        } catch (error) {
+          showInlineNotification('No se pudo sincronizar la columna. Intenta nuevamente.', 'danger');
+          button.disabled = false;
+        }
+      });
+      header.appendChild(button);
+    }
+
     function loadInlineEditor(card, fieldName) {
       const cardId = getCardId(card);
       const endpoint = card?.dataset.cuentaEditorUrl;
@@ -1554,14 +1619,8 @@
           body: `estado=${encodeURIComponent(targetState)}&columna_id=${encodeURIComponent(targetColumnId || '')}`
         });
 
-        if (!response.ok) {
-          throw new Error(`Error ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (!data.ok) {
-          throw new Error('Estado no actualizado');
-        }
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || `Error ${response.status}`);
 
         syncCardStateUI(card, data.estado || targetState, data.estado_label || getEstadoLabel(targetState));
         if (data.columna_id) {
@@ -1572,6 +1631,19 @@
           adjustColumnTotal(targetColumn, 1);
         } else {
           syncColumnState(sourceColumn);
+        }
+        const copy = data.copia_geo;
+        if (copy?.id && copy.estado === 'SOLICITUDES_GEO_1') {
+          const copyColumn = document.querySelector(`.columna-drop[data-columna-id="${copy.columna_id}"]`);
+          if (copyColumn) {
+            try {
+              await refreshCuentaColumn(copyColumn);
+              getColumnShell(copyColumn)?.querySelector('[data-cuenta-column-sync="1"]')?.remove();
+            } catch (error) {
+              console.error('No se pudo sincronizar Solicitudes a GEO 1:', error);
+              showColumnSyncError(copyColumn);
+            }
+          }
         }
         return data;
       } catch (error) {
@@ -1621,6 +1693,7 @@
               trigger: 'drag',
             }).catch((error) => {
               console.error('No se pudo mover la cuenta de gastos:', error);
+              showInlineNotification(error.message || 'No se pudo mover la cuenta de gastos.', 'danger');
             });
           }
         });
@@ -1992,6 +2065,7 @@
         trigger: 'select',
       }).catch((error) => {
         console.error('No se pudo actualizar el estado de la cuenta de gastos:', error);
+        showInlineNotification(error.message || 'No se pudo actualizar el estado de la cuenta de gastos.', 'danger');
       });
     });
 

@@ -1863,6 +1863,8 @@ def mover_cuenta_gastos(
         return JsonResponse({"ok": False, "error": "Columna no encontrada."}, status=404)
 
     try:
+        copia_geo = None
+        copia_creada = False
         with transaction.atomic():
             cuenta = CuentaGastos.objects.select_for_update().get(pk=cuenta.pk)
             cambia_columna = cuenta.columna_id != columna.pk
@@ -1870,7 +1872,7 @@ def mover_cuenta_gastos(
             cuenta.estado = columna.codigo
             cuenta.save(update_fields=["columna", "estado"])
             if cambia_columna:
-                crear_copia_vobo_angie_si_corresponde(
+                copia_geo, copia_creada = crear_copia_vobo_angie_si_corresponde(
                     cuenta, creado_por=request.user
                 )
     except CuentaGastosAutomationError as exc:
@@ -1885,5 +1887,15 @@ def mover_cuenta_gastos(
         "estado_label": columna.nombre,
         "columna_id": columna.pk,
         "columna_codigo": columna.codigo,
+        "copia_geo": (
+            {
+                "id": copia_geo.pk,
+                "estado": copia_geo.estado,
+                "columna_id": copia_geo.columna_id,
+                "creada": copia_creada,
+            }
+            if copia_geo is not None and copia_geo.eliminado_en is None
+            else None
+        ),
 
     })

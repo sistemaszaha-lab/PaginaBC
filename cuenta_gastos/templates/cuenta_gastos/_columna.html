@@ -96,6 +96,7 @@
     data-columna-nombre="{{ columna.nombre|default:columna.titulo }}"
     data-modulo="cuenta_gastos"
     data-estado="{{ columna.estado }}"
+    data-load-url="{{ columna.load_url }}"
   >
     {% for cuenta in columna.items %}
       {% include "cuenta_gastos/_card.html" with cuenta=cuenta estados_ui=estados_ui only %}

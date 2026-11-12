@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Barrier
 
 from django.contrib.auth import get_user_model
@@ -119,6 +120,59 @@ class VoBoAngieSolicitudesGeoTests(TestCase):
         self.assertEqual(origen.columna_id, self.origen.pk)
         self._assert_copia(origen)
         self.assertEqual(CuentaGastos.objects.filter(vobo_angie_origen=origen).count(), 1)
+
+    def test_movimiento_confirma_copia_y_endpoint_sincroniza_geo_con_filtro_y_orden(self):
+        anterior = self._cuenta(columna=self.destino, titulo="Anterior en GEO")
+        origen = self._cuenta()
+        url = reverse("cuenta_gastos:mover_cuenta_gastos", args=[origen.pk])
+
+        response = self.client.post(url, {"estado": self.origen.codigo})
+        self.assertEqual(response.status_code, 200)
+        copia = self._assert_copia(origen)
+        self.assertEqual(response.json()["copia_geo"], {
+            "id": copia.pk,
+            "estado": self.destino.codigo,
+            "columna_id": self.destino.pk,
+            "creada": True,
+        })
+
+        listado = self.client.get(
+            reverse("cuenta_gastos:tarjetas_columna", args=[self.destino.codigo]),
+            {"offset": "0", "usuario": str(self.usuario.pk)},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(listado.status_code, 200)
+        data = listado.json()
+        self.assertEqual(data["total"], 2)
+        self.assertLess(data["html"].index(f'id="cuenta-{copia.pk}"'), data["html"].index(f'id="cuenta-{anterior.pk}"'))
+        self.assertEqual(data["html"].count(f'id="cuenta-{copia.pk}"'), 1)
+
+        otro = get_user_model().objects.create_user(username="otro-filtro", password="pass")
+        filtrado = self.client.get(
+            reverse("cuenta_gastos:tarjetas_columna", args=[self.destino.codigo]),
+            {"offset": "0", "usuario": str(otro.pk)},
+        ).json()
+        self.assertEqual(filtrado["total"], 0)
+        self.assertNotIn(f'id="cuenta-{copia.pk}"', filtrado["html"])
+
+        self.assertEqual(self.client.post(url, {"estado": self.otra.codigo}).json()["copia_geo"], None)
+        repetida = self.client.post(url, {"estado": self.origen.codigo})
+        self.assertEqual(repetida.json()["copia_geo"]["id"], copia.pk)
+        self.assertFalse(repetida.json()["copia_geo"]["creada"])
+        self.assertEqual(CuentaGastos.objects.filter(vobo_angie_origen=origen).count(), 1)
+
+    def test_frontend_sincroniza_columna_sin_recarga_y_evitar_duplicados(self):
+        javascript = (Path(__file__).parent / "static/cuenta_gastos/js/panel_cuenta_gastos.js").read_text()
+        panel = self.client.get(reverse("cuenta_gastos:panel_cuenta_gastos"))
+        self.assertEqual(panel.status_code, 200)
+        self.assertContains(panel, f'data-load-url="{reverse("cuenta_gastos:tarjetas_columna", args=[self.destino.codigo])}"')
+        self.assertIn("await refreshCuentaColumn(copyColumn)", javascript)
+        self.assertIn("requestUrl.searchParams.set('offset', '0')", javascript)
+        self.assertIn("requestUrl.searchParams.set('usuario', selectedUserId)", javascript)
+        self.assertIn("new Set(ids).size !== ids.length", javascript)
+        self.assertIn("column.replaceChildren(fragment)", javascript)
+        movimiento = javascript.split("async function moveCuentaGastosCard({", 1)[1].split("function initCardSortables()", 1)[0]
+        self.assertNotIn("window.location.reload()", movimiento)
 
     def test_otro_flujo_que_genera_una_tarjeta_en_vobo_activa_la_copia(self):
         original = self._cuenta(titulo="Copiada a VoBo")
