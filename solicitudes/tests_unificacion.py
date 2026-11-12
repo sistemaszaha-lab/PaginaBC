@@ -52,24 +52,23 @@ class UnificacionSolicitudesTests(TestCase):
         self.assertIn('cot_q=PROSPECTO', historico.url)
         self.assertTrue(historico.url.endswith('#cotizaciones-ref'))
 
-    def test_tipo_usa_id_y_orden_historico_estable(self):
+    def test_cliente_registrado_es_recurrente_desde_la_primera_solicitud(self):
         primera = self.solicitud(1)
         segunda = self.solicitud(2)
         otro = self.solicitud(3, self.otro)
-        empate = timezone.now()
-        Solicitud.objects.filter(pk__in=[primera.pk, segunda.pk]).update(creado=empate)
         response = self.client.get(reverse("lista_solicitudes"))
         por_id = {item.pk: item for item in response.context["solicitudes"]}
-        self.assertFalse(por_id[primera.pk].tiene_solicitud_anterior)
-        self.assertTrue(por_id[segunda.pk].tiene_solicitud_anterior)
-        self.assertFalse(por_id[otro.pk].tiene_solicitud_anterior)
+        self.assertTrue(por_id[primera.pk].es_cliente_recurrente)
+        self.assertTrue(por_id[segunda.pk].es_cliente_recurrente)
+        self.assertTrue(por_id[otro.pk].es_cliente_recurrente)
         tercera = self.solicitud(4)
         response = self.client.get(reverse("lista_solicitudes"))
         por_id = {item.pk: item for item in response.context["solicitudes"]}
-        self.assertFalse(por_id[primera.pk].tiene_solicitud_anterior)
-        self.assertTrue(por_id[tercera.pk].tiene_solicitud_anterior)
+        self.assertTrue(por_id[primera.pk].es_cliente_recurrente)
+        self.assertTrue(por_id[tercera.pk].es_cliente_recurrente)
+        self.assertContains(response, "Recurrente", count=4)
 
-    def test_sin_cliente_o_nombre_ambiguo_no_se_clasifica(self):
+    def test_sin_cliente_es_nuevo_y_nombre_duplicado_es_recurrente_sin_id(self):
         sin_cliente = Solicitud.objects.create(
             anio=2026, sg="SG-U-99", cliente="Sin cliente",
             fecha_recepcion=date(2026, 1, 1), tipo="Servicio",
@@ -81,7 +80,44 @@ class UnificacionSolicitudesTests(TestCase):
         response = self.client.get(reverse("lista_solicitudes"))
         self.assertIsNone(Solicitud.objects.get(pk=sin_cliente.pk).cliente_catalogo_id)
         self.assertIsNone(Solicitud.objects.get(pk=ambiguo.pk).cliente_catalogo_id)
-        self.assertContains(response, "Sin identificar", count=2)
+        por_id = {item.pk: item for item in response.context["solicitudes"]}
+        self.assertFalse(por_id[sin_cliente.pk].es_cliente_recurrente)
+        self.assertTrue(por_id[ambiguo.pk].es_cliente_recurrente)
+        self.assertContains(response, "⭐ Nuevo cliente", count=1)
+        self.assertContains(response, "Recurrente", count=1)
+        self.assertNotContains(response, "Sin identificar")
+
+    def test_clasificacion_historica_es_dinamica_y_comparacion_exacta(self):
+        nombres = ["  alfa  ", "ALFA TRANSPORTE", "PROSPECTO", "PROSPECTO", "SIN CLIENTE"]
+        solicitudes = Solicitud.objects.bulk_create([
+            Solicitud(anio=2026, sg=f"SG-H-{numero}", cliente=nombre,
+                      fecha_recepcion=date(2026, 1, 1), tipo="Servicio")
+            for numero, nombre in enumerate(nombres)
+        ])
+        respuesta = self.client.get(reverse("lista_solicitudes"), {"partial": "1"})
+        por_id = {item.pk: item for item in respuesta.context["solicitudes"]}
+        self.assertTrue(por_id[solicitudes[0].pk].es_cliente_recurrente)
+        for solicitud in solicitudes[1:]:
+            self.assertFalse(por_id[solicitud.pk].es_cliente_recurrente)
+        self.assertTrue(all(item.cliente_catalogo_id is None for item in por_id.values()))
+
+        Cliente.objects.create(nombre="Prospecto")
+        respuesta = self.client.get(reverse("lista_solicitudes"), {"partial": "1"})
+        por_id = {item.pk: item for item in respuesta.context["solicitudes"]}
+        self.assertTrue(por_id[solicitudes[2].pk].es_cliente_recurrente)
+        self.assertTrue(por_id[solicitudes[3].pk].es_cliente_recurrente)
+        self.assertFalse(por_id[solicitudes[1].pk].es_cliente_recurrente)
+        self.assertTrue(all(item.cliente_catalogo_id is None for item in por_id.values()))
+
+    def test_catalogo_historico_con_minusculas_y_espacios_exteriores(self):
+        Cliente.objects.filter(pk=self.cliente.pk).update(nombre="  aLfA  ")
+        solicitud = Solicitud.objects.bulk_create([
+            Solicitud(anio=2026, sg="SG-H-CASO", cliente=" alfa ",
+                      fecha_recepcion=date(2026, 1, 1), tipo="Servicio")
+        ])[0]
+        respuesta = self.client.get(reverse("lista_solicitudes"))
+        por_id = {item.pk: item for item in respuesta.context["solicitudes"]}
+        self.assertTrue(por_id[solicitud.pk].es_cliente_recurrente)
 
     def test_filtros_y_paginas_independientes(self):
         for numero in range(1, 28):
@@ -127,7 +163,7 @@ class UnificacionSolicitudesTests(TestCase):
         cotizacion.refresh_from_db()
         self.assertEqual(cotizacion.estado, "Cumplido")
 
-    def test_formulario_vincula_id_e_impide_id_de_otro_cliente(self):
+    def test_formulario_vincula_id_y_descarta_id_si_cambia_el_nombre(self):
         datos = {
             "anio": 2026, "cliente": str(self.otro),
             "cliente_catalogo_id": self.otro.pk,
@@ -140,9 +176,20 @@ class UnificacionSolicitudesTests(TestCase):
         self.assertEqual(solicitud.cliente, self.otro.nombre)
 
         datos["cliente"] = "UN CLIENTE DISTINTO"
-        form_invalido = SolicitudForm(data=datos)
-        self.assertFalse(form_invalido.is_valid())
-        self.assertIn("cliente", form_invalido.errors)
+        form_nuevo = SolicitudForm(data=datos)
+        self.assertTrue(form_nuevo.is_valid(), form_nuevo.errors)
+        nueva = form_nuevo.save()
+        self.assertIsNone(nueva.cliente_catalogo_id)
+        self.assertEqual(nueva.cliente, "UN CLIENTE DISTINTO")
+        self.assertFalse(Cliente.objects.filter(nombre=nueva.cliente).exists())
+
+        datos["cliente"] = "OTRO CLIENTE NUEVO"
+        form_edicion = SolicitudForm(data=datos, instance=solicitud)
+        self.assertTrue(form_edicion.is_valid(), form_edicion.errors)
+        form_edicion.save()
+        solicitud.refresh_from_db()
+        self.assertIsNone(solicitud.cliente_catalogo_id)
+        self.assertEqual(solicitud.cliente, "OTRO CLIENTE NUEVO")
 
     def test_edicion_copia_y_restauracion_conservan_cliente(self):
         original = self.solicitud(1, self.otro)
@@ -169,6 +216,19 @@ class UnificacionSolicitudesTests(TestCase):
         original.refresh_from_db()
         self.assertIsNone(original.eliminado_en)
         self.assertEqual(original.cliente_catalogo_id, self.otro.pk)
+
+    def test_edicion_cambia_a_otro_cliente_del_catalogo(self):
+        solicitud = self.solicitud(1, self.otro)
+        form = SolicitudForm(data={
+            "anio": 2026, "cliente": self.cliente.nombre,
+            "cliente_catalogo_id": self.cliente.pk,
+            "fecha_recepcion": "2026-01-01", "tipo": "Importación aérea",
+        }, instance=solicitud)
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        solicitud.refresh_from_db()
+        self.assertEqual(solicitud.cliente_catalogo_id, self.cliente.pk)
+        self.assertEqual(solicitud.cliente, self.cliente.nombre)
 
     def test_migracion_vincula_solo_nombres_unicos_sin_perder_registros(self):
         unico = Cliente.objects.create(nombre="Único")
@@ -262,7 +322,7 @@ class UnificacionSolicitudesTests(TestCase):
         solicitud = Solicitud.objects.get()
         self.assertEqual(solicitud.cliente_catalogo_id, self.otro.pk)
 
-    def test_historial_incluye_otros_anios_y_solicitudes_en_papelera(self):
+    def test_catalogo_clasifica_sin_importar_anio_ni_papelera(self):
         anterior = self.solicitud(1)
         anterior.anio = 2025
         anterior.eliminado_en = timezone.now()
@@ -270,4 +330,4 @@ class UnificacionSolicitudesTests(TestCase):
         actual = self.solicitud(2)
         respuesta = self.client.get(reverse("lista_solicitudes"), {"anio": 2026})
         self.assertEqual([sol.pk for sol in respuesta.context["solicitudes"]], [actual.pk])
-        self.assertTrue(respuesta.context["solicitudes"][0].tiene_solicitud_anterior)
+        self.assertTrue(respuesta.context["solicitudes"][0].es_cliente_recurrente)

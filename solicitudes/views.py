@@ -13,8 +13,8 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
-from django.db.models import Count, DecimalField, Exists, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value, Case, When, Sum
-from django.db.models.functions import Cast, Coalesce, Concat, Length, Substr
+from django.db.models import BooleanField, Count, DecimalField, Exists, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value, Case, When, Sum
+from django.db.models.functions import Cast, Coalesce, Concat, Length, Substr, Trim, Upper
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -794,11 +794,16 @@ def lista_solicitudes(request):
     else:
         solicitudes_qs = solicitudes_qs.order_by("-id")
 
-    anteriores = Solicitud.objects.filter(cliente_catalogo_id=OuterRef("cliente_catalogo_id")).filter(
-        Q(creado__lt=OuterRef("creado"))
-        | Q(creado=OuterRef("creado"), pk__lt=OuterRef("pk"))
+    nombre_en_catalogo = Cliente.objects.annotate(
+        nombre_normalizado=Upper(Trim("nombre")),
+    ).filter(nombre_normalizado=Upper(Trim(OuterRef("cliente"))))
+    solicitudes_qs = solicitudes_qs.annotate(
+        es_cliente_recurrente=Case(
+            When(cliente_catalogo_id__isnull=False, then=Value(True)),
+            default=Exists(nombre_en_catalogo),
+            output_field=BooleanField(),
+        ),
     )
-    solicitudes_qs = solicitudes_qs.annotate(tiene_solicitud_anterior=Exists(anteriores))
     paginator = Paginator(solicitudes_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     solicitudes = page_obj.object_list

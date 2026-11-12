@@ -126,8 +126,11 @@ class SolicitudForm(forms.ModelForm):
         nombre = cleaned.get("cliente")
         cliente_id = cleaned.get("cliente_catalogo_id")
         catalogo = Cliente.objects.filter(pk=cliente_id).first() if cliente_id else None
-        if catalogo and nombre not in {catalogo.nombre, normalizar_texto_cliente(str(catalogo))}:
-            self.add_error("cliente", "El cliente seleccionado no coincide con el catálogo.")
+        if catalogo and nombre not in {
+            normalizar_texto_cliente(catalogo.nombre),
+            normalizar_texto_cliente(str(catalogo)),
+        }:
+            catalogo = None
         if catalogo:
             cleaned["cliente"] = catalogo.nombre
             cleaned["cliente_catalogo"] = catalogo

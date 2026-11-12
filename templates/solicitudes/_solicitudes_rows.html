@@ -3,7 +3,7 @@
 <tr data-trash-remove-item="1">
     <td>{{ s.sg }}</td>
     <td>{{ s.cliente }}</td>
-    <td>{% if not s.cliente_catalogo_id %}<span class="badge text-bg-light border">Sin identificar</span>{% elif s.tiene_solicitud_anterior %}<span class="badge text-bg-light border">↻ Recurrente</span>{% else %}<span class="badge text-bg-warning">⭐ Nuevo</span>{% endif %}</td>
+    <td>{% if s.es_cliente_recurrente %}<span class="badge text-bg-light border">Recurrente</span>{% else %}<span class="badge text-bg-warning">⭐ Nuevo cliente</span>{% endif %}</td>
     <td>{{ s.fecha_recepcion }}</td>
     <td>{{ s.fecha_entrega|default:"-" }}</td>
 
