@@ -13,8 +13,8 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
-from django.db.models import BooleanField, Count, DecimalField, Exists, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value, Case, When, Sum
-from django.db.models.functions import Cast, Coalesce, Concat, Length, Substr, Trim, Upper
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value, Case, When, Sum
+from django.db.models.functions import Cast, Coalesce, Concat, Length, Substr
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -57,6 +57,12 @@ MAX_ADMIN_USERS = 6
 USUARIOS_PAGE_SIZE = 25
 RECENT_DUPLICATE_WINDOW_SECONDS = 30
 
+# (ID del catálogo, nombre verificado, nombres alternativos confirmados).
+# El nombre protege contra IDs que correspondan a otro cliente en una base local.
+ALIASES_CLIENTES_CONFIRMADOS = (
+    (65, "AP MASCARILLAS", ("AP MASCARILLAS SA DE CV",)),
+)
+
 
 def _es_admin(user):
     return user.is_superuser
@@ -92,6 +98,36 @@ def _puede_convertir_solicitud(user, solicitud):
 
 def _solicitudes_activas():
     return Solicitud.objects.filter(eliminado_en__isnull=True)
+
+
+def _clave_insignia_cliente(nombre):
+    # La puntuación y los acentos son parte del nombre; solo se eliminan
+    # separadores invisibles y se uniforman los espacios y el caso.
+    texto = normalize("NFC", nombre or "")
+    texto = texto.translate({ord(caracter): None for caracter in "\u200b\u2060\ufeff"})
+    return " ".join(texto.split()).casefold()
+
+
+def _clasificar_clientes_solicitudes(solicitudes):
+    pendientes = [solicitud for solicitud in solicitudes if solicitud.cliente_catalogo_id is None]
+    if pendientes:
+        ids_por_nombre = {}
+        for cliente_id, nombre, empresa in Cliente.objects.values_list("pk", "nombre", "empresa"):
+            for valor in (nombre, empresa, f"{nombre} ({empresa})" if empresa else ""):
+                clave = _clave_insignia_cliente(valor)
+                if clave:
+                    ids_por_nombre.setdefault(clave, set()).add(cliente_id)
+            for id_confirmado, nombre_confirmado, aliases in ALIASES_CLIENTES_CONFIRMADOS:
+                if cliente_id == id_confirmado and _clave_insignia_cliente(nombre) == _clave_insignia_cliente(nombre_confirmado):
+                    for alias in aliases:
+                        ids_por_nombre.setdefault(_clave_insignia_cliente(alias), set()).add(cliente_id)
+    else:
+        ids_por_nombre = {}
+    for solicitud in solicitudes:
+        solicitud.es_cliente_recurrente = bool(
+            solicitud.cliente_catalogo_id
+            or ids_por_nombre.get(_clave_insignia_cliente(solicitud.cliente))
+        )
 
 
 def _cotizaciones_activas():
@@ -794,19 +830,10 @@ def lista_solicitudes(request):
     else:
         solicitudes_qs = solicitudes_qs.order_by("-id")
 
-    nombre_en_catalogo = Cliente.objects.annotate(
-        nombre_normalizado=Upper(Trim("nombre")),
-    ).filter(nombre_normalizado=Upper(Trim(OuterRef("cliente"))))
-    solicitudes_qs = solicitudes_qs.annotate(
-        es_cliente_recurrente=Case(
-            When(cliente_catalogo_id__isnull=False, then=Value(True)),
-            default=Exists(nombre_en_catalogo),
-            output_field=BooleanField(),
-        ),
-    )
     paginator = Paginator(solicitudes_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     solicitudes = page_obj.object_list
+    _clasificar_clientes_solicitudes(solicitudes)
     ejecutivos = User.objects.all().order_by("first_name", "username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":

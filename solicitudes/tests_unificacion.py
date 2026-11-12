@@ -3,6 +3,7 @@ from copy import copy
 from importlib import import_module
 from html import unescape
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.contrib.auth.models import Group, User
 from django.db import connection
@@ -118,6 +119,82 @@ class UnificacionSolicitudesTests(TestCase):
         respuesta = self.client.get(reverse("lista_solicitudes"))
         por_id = {item.pk: item for item in respuesta.context["solicitudes"]}
         self.assertTrue(por_id[solicitud.pk].es_cliente_recurrente)
+
+    def test_regresion_ap_mascarillas_y_american_coach(self):
+        # Variantes representativas; no son una copia de los datos de producción.
+        Cliente.objects.create(nombre="AP MASCARILLAS")
+        Cliente.objects.create(nombre="Contacto American", empresa="AMERICAN COACH")
+        variantes = [
+            ("AP  MASCARILLAS", True),
+            (" ap\u00a0mascarillas ", True),
+            ("AP\u200b MASCARILLAS", True),
+            ("american   coach", True),
+            ("CONTACTO AMERICAN (AMERICAN COACH)", True),
+            ("AP MASCARILLA", False),
+            ("AP-MASCARILLAS", False),
+            ("AMÉRICAN COACH", False),
+            ("AMERICAN COACH EXPRESS", False),
+        ]
+        solicitudes = Solicitud.objects.bulk_create([
+            Solicitud(anio=2026, sg=f"SG-REG-{numero}", cliente=nombre,
+                      fecha_recepcion=date(2026, 1, 1), tipo="Servicio")
+            for numero, (nombre, _esperado) in enumerate(variantes)
+        ])
+        respuesta = self.client.get(reverse("lista_solicitudes"), {"partial": "1"})
+        por_id = {item.pk: item for item in respuesta.context["solicitudes"]}
+        for solicitud, (_nombre, esperado) in zip(solicitudes, variantes):
+            self.assertEqual(por_id[solicitud.pk].es_cliente_recurrente, esperado)
+            self.assertIsNone(por_id[solicitud.pk].cliente_catalogo_id)
+
+    def test_alias_confirmado_ap_mascarillas_y_nombres_reales_american_coach(self):
+        Cliente.objects.create(pk=65, nombre="AP MASCARILLAS")
+        Cliente.objects.create(pk=42, nombre="AMERICAN COACH DE MÉXICO", empresa="AMERICAN COACH DE MEXICO")
+        nombres = (
+            "AP MASCARILLAS SA DE CV",
+            "  ap  mascarillas sa de cv  ",
+            "AMERICAN COACH DE MÉXICO",
+            "AMERICAN COACH DE MEXICO",
+            "AP MASCARILLAS SA DE CV NORTE",
+            "AP MASCARILLAS S.A. DE C.V.",
+        )
+        solicitudes = Solicitud.objects.bulk_create([
+            Solicitud(anio=2026, sg=f"SG-ALIAS-{numero}", cliente=nombre,
+                      fecha_recepcion=date(2026, 1, 1), tipo="Servicio")
+            for numero, nombre in enumerate(nombres)
+        ])
+        respuesta = self.client.get(reverse("lista_solicitudes"), {"partial": "1"})
+        por_id = {item.pk: item for item in respuesta.context["solicitudes"]}
+        for solicitud in solicitudes[:4]:
+            self.assertTrue(por_id[solicitud.pk].es_cliente_recurrente)
+        for solicitud in solicitudes[4:]:
+            self.assertFalse(por_id[solicitud.pk].es_cliente_recurrente)
+        self.assertTrue(all(item.cliente_catalogo_id is None for item in por_id.values()))
+
+    def test_alias_requiere_id_y_nombre_confirmados(self):
+        Cliente.objects.create(pk=65, nombre="OTRA EMPRESA")
+        solicitud = Solicitud.objects.bulk_create([
+            Solicitud(anio=2026, sg="SG-ALIAS-OTRA", cliente="AP MASCARILLAS SA DE CV",
+                      fecha_recepcion=date(2026, 1, 1), tipo="Servicio")
+        ])[0]
+        respuesta = self.client.get(reverse("lista_solicitudes"), {"partial": "1"})
+        self.assertFalse(respuesta.context["solicitudes"][0].es_cliente_recurrente)
+        self.assertIsNone(Solicitud.objects.get(pk=solicitud.pk).cliente_catalogo_id)
+
+    def test_alias_duplicado_no_asigna_relacion_ambigua(self):
+        Cliente.objects.create(pk=65, nombre="AP MASCARILLAS")
+        Cliente.objects.create(pk=66, nombre="OTRA EMPRESA")
+        solicitud = Solicitud.objects.bulk_create([
+            Solicitud(anio=2026, sg="SG-ALIAS-DUP", cliente="AP MASCARILLAS SA DE CV",
+                      fecha_recepcion=date(2026, 1, 1), tipo="Servicio")
+        ])[0]
+        aliases = (
+            (65, "AP MASCARILLAS", ("AP MASCARILLAS SA DE CV",)),
+            (66, "OTRA EMPRESA", ("AP MASCARILLAS SA DE CV",)),
+        )
+        with patch("solicitudes.views.ALIASES_CLIENTES_CONFIRMADOS", aliases):
+            respuesta = self.client.get(reverse("lista_solicitudes"), {"partial": "1"})
+        self.assertTrue(respuesta.context["solicitudes"][0].es_cliente_recurrente)
+        self.assertIsNone(Solicitud.objects.get(pk=solicitud.pk).cliente_catalogo_id)
 
     def test_filtros_y_paginas_independientes(self):
         for numero in range(1, 28):
@@ -272,6 +349,20 @@ class UnificacionSolicitudesTests(TestCase):
         with CaptureQueriesContext(connection) as consultas_muchas:
             self.client.get(reverse("lista_solicitudes"))
         self.assertEqual(len(consultas_muchas), len(consultas_una))
+
+    def test_nombres_sin_relacion_consultan_catalogo_una_vez_por_pagina(self):
+        Solicitud.objects.bulk_create([
+            Solicitud(anio=2026, sg=f"SG-SIN-ID-{numero}", cliente=f"CLIENTE {numero}",
+                      fecha_recepcion=date(2026, 1, 1), tipo="Servicio")
+            for numero in range(25)
+        ])
+        with CaptureQueriesContext(connection) as consultas:
+            self.client.get(reverse("lista_solicitudes"), {"partial": "1"})
+        consultas_catalogo = [
+            consulta for consulta in consultas
+            if 'FROM "clientes_cliente"' in consulta["sql"]
+        ]
+        self.assertEqual(len(consultas_catalogo), 1)
 
     def test_acceso_requiere_login_y_solo_lectura_no_puede_cambiar_estado(self):
         cotizacion = self.cotizacion(1)
