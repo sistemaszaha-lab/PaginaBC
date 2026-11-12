@@ -4,6 +4,7 @@
         <tr>
             <th rowspan="2">SG</th>
             <th rowspan="2">Cliente</th>
+            <th rowspan="2">Tipo de cliente</th>
             <th rowspan="2">Fecha registro</th>
             <th rowspan="2">Fecha entrega</th>
             <th rowspan="2">Días</th>
@@ -25,7 +26,7 @@
         </tr>
     </thead>
 
-    <tbody id="solicitudes-body" data-trash-empty-message="No hay solicitudes para este año." data-trash-empty-colspan="14">
+    <tbody id="solicitudes-body" data-trash-empty-message="No hay solicitudes para este año." data-trash-empty-colspan="15">
         {% include "solicitudes/_solicitudes_rows.html" %}
     </tbody>
 </table>
@@ -44,7 +45,7 @@
         <ul class="pagination mb-0">
             <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
                 {% if page_obj.has_previous %}
-                <a class="page-link" href="?{% if anio_seleccionado %}anio={{ anio_seleccionado }}&{% endif %}{% if q %}q={{ q|urlencode }}&{% endif %}{% if orden %}orden={{ orden }}&{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>
+                <a class="page-link" href="{% if unificado %}?{% if sol_page_base %}{{ sol_page_base }}&{% endif %}page={{ page_obj.previous_page_number }}{% else %}?{% if anio_seleccionado %}anio={{ anio_seleccionado }}&{% endif %}{% if q %}q={{ q|urlencode }}&{% endif %}{% if orden %}orden={{ orden }}&{% endif %}page={{ page_obj.previous_page_number }}{% endif %}">Anterior</a>
                 {% else %}
                 <span class="page-link">Anterior</span>
                 {% endif %}
@@ -54,13 +55,13 @@
                 {% if page_number == page_obj.number %}
                 <span class="page-link">{{ page_number }}</span>
                 {% else %}
-                <a class="page-link" href="?{% if anio_seleccionado %}anio={{ anio_seleccionado }}&{% endif %}{% if q %}q={{ q|urlencode }}&{% endif %}{% if orden %}orden={{ orden }}&{% endif %}page={{ page_number }}">{{ page_number }}</a>
+                <a class="page-link" href="{% if unificado %}?{% if sol_page_base %}{{ sol_page_base }}&{% endif %}page={{ page_number }}{% else %}?{% if anio_seleccionado %}anio={{ anio_seleccionado }}&{% endif %}{% if q %}q={{ q|urlencode }}&{% endif %}{% if orden %}orden={{ orden }}&{% endif %}page={{ page_number }}{% endif %}">{{ page_number }}</a>
                 {% endif %}
             </li>
             {% endfor %}
             <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
                 {% if page_obj.has_next %}
-                <a class="page-link" href="?{% if anio_seleccionado %}anio={{ anio_seleccionado }}&{% endif %}{% if q %}q={{ q|urlencode }}&{% endif %}{% if orden %}orden={{ orden }}&{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>
+                <a class="page-link" href="{% if unificado %}?{% if sol_page_base %}{{ sol_page_base }}&{% endif %}page={{ page_obj.next_page_number }}{% else %}?{% if anio_seleccionado %}anio={{ anio_seleccionado }}&{% endif %}{% if q %}q={{ q|urlencode }}&{% endif %}{% if orden %}orden={{ orden }}&{% endif %}page={{ page_obj.next_page_number }}{% endif %}">Siguiente</a>
                 {% else %}
                 <span class="page-link">Siguiente</span>
                 {% endif %}

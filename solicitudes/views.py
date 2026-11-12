@@ -13,7 +13,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value, Case, When, Sum
+from django.db.models import Count, DecimalField, Exists, ExpressionWrapper, F, IntegerField, OuterRef, Q, Subquery, Value, Case, When, Sum
 from django.db.models.functions import Cast, Coalesce, Concat, Length, Substr
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -473,11 +473,15 @@ def _importar_solicitudes_desde_filas(filas):
             maritima, estado_maritimo = _parse_estado_transporte(_valor_columna(row, maritima_idx))
             terrestre, estado_terrestre = _parse_estado_transporte(_valor_columna(row, terrestre_idx))
 
+            cliente_nombre = _valor_columna(row, cliente_idx) or "Sin cliente"
+            nombre_normalizado = " ".join(cliente_nombre.split()).upper()
+            cliente_ids = list(Cliente.objects.filter(nombre=nombre_normalizado).values_list("pk", flat=True)[:2])
             _, creado = Solicitud.objects.update_or_create(
                 sg=sg,
                 anio=anio,
                 defaults={
-                    "cliente": _valor_columna(row, cliente_idx) or "Sin cliente",
+                    "cliente": cliente_nombre,
+                    "cliente_catalogo_id": cliente_ids[0] if len(cliente_ids) == 1 and nombre_normalizado != "SIN CLIENTE" else None,
                     "fecha_recepcion": fecha_recepcion or date(anio, 1, 1),
                     "tipo": _valor_columna(row, tipo_idx) or "Sin tipo",
                     "ejecutivo": _resolver_usuario(_valor_columna(row, ejecutivo_idx)),
@@ -738,6 +742,19 @@ def inicio(request):
 
 @login_required
 def lista_solicitudes(request):
+    if request.GET.get("partial") == "cot":
+        cot_partial = _contexto_cotizaciones(request, prefijo="cot_")
+        query = request.GET.copy()
+        query.pop("partial", None)
+        clean_url = reverse("lista_solicitudes") + ("?" + query.urlencode() if query else "")
+        query.pop("cot_page", None)
+        cot_partial.update({
+            "unificado": True,
+            "cot_page_base": query.urlencode(),
+            "listado_next_url": clean_url,
+        })
+        return render(request, "cotizaciones/_cotizaciones_listado.html", cot_partial)
+
     anios = list(
         _solicitudes_activas().values_list("anio", flat=True).distinct().order_by("anio")
     )
@@ -777,12 +794,22 @@ def lista_solicitudes(request):
     else:
         solicitudes_qs = solicitudes_qs.order_by("-id")
 
+    anteriores = Solicitud.objects.filter(cliente_catalogo_id=OuterRef("cliente_catalogo_id")).filter(
+        Q(creado__lt=OuterRef("creado"))
+        | Q(creado=OuterRef("creado"), pk__lt=OuterRef("pk"))
+    )
+    solicitudes_qs = solicitudes_qs.annotate(tiene_solicitud_anterior=Exists(anteriores))
     paginator = Paginator(solicitudes_qs, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
     solicitudes = page_obj.object_list
     ejecutivos = User.objects.all().order_by("first_name", "username")
 
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        query = request.GET.copy()
+        query.pop("partial", None)
+        query.pop("page", None)
+        clean_query = request.GET.copy()
+        clean_query.pop("partial", None)
         return render(
             request,
             "solicitudes/_solicitudes_listado.html",
@@ -795,9 +822,17 @@ def lista_solicitudes(request):
                 "anio_seleccionado": anio,
                 "q": q,
                 "today": timezone.localdate(),
+                "unificado": True,
+                "sol_page_base": query.urlencode(),
+                "listado_next_url": reverse("lista_solicitudes") + ("?" + clean_query.urlencode() if clean_query else ""),
             },
         )
 
+    cot_context = _contexto_cotizaciones(request, prefijo="cot_")
+    sol_page_query = request.GET.copy()
+    sol_page_query.pop("page", None)
+    cot_page_query = request.GET.copy()
+    cot_page_query.pop("cot_page", None)
     return render(
         request,
         "solicitudes/lista_solicitudes.html",
@@ -811,6 +846,11 @@ def lista_solicitudes(request):
             "page_obj": page_obj,
             "paginator": paginator,
             "today": timezone.localdate(),
+            "cot": cot_context,
+            "sol_page_base": sol_page_query.urlencode(),
+            "cot_page_base": cot_page_query.urlencode(),
+            "unificado": True,
+            "listado_next_url": request.get_full_path(),
         },
     )
 
@@ -1206,14 +1246,13 @@ def cambiar_estado_cotizacion(request, id):
     return JsonResponse({"status": "ok"})
 
 
-@login_required
-def lista_cotizaciones(request):
+def _contexto_cotizaciones(request, prefijo=""):
     hoy = timezone.localdate()
 
     anios = list(
         _cotizaciones_activas().values_list("anio", flat=True).distinct().order_by("anio")
     )
-    anio_param = request.GET.get("anio")
+    anio_param = request.GET.get(f"{prefijo}anio")
     anio = (
         int(anio_param)
         if anio_param and anio_param.isdigit()
@@ -1224,8 +1263,8 @@ def lista_cotizaciones(request):
         if anio
         else Cotizacion.objects.none()
     )
-    q = request.GET.get("q", "").strip()
-    orden = (request.GET.get("orden") or "").strip().lower()
+    q = request.GET.get(f"{prefijo}q", "").strip()
+    orden = (request.GET.get(f"{prefijo}orden") or "").strip().lower()
     orden = "asc" if orden == "asc" else "desc"
 
     if q:
@@ -1246,40 +1285,41 @@ def lista_cotizaciones(request):
         cotizaciones_qs = cotizaciones_qs.order_by("-id")
 
     paginator = Paginator(cotizaciones_qs, 25)
-    page_obj = paginator.get_page(request.GET.get("page"))
+    page_obj = paginator.get_page(request.GET.get(f"{prefijo}page"))
     cotizaciones = page_obj.object_list
     aplicar_estados_vigentes_cotizaciones(cotizaciones, fecha_referencia=hoy)
     ejecutivos = User.objects.all().order_by("first_name", "username")
 
+    return {
+        "cotizaciones": cotizaciones,
+        "anios": anios,
+        "anio_seleccionado": anio,
+        "usuarios": ejecutivos,
+        "q": q,
+        "orden": orden,
+        "page_obj": page_obj,
+        "paginator": paginator,
+    }
+
+
+@login_required
+def lista_cotizaciones(request):
     if request.GET.get("partial") == "1" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render(
             request,
             "cotizaciones/_cotizaciones_listado.html",
-            {
-                "cotizaciones": cotizaciones,
-                "usuarios": ejecutivos,
-                "anio_seleccionado": anio,
-                "orden": orden,
-                "page_obj": page_obj,
-                "paginator": paginator,
-                "q": q,
-            },
+            _contexto_cotizaciones(request),
         )
-
-    return render(
-        request,
-        "cotizaciones/lista_cotizaciones.html",
-        {
-            "cotizaciones": cotizaciones,
-            "anios": anios,
-            "anio_seleccionado": anio,
-            "usuarios": ejecutivos,
-            "q": q,
-            "orden": orden,
-            "page_obj": page_obj,
-            "paginator": paginator,
-        },
-    )
+    query = request.GET.copy()
+    query.pop("partial", None)
+    translated = {}
+    for key in ("anio", "q", "orden", "page"):
+        if query.get(key):
+            translated[f"cot_{key}"] = query[key]
+    target = reverse("lista_solicitudes")
+    if translated:
+        target += "?" + urlencode(translated)
+    return redirect(target + "#cotizaciones-ref")
 
 
 @login_required

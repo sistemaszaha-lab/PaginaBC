@@ -30,6 +30,10 @@ class Solicitud(models.Model):
     )
 
     cliente = models.CharField(max_length=255)
+    cliente_catalogo = models.ForeignKey(
+        "clientes.Cliente", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="solicitudes", editable=False,
+    )
 
     fecha_recepcion = models.DateField(verbose_name="Fecha de inicio")
 
@@ -67,6 +71,11 @@ class Solicitud(models.Model):
 
     def save(self, *args, **kwargs):
         self.cliente = normalizar_texto_cliente(self.cliente)
+        if self._state.adding and self.cliente_catalogo_id is None and self.cliente and self.cliente != "SIN CLIENTE":
+            from clientes.models import Cliente
+            coincidencias = list(Cliente.objects.filter(nombre=self.cliente).values_list("pk", flat=True)[:2])
+            if len(coincidencias) == 1:
+                self.cliente_catalogo_id = coincidencias[0]
         return super().save(*args, **kwargs)
 
     def __str__(self):

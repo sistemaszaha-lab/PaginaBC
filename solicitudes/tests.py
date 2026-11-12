@@ -1722,20 +1722,20 @@ class ListadosRendimientoFase3Tests(TestCase):
     def test_cotizaciones_muestra_ejecutivo_y_consultas_constantes(self):
         self._crear_cotizacion(1)
         consultas_una, response = self._consultas_get(
-            "lista_cotizaciones",
-            {"anio": 2026},
+            "lista_solicitudes",
+            {"cot_anio": 2026},
         )
         self.assertContains(response, "Elena")
 
         for indice in range(2, 10):
             self._crear_cotizacion(indice)
         consultas_varias, response = self._consultas_get(
-            "lista_cotizaciones",
-            {"anio": 2026},
+            "lista_solicitudes",
+            {"cot_anio": 2026},
         )
 
         self.assertEqual(consultas_varias, consultas_una)
-        self.assertEqual(len(response.context["cotizaciones"]), 9)
+        self.assertEqual(len(response.context["cot"]["cotizaciones"]), 9)
 
     def test_get_cotizaciones_no_escribe_y_muestra_estado_vigente(self):
         cotizacion = self._crear_cotizacion(
@@ -1747,8 +1747,8 @@ class ListadosRendimientoFase3Tests(TestCase):
 
         with CaptureQueriesContext(connection) as consultas:
             response = self.client.get(
-                reverse("lista_cotizaciones"),
-                {"anio": 2026},
+                reverse("lista_solicitudes"),
+                {"cot_anio": 2026},
             )
 
         self.assertEqual(response.status_code, 200)

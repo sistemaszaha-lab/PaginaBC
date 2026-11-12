@@ -6,7 +6,7 @@ from django.db import IntegrityError, transaction
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
-from clientes.models import normalizar_texto_cliente
+from clientes.models import Cliente, normalizar_texto_cliente
 from .models import Cotizacion, Referencia, Solicitud, UserProfile
 from .permissions import ROL_ADMIN, ROL_EJECUTIVO, ROL_SOLO_LECTURA, aplicar_rol, rol_de_usuario
 
@@ -54,6 +54,7 @@ def _configurar_ejecutivo_field(field):
 
 class SolicitudForm(forms.ModelForm):
     idempotency_key = forms.UUIDField(required=False, widget=forms.HiddenInput)
+    cliente_catalogo_id = forms.IntegerField(required=False, widget=forms.HiddenInput)
 
     TIPOS_SOLICITUD = (
         ("Importación aérea", "Importación aérea"),
@@ -95,6 +96,8 @@ class SolicitudForm(forms.ModelForm):
         self.fields["sg"].required = False
         self.fields["sg"].disabled = True
         _configurar_ejecutivo_field(self.fields.get("ejecutivo"))
+        if self.instance.pk and self.instance.cliente_catalogo_id:
+            self.fields["cliente_catalogo_id"].initial = self.instance.cliente_catalogo_id
         if self.instance.pk and self.instance.tipo and self.instance.tipo not in dict(self.TIPOS_SOLICITUD):
             self.fields["tipo"].choices = [(self.instance.tipo, self.instance.tipo)] + list(
                 self.TIPOS_SOLICITUD
@@ -106,6 +109,7 @@ class SolicitudForm(forms.ModelForm):
 
     def save(self, commit=True):
         solicitud = super().save(commit=False)
+        solicitud.cliente_catalogo = self.cleaned_data.get("cliente_catalogo")
         if not solicitud.pk:
             solicitud.sg = self._generar_sg(solicitud.anio)
         else:
@@ -116,6 +120,23 @@ class SolicitudForm(forms.ModelForm):
 
     def clean_cliente(self):
         return normalizar_texto_cliente(_validar_cliente(self.cleaned_data.get("cliente")))
+
+    def clean(self):
+        cleaned = super().clean()
+        nombre = cleaned.get("cliente")
+        cliente_id = cleaned.get("cliente_catalogo_id")
+        catalogo = Cliente.objects.filter(pk=cliente_id).first() if cliente_id else None
+        if catalogo and nombre not in {catalogo.nombre, normalizar_texto_cliente(str(catalogo))}:
+            self.add_error("cliente", "El cliente seleccionado no coincide con el catálogo.")
+        if catalogo:
+            cleaned["cliente"] = catalogo.nombre
+            cleaned["cliente_catalogo"] = catalogo
+        elif self.instance.pk and nombre == self.instance.cliente and self.instance.cliente_catalogo_id is None:
+            cleaned["cliente_catalogo"] = None
+        elif nombre:
+            coincidencias = list(Cliente.objects.filter(nombre=nombre).order_by("pk")[:2])
+            cleaned["cliente_catalogo"] = coincidencias[0] if len(coincidencias) == 1 else None
+        return cleaned
 
     def _generar_sg(self, anio):
         """

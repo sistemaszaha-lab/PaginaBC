@@ -3,6 +3,7 @@
 <tr data-trash-remove-item="1">
     <td>{{ s.sg }}</td>
     <td>{{ s.cliente }}</td>
+    <td>{% if not s.cliente_catalogo_id %}<span class="badge text-bg-light border">Sin identificar</span>{% elif s.tiene_solicitud_anterior %}<span class="badge text-bg-light border">↻ Recurrente</span>{% else %}<span class="badge text-bg-warning">⭐ Nuevo</span>{% endif %}</td>
     <td>{{ s.fecha_recepcion }}</td>
     <td>{{ s.fecha_entrega|default:"-" }}</td>
 
@@ -24,7 +25,7 @@
     <td>
         <form method="post" action="{% url 'cambiar_ejecutivo' s.id %}">
             {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input type="hidden" name="next" value="{{ listado_next_url|default:request.get_full_path }}">
             <select name="ejecutivo" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">-- Sin asignar --</option>
                 {% for u in usuarios %}
@@ -55,7 +56,7 @@
                 {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
                     <form method="post" action="{% url 'marcar_cumplido' s.id 'aereo' %}">
                         {% csrf_token %}
-                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <input type="hidden" name="next" value="{{ listado_next_url|default:request.get_full_path }}">
                         <button type="submit" class="btn btn-sm w-100 {% if s.fecha_entrega and s.fecha_entrega < today %}btn-danger{% else %}btn-warning{% endif %}">
                             {% if s.fecha_entrega and s.fecha_entrega < today %}Fuera de plazo{% else %}Pendiente{% endif %}
                         </button>
@@ -85,7 +86,7 @@
                 {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
                     <form method="post" action="{% url 'marcar_cumplido' s.id 'maritimo' %}">
                         {% csrf_token %}
-                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <input type="hidden" name="next" value="{{ listado_next_url|default:request.get_full_path }}">
                         <button type="submit" class="btn btn-sm w-100 {% if s.fecha_entrega and s.fecha_entrega < today %}btn-danger{% else %}btn-warning{% endif %}">
                             {% if s.fecha_entrega and s.fecha_entrega < today %}Fuera de plazo{% else %}Pendiente{% endif %}
                         </button>
@@ -115,7 +116,7 @@
                 {% if request.user.is_superuser or s.ejecutivo_id == request.user.id %}
                     <form method="post" action="{% url 'marcar_cumplido' s.id 'terrestre' %}">
                         {% csrf_token %}
-                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <input type="hidden" name="next" value="{{ listado_next_url|default:request.get_full_path }}">
                         <button type="submit" class="btn btn-sm w-100 {% if s.fecha_entrega and s.fecha_entrega < today %}btn-danger{% else %}btn-warning{% endif %}">
                             {% if s.fecha_entrega and s.fecha_entrega < today %}Fuera de plazo{% else %}Pendiente{% endif %}
                         </button>
@@ -128,7 +129,7 @@
     </td>
 
     <td>
-        <a href="{% url 'editar_solicitud' s.id %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-primary">Editar</a>
+        <a href="{% url 'editar_solicitud' s.id %}?next={{ listado_next_url|default:request.get_full_path|urlencode }}" class="btn btn-sm btn-primary">Editar</a>
         {% if s.referencia_generada %}
             <a href="{% url 'editar_referencia' s.referencia_generada.id %}" class="btn btn-sm btn-outline-success">Enviada a Referencias</a>
         {% elif s.panel_cotizacion_generada %}
@@ -147,9 +148,9 @@
                 aria-label="Enviar a la papelera"
                 data-trash-send="1"
                 data-trash-module="solicitud"
-                data-trash-empty-colspan="14"
+                data-trash-empty-colspan="15"
                 data-trash-empty-message="No hay solicitudes para este año."
-                data-trash-endpoint="{% url 'eliminar_solicitud' s.id %}?next={{ request.get_full_path|urlencode }}"
+                data-trash-endpoint="{% url 'eliminar_solicitud' s.id %}?next={{ listado_next_url|default:request.get_full_path|urlencode }}"
             >
                 <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                     <path fill="currentColor" d="M6 1h4l1 1h3v2H2V2h3l1-1zm-2 4h8l-.6 8.2A2 2 0 0 1 9.4 15H6.6a2 2 0 0 1-1.99-1.8L4 5zm2 2v5h1V7H6zm3 0v5h1V7H9z"/>
@@ -160,6 +161,6 @@
 </tr>
 {% empty %}
 <tr>
-    <td colspan="14" class="text-center">No hay solicitudes para este año.</td>
+    <td colspan="15" class="text-center">No hay solicitudes para este año.</td>
 </tr>
 {% endfor %}

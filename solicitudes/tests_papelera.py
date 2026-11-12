@@ -238,7 +238,7 @@ class SolicitudesIntegracionPapeleraTests(TestCase):
         )
 
         solicitudes_html = self.client.get(reverse("lista_solicitudes"), {"anio": 2026}).content.decode("utf-8")
-        cotizaciones_html = self.client.get(reverse("lista_cotizaciones"), {"anio": 2026}).content.decode("utf-8")
+        cotizaciones_html = self.client.get(reverse("lista_solicitudes"), {"cot_anio": 2026}).content.decode("utf-8")
         referencias_html = self.client.get(reverse("lista_referencias")).content.decode("utf-8")
 
         self.assertIn(
@@ -250,7 +250,7 @@ class SolicitudesIntegracionPapeleraTests(TestCase):
             f'data-trash-endpoint="{reverse("eliminar_cotizacion", args=[cotizacion.pk])}',
             cotizaciones_html,
         )
-        self.assertIn("?next=/cotizaciones/%3Fanio%3D2026", cotizaciones_html)
+        self.assertIn("?next=/solicitudes/%3Fcot_anio%3D2026%23cotizaciones-ref", cotizaciones_html)
         self.assertIn(
             f'data-trash-endpoint="{reverse("eliminar_referencia", args=[referencia.pk])}',
             referencias_html,

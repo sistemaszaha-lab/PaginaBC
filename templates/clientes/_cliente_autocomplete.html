@@ -5,7 +5,7 @@
         data-cliente-nuevo="1"
     ></option>
     {% for cliente in clientes %}
-        <option value="{{ cliente }}"></option>
+        <option value="{{ cliente }}" data-cliente-id="{{ cliente.pk }}"></option>
     {% endfor %}
 </datalist>
 
@@ -18,6 +18,16 @@
     const nuevoValue = "{{ cliente_nuevo_value|escapejs }}";
     const nuevoUrl = "{{ cliente_nuevo_url|escapejs }}";
     const form = input.closest("form");
+    const clienteIdInput = document.getElementById("id_cliente_catalogo_id");
+    if (clienteIdInput) {
+        const actualizarId = () => {
+            const opcion = [...document.querySelectorAll("#clientes_datalist option")]
+                .find((item) => item.value === input.value);
+            clienteIdInput.value = opcion?.dataset.clienteId || "";
+        };
+        input.addEventListener("input", actualizarId);
+        input.addEventListener("change", actualizarId);
+    }
 
     const esOpcionNuevo = () => {
         const valor = (input.value || "").trim().toLowerCase();

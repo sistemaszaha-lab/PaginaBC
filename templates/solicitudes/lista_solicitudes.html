@@ -1,81 +1,95 @@
-﻿{% extends "base.html" %}
-
+{% extends "base.html" %}
 {% block title %}Solicitudes{% endblock %}
-
 {% block content %}
-<h2 class="mb-4">Solicitudes</h2>
-
+<section id="solicitudes" aria-labelledby="solicitudes-titulo">
+<h2 id="solicitudes-titulo" class="mb-4">Solicitudes</h2>
 <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
     <a href="{% url 'crear_solicitud' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-success">+ Nueva Solicitud</a>
-    <a href="{% url 'exportar_solicitudes_excel' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}" class="btn btn-outline-success">
-        Descargar Excel
-    </a>
-    {% if request.user.is_superuser %}
-    <form method="post" action="{% url 'importar_solicitudes_csv' %}" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">
-        {% csrf_token %}
-        <input type="file" name="archivo_csv" accept=".csv,text/csv" class="form-control" style="max-width: 280px;" required>
+    <a href="{% url 'exportar_solicitudes_excel' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}" class="btn btn-outline-success">Descargar Excel</a>
+    {% if request.user.is_superuser %}<form method="post" action="{% url 'importar_solicitudes_csv' %}" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">
+        {% csrf_token %}<input type="file" name="archivo_csv" accept=".csv,text/csv" class="form-control" style="max-width:280px" required>
         <button type="submit" class="btn btn-outline-primary">Importar CSV</button>
-    </form>
-    {% endif %}
+    </form>{% endif %}
 </div>
-
-<form id="buscador-solicitudes" method="get" class="mb-3 d-flex gap-2 flex-wrap">
-    {% if anio_seleccionado %}
-    <input type="hidden" name="anio" value="{{ anio_seleccionado }}">
-    {% endif %}
-    <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio...">
-    <select name="orden" class="form-select" style="max-width: 260px;">
+<form id="buscador-solicitudes" method="get" class="mb-3 d-flex gap-2 flex-wrap" data-listado="solicitudes-listado" data-partial="1" data-page="page">
+    {% if anio_seleccionado %}<input type="hidden" name="anio" value="{{ anio_seleccionado }}">{% endif %}
+    <input type="search" name="q" value="{{ q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio..." aria-label="Buscar solicitudes">
+    <select name="orden" class="form-select" style="max-width:260px">
         <option value="asc" {% if orden == "asc" %}selected{% endif %}>⬆️ Mostrar: Ascendente</option>
         <option value="desc" {% if orden != "asc" %}selected{% endif %}>⬇️ Mostrar: Descendente</option>
     </select>
-    <a class="btn btn-outline-secondary" href="{% url 'lista_solicitudes' %}{% if anio_seleccionado %}?anio={{ anio_seleccionado }}{% endif %}">Limpiar</a>
+    <button type="button" class="btn btn-outline-secondary" data-reset-list="solicitudes">Limpiar</button>
 </form>
-
-<div id="solicitudes-listado">
-    {% include "solicitudes/_solicitudes_listado.html" %}
+<div id="solicitudes-listado">{% include "solicitudes/_solicitudes_listado.html" %}</div>
+</section>
+<section id="cotizaciones-ref" class="mt-5 pt-3 border-top" aria-labelledby="cotizaciones-titulo">
+<h2 id="cotizaciones-titulo" class="mb-4">Cotizaciones REF</h2>
+<div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
+    <a href="{% url 'crear_cotizacion' %}?next={{ request.get_full_path|urlencode }}%23cotizaciones-ref" class="btn btn-success">+ Nueva cotización</a>
+    <a href="{% url 'exportar_cotizaciones_excel' %}{% if cot.anio_seleccionado %}?anio={{ cot.anio_seleccionado }}{% endif %}" class="btn btn-outline-success">Descargar Excel</a>
+    {% if request.user.is_superuser %}<form method="post" action="{% url 'importar_cotizaciones_csv' %}" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">
+        {% csrf_token %}<input type="file" name="archivo_csv" accept=".csv,text/csv" class="form-control" style="max-width:280px" required>
+        <button type="submit" class="btn btn-outline-primary">Importar CSV</button>
+    </form>{% endif %}
 </div>
-
+<form id="buscador-cotizaciones" method="get" class="mb-3 d-flex gap-2 flex-wrap" data-listado="cotizaciones-listado" data-partial="cot" data-page="cot_page">
+    {% if cot.anio_seleccionado %}<input type="hidden" name="cot_anio" value="{{ cot.anio_seleccionado }}">{% endif %}
+    <input type="search" name="cot_q" value="{{ cot.q }}" class="form-control" placeholder="Buscar referencia, cliente, servicio..." aria-label="Buscar cotizaciones REF">
+    <select name="cot_orden" class="form-select" style="max-width:260px">
+        <option value="asc" {% if cot.orden == "asc" %}selected{% endif %}>⬆️ Mostrar: Ascendente</option>
+        <option value="desc" {% if cot.orden != "asc" %}selected{% endif %}>⬇️ Mostrar: Descendente</option>
+    </select>
+    <button type="button" class="btn btn-outline-secondary" data-reset-list="cotizaciones">Limpiar</button>
+</form>
+<div id="cotizaciones-listado">{% include "cotizaciones/_cotizaciones_listado.html" with cotizaciones=cot.cotizaciones usuarios=cot.usuarios anio_seleccionado=cot.anio_seleccionado q=cot.q orden=cot.orden page_obj=cot.page_obj paginator=cot.paginator %}</div>
+</section>
 <script>
-    (function () {
-        const form = document.getElementById("buscador-solicitudes");
-        const listado = document.getElementById("solicitudes-listado");
-        if (!form || !listado) return;
-        let debounceId = null;
-
-        function fetchRows() {
-            const params = new URLSearchParams(new FormData(form));
-            params.set("partial", "1");
-            const url = `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`;
-            fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
-                .then((res) => res.text())
-                .then((html) => {
-                    listado.innerHTML = html;
-                    params.delete("partial");
-                    const cleanUrl = params.toString()
-                        ? `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`
-                        : (form.getAttribute("action") || window.location.pathname);
-                    history.replaceState(null, "", cleanUrl);
-                })
-                .catch(() => {});
-        }
-
-        function handleChange() {
-            clearTimeout(debounceId);
-            const params = new URLSearchParams(new FormData(form));
-            if (params.has("page")) {
-                params.delete("page");
-                const cleanUrl = params.toString()
-                    ? `${form.getAttribute("action") || window.location.pathname}?${params.toString()}`
-                    : (form.getAttribute("action") || window.location.pathname);
-                history.replaceState(null, "", cleanUrl);
+(() => {
+    for (const form of document.querySelectorAll('[data-listado]')) {
+        const listado = document.getElementById(form.dataset.listado);
+        let timer;
+        let sequence = 0;
+        const update = () => {
+            const current = ++sequence;
+            const params = new URLSearchParams(location.search);
+            for (const [key, value] of new FormData(form)) {
+                if (value) params.set(key, value);
+                else params.delete(key);
             }
-            debounceId = setTimeout(fetchRows, 250);
-        }
-
-        form.addEventListener("input", handleChange);
-        form.addEventListener("change", handleChange);
-    })();
+            params.delete(form.dataset.page);
+            const clean = `${location.pathname}?${params.toString()}${location.hash}`;
+            history.replaceState(null, '', clean);
+            const fetchParams = new URLSearchParams(params);
+            fetchParams.set('partial', form.dataset.partial);
+            fetch(`${location.pathname}?${fetchParams.toString()}`, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                .then(response => {if (!response.ok) throw new Error('Error al actualizar'); return response.text();})
+                .then(html => {if (current !== sequence) return; listado.innerHTML = html;})
+                .catch(error => console.error(error));
+        };
+        form.addEventListener('input', () => {clearTimeout(timer); timer = setTimeout(update, 250);});
+        form.addEventListener('change', () => {clearTimeout(timer); timer = setTimeout(update, 250);});
+        form.addEventListener('submit', event => {event.preventDefault(); clearTimeout(timer); update();});
+    }
+    document.querySelectorAll('[data-reset-list]').forEach(button => button.addEventListener('click', () => {
+        const cot = button.dataset.resetList === 'cotizaciones';
+        const params = new URLSearchParams(location.search);
+        for (const key of (cot ? ['cot_q', 'cot_orden', 'cot_page'] : ['q', 'orden', 'page'])) params.delete(key);
+        location.assign(`${location.pathname}?${params.toString()}${cot ? '#cotizaciones-ref' : ''}`);
+    }));
+    document.addEventListener('click', event => {
+        const btn = event.target.closest('#cotizaciones-ref .estado-btn');
+        if (!btn || btn.disabled) return;
+        const token = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+        fetch(`/cotizaciones/cambiar-estado/${btn.dataset.id}/`, {method:'POST', headers:{'X-CSRFToken':token, 'X-Requested-With':'XMLHttpRequest'}})
+            .then(response => response.json()).then(data => {if (data.status === 'ok') {btn.textContent='Cumplido';btn.classList.remove('pendiente','fuera-de-plazo');btn.classList.add('cumplido');btn.disabled=true;}})
+            .catch(error => console.error(error));
+    });
+})();
 </script>
+<style>
+#cotizaciones-ref .estado-btn{padding:6px 12px;border-radius:8px;border:0;color:white;cursor:pointer;font-size:.875rem;font-weight:500}
+#cotizaciones-ref .estado-btn.pendiente{background:#facc15;color:#1e293b}
+#cotizaciones-ref .estado-btn.cumplido{background:transparent;color:#15803d;font-weight:700;padding:6px 0;pointer-events:none}
+#cotizaciones-ref .estado-btn.fuera-de-plazo{background:#ef4444}
+</style>
 {% endblock %}
-
-

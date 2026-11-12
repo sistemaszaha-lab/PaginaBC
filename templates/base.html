@@ -34,9 +34,7 @@
             <a href="{% url 'cliente_lista' %}"
                 class="sidebar-link {% if current == 'cliente_lista' or current == 'cliente_crear' or current == 'cliente_editar' %}is-active{% endif %}">Clientes</a>
             <a href="{% url 'lista_solicitudes' %}"
-                class="sidebar-link {% if current == 'lista_solicitudes' or current == 'crear_solicitud' or current == 'editar_solicitud' %}is-active{% endif %}">Solicitudes</a>
-            <a href="{% url 'lista_cotizaciones' %}"
-                class="sidebar-link {% if current == 'lista_cotizaciones' or current == 'crear_cotizacion' or current == 'editar_cotizacion' %}is-active{% endif %}">Cotizaciones-Ref</a>
+                class="sidebar-link {% if current == 'lista_solicitudes' or current == 'crear_solicitud' or current == 'editar_solicitud' or current == 'lista_cotizaciones' or current == 'crear_cotizacion' or current == 'editar_cotizacion' %}is-active{% endif %}">Solicitudes</a>
             {% if request.user.is_superuser or request.user.is_authenticated %}
             <a href="{% url 'panel_cotizaciones:panel_cotizaciones' %}"
                 class="sidebar-link {% if current == 'panel_cotizaciones' %}is-active{% endif %}">Panel Cotizaciones</a>
