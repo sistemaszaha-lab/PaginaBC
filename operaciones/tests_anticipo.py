@@ -96,6 +96,90 @@ class AnticipoTests(TestCase):
         self.assertEqual((op.estado, op.columna_id), (self.columna.codigo, self.columna.pk))
         self.assertEqual(CuentaGastos.objects.filter(operacion_anticipo_origen=op).count(), 1)
 
+    def test_tarjetas_historicas_sin_referencia_usan_consecutivo_del_titulo(self):
+        otra_columna, _ = OperacionColumna.objects.get_or_create(
+            codigo=Operacion.Estado.COORDINAR_PICKUP,
+            defaults={"nombre": Operacion.Estado.COORDINAR_PICKUP.label},
+        )
+        for codigo in ("BC265235", "BC266391", "BC275275", "BC286001", "BC2651234"):
+            with self.subTest(codigo=codigo):
+                op = self.crear_operacion(
+                    None, None, columna=otra_columna if codigo == "BC266391" else None,
+                )
+                op.titulo = f"{codigo} // Cliente - Copia"
+                op.save(update_fields=["titulo"])
+                self.assertTrue(operacion_elegible_para_anticipo(op))
+                request = RequestFactory().get("/operaciones/")
+                request.user = self.usuario
+                self.assertIn("Solicitar factura por anticipo", _render_card_html(request, op))
+                url = reverse("operaciones:solicitar_factura_anticipo", args=[op.pk])
+                self.assertTrue(self.client.post(url).json()["creada"])
+                self.assertFalse(self.client.post(url).json()["creada"])
+                copia = CuentaGastos.objects.get(operacion_anticipo_origen=op)
+                self.assertEqual(copia.referencia_anticipo_codigo, codigo)
+                self.assertEqual(copia.columna, self.destino)
+                op.refresh_from_db()
+                self.assertIsNone(op.referencia_origen_id)
+                self.assertEqual(op.columna, otra_columna if codigo == "BC266391" else self.columna)
+
+    def test_codigo_visible_prevalece_sobre_referencia_historica_distinta(self):
+        op = self.crear_operacion("BC263350", "servicios_transporte", consecutivo=350)
+        op.titulo = "BC265350 // Operación histórica"
+        op.save(update_fields=["titulo"])
+        self.assertTrue(operacion_elegible_para_anticipo(op))
+        request = RequestFactory().get("/operaciones/")
+        request.user = self.usuario
+        self.assertIn("Solicitar factura por anticipo", _render_card_html(request, op))
+        response = self.client.post(reverse("operaciones:solicitar_factura_anticipo", args=[op.pk]))
+        self.assertEqual(response.status_code, 200)
+        copia = CuentaGastos.objects.get(operacion_anticipo_origen=op)
+        self.assertEqual(copia.referencia_anticipo_codigo, "BC265350")
+        self.assertEqual(op.referencia_origen.referencia, "BC263350")
+
+    def test_titulo_sin_codigo_completo_o_al_inicio_no_es_elegible_sin_referencia(self):
+        for titulo in (
+            "BC265", "BC2650", "BC2660", "BC265000", "BC2650001",
+            "BC265123X", "BC265123_OLD",
+            "Operación BC265123", "BC261123",
+        ):
+            with self.subTest(titulo=titulo):
+                op = self.crear_operacion(None, None)
+                op.titulo = titulo
+                op.save(update_fields=["titulo"])
+                self.assertFalse(operacion_elegible_para_anticipo(op))
+                response = self.client.post(reverse("operaciones:solicitar_factura_anticipo", args=[op.pk]))
+                self.assertEqual(response.status_code, 400)
+        con_referencia = self.crear_operacion(
+            "BC265500", "comercializador_importacion", consecutivo=500,
+        )
+        con_referencia.titulo = "BC2650 // Consecutivo incompleto"
+        con_referencia.save(update_fields=["titulo"])
+        self.assertFalse(operacion_elegible_para_anticipo(con_referencia))
+        self.assertEqual(
+            self.client.post(reverse("operaciones:solicitar_factura_anticipo", args=[con_referencia.pk])).status_code,
+            400,
+        )
+
+    def test_tarjeta_asignada_de_otro_creador_muestra_boton_y_permite_solicitar(self):
+        op = self.crear_operacion(None, None)
+        op.titulo = "BC265235 // Tarjeta previa"
+        op.creado_por = self.otro
+        op.save(update_fields=["titulo", "creado_por"])
+        tarjetas = [item for columna in _columnas_kanban(self.usuario) for item in columna["items"]]
+        self.assertTrue(next(item for item in tarjetas if item.pk == op.pk).puede_solicitar_anticipo)
+        response = self.client.post(reverse("operaciones:solicitar_factura_anticipo", args=[op.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["creada"])
+        self.client.force_login(self.otro)
+        otra = self.crear_operacion(None, None)
+        otra.titulo = "BC265236 // Tarjeta ajena"
+        otra.save(update_fields=["titulo"])
+        self.assertEqual(
+            self.client.post(reverse("operaciones:solicitar_factura_anticipo", args=[otra.pk])).status_code,
+            403,
+        )
+        self.assertFalse(CuentaGastos.objects.filter(operacion_anticipo_origen=otra).exists())
+
     def test_permisos_columna_inactiva_y_boton_en_cualquier_columna(self):
         otra_columna, _ = OperacionColumna.objects.get_or_create(
             codigo=Operacion.Estado.COORDINAR_PICKUP,

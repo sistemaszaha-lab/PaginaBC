@@ -60,7 +60,7 @@ def _clonar_cuenta_gastos(
         operacion_flete_origen=operacion_flete,
         operacion_anticipo_origen=operacion_anticipo,
         referencia_anticipo_codigo=(
-            operacion_anticipo.referencia_origen.referencia if operacion_anticipo else ""
+            codigo_anticipo_operacion(operacion_anticipo) if operacion_anticipo else ""
         ),
         vobo_angie_origen=vobo_angie,
         titulo=origen.titulo,
@@ -89,22 +89,44 @@ def _clonar_cuenta_gastos(
     return cuenta
 
 
-def operacion_elegible_para_anticipo(operacion):
-    """Comprueba el tipo estructurado y el código completo de su referencia."""
+_CODIGO_REFERENCIA = re.compile(
+    r"BC[0-9]{2}([1-6])([0-9]{3}|[1-9][0-9]{3,})(?![A-Z0-9_])",
+    re.IGNORECASE,
+)
+
+
+def codigo_anticipo_operacion(operacion):
+    """Obtiene el código de la tarjeta; admite títulos históricos sin relación."""
+    if operacion is None or operacion.eliminado_en is not None:
+        return None
+
+    # En producción el consecutivo visible encabeza el título. Las copias
+    # antiguas perdieron referencia_origen y algunas conservan otra referencia.
+    titulo = (operacion.titulo or "").strip()
+    if re.match(r"BC[0-9]", titulo, re.IGNORECASE):
+        match_titulo = _CODIGO_REFERENCIA.match(titulo)
+        if match_titulo and match_titulo.group(1) in {"5", "6"} and int(match_titulo.group(2)) > 0:
+            return match_titulo.group(0).upper()
+        return None
+
     referencia = operacion.referencia_origen
     if referencia is None or referencia.eliminado_en is not None:
-        return False
+        return None
     # El formulario de Referencias es la fuente de la asignación servicio → dígito.
     from solicitudes.forms import ReferenciaForm
 
     tipo = ReferenciaForm.CODIGOS_OPERACION.get(referencia.servicio)
     if tipo not in {"5", "6"}:
-        return False
-    match = re.fullmatch(r"BC\d{2}([1-6])(\d{3,})", referencia.referencia or "")
-    return bool(
-        match and match.group(1) == tipo
-        and int(match.group(2)) == referencia.consecutivo
-    )
+        return None
+    match = _CODIGO_REFERENCIA.fullmatch(referencia.referencia or "")
+    if (match and match.group(1) == tipo and int(match.group(2)) > 0
+            and int(match.group(2)) == referencia.consecutivo):
+        return match.group(0).upper()
+    return None
+
+
+def operacion_elegible_para_anticipo(operacion):
+    return codigo_anticipo_operacion(operacion) is not None
 
 
 def _crear_copia_anticipo_desde_operacion(operacion, *, creado_por):
