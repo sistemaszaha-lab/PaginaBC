@@ -1,7 +1,7 @@
 """Los archivos sobreviven a PROTECT y a cualquier rollback de la purga."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from datetime import timedelta
 from io import StringIO
 
@@ -162,6 +162,19 @@ class PurgaSeguraTests(ArchivosTemporalesMixin, TestCase):
 
 
 class PreparacionPurgaTests(ArchivosTemporalesMixin, TestCase):
+    def test_segunda_ejecucion_se_rechaza_si_el_bloqueo_esta_ocupado(self):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = (False,)
+        conexion = MagicMock()
+        conexion.vendor = 'postgresql'
+        conexion.cursor.return_value.__enter__.return_value = cursor
+        with patch('solicitudes.management.commands.purgar_papelera.connection', conexion):
+            with self.assertRaisesRegex(CommandError, 'otra ejecución'):
+                call_command('purgar_papelera', dry_run=True, stdout=StringIO())
+        cursor.execute.assert_called_once_with(
+            'SELECT pg_try_advisory_lock(%s, %s)', (24402, 1)
+        )
+
     def vencer(self, objeto, dias):
         enviar_a_papelera(objeto, self.user)
         type(objeto).objects.filter(pk=objeto.pk).update(
@@ -223,10 +236,10 @@ class PreparacionPurgaTests(ArchivosTemporalesMixin, TestCase):
             self.vencer(objeto, dias)
         from solicitudes_app.trash import eliminar_definitivamente as eliminar_real
 
-        def eliminar_con_error(objeto):
+        def eliminar_con_error(objeto, **kwargs):
             if objeto.pk == fallido.pk:
                 raise TrashOperationError('fallo de prueba')
-            return eliminar_real(objeto)
+            return eliminar_real(objeto, **kwargs)
 
         salida, errores = StringIO(), StringIO()
         with patch('solicitudes.management.commands.purgar_papelera.eliminar_definitivamente', side_effect=eliminar_con_error):
@@ -279,6 +292,25 @@ class PreparacionPurgaTests(ArchivosTemporalesMixin, TestCase):
 
 
 class CommitRealPurgaTests(ArchivosTemporalesMixin, TransactionTestCase):
+    def test_error_de_archivo_posterior_al_commit_falla_el_comando(self):
+        op = Operacion.objects.create(creado_por=self.user)
+        _, ruta = self.adjuntar(op)
+        pk = op.pk
+        enviar_a_papelera(op, self.user)
+        Operacion.objects.filter(pk=pk).update(
+            eliminado_en=timezone.now() - timedelta(days=31)
+        )
+        salida, errores = StringIO(), StringIO()
+
+        with patch.object(self.storage, 'delete', side_effect=OSError('storage no disponible')):
+            with self.assertRaises(CommandError):
+                call_command('purgar_papelera', stdout=salida, stderr=errores)
+
+        self.assertFalse(Operacion.objects.filter(pk=pk).exists())
+        self.assertTrue(ruta.exists())
+        self.assertIn('registro eliminado, pero falló el borrado del archivo', errores.getvalue())
+        self.assertIn('errores=1', salida.getvalue())
+
     def test_archivo_se_elimina_despues_de_commit_real(self):
         op = Operacion.objects.create(creado_por=self.user)
         _, ruta = self.adjuntar(op)

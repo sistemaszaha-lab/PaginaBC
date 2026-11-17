@@ -1,85 +1,47 @@
-# Preparación de la purga diaria de la papelera
+# Purga diaria de la papelera en Railway
 
-Estado: **propuesta local; no configurada ni activada en Railway**.
+Estado al 17 de noviembre de 2026: **preparada localmente; desactivada**. No se ha ejecutado ninguna purga real.
 
-## Política y diagnóstico previo
+Un dry-run ejecutado por Railway SSH dentro de `web` el 17 de noviembre terminó con código 0 y **472 vencidos potencialmente eliminables**, sin protegidos ni errores: 3 etiquetas, 201 operaciones, 12 garantías, 82 cotizaciones del panel, 163 cuentas de gastos, 1 solicitud, 1 cotización de referencia, 1 referencia y 8 documentos. La salida confirmó: `Simulación de solo lectura completada; no se eliminó ningún elemento.` Esta prueba fue desde la CLI local; todavía falta la prueba completa desde GitHub Actions.
 
-`purgar_papelera` usa `eliminado_en <= timezone.now() - timedelta(days=30)`.
-El umbral exige 30 días completos desde la eliminación. La opción `--days`
-admite plazos mayores, pero rechaza valores inferiores a 30. `--dry-run`
-revisa candidatos y relaciones con el colector de Django, e informa por modelo
-vencidos, potencialmente eliminables, protegidos, errores y motivos. No llama a
-`delete()` ni borra archivos. La clasificación es una fotografía: entre la
-simulación y una ejecución real las relaciones pueden cambiar.
-El comando recorre los candidatos en lotes de hasta 200 registros por modelo
-para limitar la memoria ocupada durante una ejecución larga.
-Los errores individuales se escriben en stderr y provocan una salida distinta
-de cero después del resumen; los bloqueos `PROTECT` se informan por separado.
-La ejecución real vuelve a comprobar `eliminado_en` bajo bloqueo antes de cada
-borrado para conservar los registros restaurados o aún no vencidos.
+## Comportamiento
 
-```sh
-python manage.py purgar_papelera --dry-run
-```
+El workflow `.github/workflows/purga-papelera.yml` ejecuta `python manage.py purgar_papelera` por SSH dentro del servicio `web`, que tiene montado `/app/uploads`. La agenda es `0 3 * * *` en `America/Mexico_City`. No cambia el proceso Gunicorn ni el volumen.
 
-Este comando es apto para una revisión previa en un entorno con acceso de solo
-lectura a la base de datos. No usar la ejecución sin `--dry-run` hasta completar
-las condiciones de almacenamiento y despliegue indicadas abajo.
+El comando conserva cada registro hasta cumplir al menos 30 días desde `eliminado_en`, comprueba de nuevo el vencimiento bajo bloqueo de fila antes del borrado, y omite los restaurados. El colector de Django respeta `PROTECT` y `RESTRICT`; los registros protegidos quedan en papelera y se registran. Los archivos asociados se borran después del commit de la transacción. Un error al borrar un archivo después del commit puede dejar un archivo huérfano: el error se registra, pero el registro de BD ya no se puede recuperar mediante rollback.
 
-## Relaciones de los flujos
+El comando usa un bloqueo asesor de sesión de PostgreSQL para impedir que dos invocaciones, también manuales o externas, purguen a la vez. El workflow añade `concurrency` sin cancelar la ejecución en curso. La salida del comando y el resumen de Actions muestran modo, estado, errores y duración. El job tiene un límite de 60 minutos y el SSH de 50 minutos. Si se interrumpe, cada registro ya confirmado permanece eliminado y los siguientes quedan para otra ejecución; una nueva invocación obtiene el bloqueo cuando la conexión anterior termina.
 
-| Origen a purgar | Relación dependiente | Regla | Consecuencia |
-| --- | --- | --- | --- |
-| Operación | Cuenta de Gastos ordinaria (`operacion_origen`) | `SET_NULL` | La copia permanece sin vínculo. |
-| Operación | Garantía (`operacion_origen`) | `SET_NULL` | La garantía permanece sin vínculo. |
-| Operación | Cuenta de Gastos de flete (`operacion_flete_origen`) | `PROTECT` | Se bloquea la purga del origen. |
-| Operación | Cuenta de Gastos de anticipo (`operacion_anticipo_origen`) | `PROTECT` | Se bloquea la purga del origen cuando esta migración local esté aplicada. |
-| Garantía | Cuenta de Gastos (`garantia_origen`) | `SET_NULL` | La copia permanece sin vínculo. |
-| Cuenta de Gastos | Copia de Solicitudes a Geo (`vobo_angie_origen`) | `PROTECT` | Se bloquea la purga del origen. |
-| Solicitud | Referencia / cotización del panel | `SET_NULL` | Los registros derivados permanecen. |
-| Cotización del panel | Referencia | `SET_NULL` | La referencia permanece. |
-| Referencia | Operación / garantía | `SET_NULL` | Permanecen sin vínculo a la referencia. |
-| Referencia | Facturas / movimientos | `CASCADE` | Se eliminan junto con la referencia. |
-| Operación, garantía, cuenta o cotización del panel | Comentarios, archivos y enlaces dependientes | `CASCADE` | Se eliminan los registros dependientes. Los archivos físicos configurados se borran tras el commit. |
+## Preparación de GitHub Actions
 
-No se encontraron relaciones `RESTRICT` en estos flujos; si se agregan más
-adelante, el colector también las evaluará y reportará. El comando no desvincula
-ni elimina copias activas para despejar un bloqueo. Los bloqueados permanecen
-en papelera y deben revisarse como excepción a la meta de retención.
+Railway SSH usa una llave registrada en Railway. El token de proyecto `RAILWAY_TOKEN` no sirve para abrir SSH; no se incluye ningún token de Railway en el workflow. Para limitar el alcance, registrar una llave exclusiva del workflow en una identidad de Railway que sólo tenga acceso al proyecto necesario. Las llaves de un workspace dan acceso a todos sus servicios. Proteger la rama por defecto y restringir quién puede editar workflows y Secrets.
 
-## Propuesta de ejecución diaria
+Configurar estos valores en el repositorio GitHub:
 
-Crear **un servicio Cron separado del servicio web** con el mismo código,
-`DATABASE_URL` y `DJANGO_SECRET_KEY`, cuyo proceso de inicio sea
-`python manage.py purgar_papelera` y termine al acabar. Configurar la agenda
-`0 9 * * *` (09:00 UTC todos los días). La primera revisión debe hacerse con
-`python manage.py purgar_papelera --dry-run` en un entorno controlado. Registrar
-por ejecución el resumen, errores individuales, duración y estado final.
+| Tipo | Nombre | Valor |
+| --- | --- | --- |
+| Secret | `RAILWAY_SSH_PRIVATE_KEY` | Llave privada exclusiva del workflow, con su pública registrada en Railway. |
+| Secret | `RAILWAY_SSH_KNOWN_HOSTS` | Entrada verificada para `ssh.railway.com`, obtenida fuera del runner. |
+| Variable | `RAILWAY_WEB_SSH_USER` | Dominio SSH del servicio `web`, sin `@ssh.railway.com` (actualmente `web-production-535f2.up.railway.app`). |
+| Variable | `PURGA_PAPELERA_ACTIVA` | Ausente o `false` durante la preparación; `true` sólo después de autorizar la primera purga real. |
 
-**Bloqueo de activación: archivos.** El proyecto guarda subidas mediante
-`FileSystemStorage` en `uploads`. Un Cron separado no comparte automáticamente
-el disco local del servicio web; Railway permite adjuntar un volumen a un solo
-servicio. Antes de una purga real desde un servicio separado, confirmar y
-preparar un almacenamiento accesible desde ambos procesos, con pruebas de
-borrado físico tras commit. Sin ello, se podrían borrar registros de la base de
-datos y dejar archivos en el almacenamiento del servicio web.
-Si un borrado físico falla después del commit, el registro ya no puede servir
-para reintentar automáticamente; revisar los errores de almacenamiento y definir
-una conciliación de archivos antes de activar la tarea.
+El workflow no requiere permisos de `GITHUB_TOKEN`. `workflow_dispatch` permite `dry-run` con la variable desactivada; tanto la agenda como una invocación manual `real` requieren `PURGA_PAPELERA_ACTIVA=true`.
 
-El `railway.toml` actual define Gunicorn como `startCommand` y la configuración
-en código puede prevalecer sobre ajustes del servicio. Verificar el comando de
-inicio **efectivo** del Cron antes de activarlo. Railway recomienda ahora su
-Infrastructure as Code para servicios nuevos; no reutilizar ni cambiar el
-`railway.toml` del servicio web para programar la purga.
+## Prueba y activación
 
-Railway documenta que los Cron usan UTC, ejecutan el comando de inicio y omiten
-una ejecución si la anterior sigue activa. Revisar los estados `EXITED`,
-`CRASHED` y `SKIPPED`, y alertar si no hay una ejecución terminada en el día o
-quedan errores/protegidos pendientes. Una ejecución diaria puede eliminar un
-registro después de cumplir 30 días, con un retraso de hasta aproximadamente
-un día según la hora en que fue enviado a la papelera.
+1. Publicar el workflow en la rama por defecto con `PURGA_PAPELERA_ACTIVA` ausente o `false`.
+2. Ejecutar manualmente `Purga de papelera Railway` con `modo=dry-run`. Verificar en el log que SSH llega a `web`, encuentra `/app/manage.py`, termina con código cero y muestra la simulación de solo lectura. Revisar los totales y los protegidos.
+3. Confirmar respaldos recientes de **PostgreSQL y del volumen `web-volume`**, su fecha, alcance y una restauración de prueba en un destino aislado. Volver a ejecutar el dry-run inmediatamente antes de la primera purga.
+4. Solicitar autorización explícita para la primera purga real y el inicio de la agenda. Una vez concedida, poner `PURGA_PAPELERA_ACTIVA=true`, ejecutar `modo=real` una vez y comprobar los resultados. Desde entonces, las ejecuciones diarias no requieren aprobaciones.
 
-Referencias: https://docs.railway.com/cron-jobs ;
-https://docs.railway.com/infrastructure-as-code/reference ;
-https://docs.railway.com/config-as-code .
+Para desactivar la automatización, cambiar `PURGA_PAPELERA_ACTIVA` a `false` o quitarla. Esto bloquea nuevas ejecuciones reales programadas o manuales; no cancela un proceso en curso. Para detener uno en curso, cancelar el job y comprobar el estado de la sesión remota y su bloqueo antes de reintentar.
+
+## Monitoreo
+
+Revisar cada día la ejecución de `Purga de papelera Railway` en **GitHub Actions**. El log remoto contiene los totales por modelo y cada elemento protegido o fallido. Un job rojo o ausente, `errores>0`, o protegidos persistentes requieren investigación. No forzar eliminaciones para despejar un bloqueo. El éxito del job no garantiza que se hayan borrado todos los archivos después del commit; revisar errores de storage y conciliar archivos huérfanos si aparecen.
+
+## Estado de respaldos comprobado
+
+El 17 de noviembre de 2026, `railway postgres pitr status --service Postgres --json` indicó `enabled=false`. `railway postgres pitr backup list --service Postgres --json` y `schedule list` devolvieron listas vacías. La lista de respaldos de `web` también devolvió `[]`. Railway rechazó crear un snapshot manual: `Manual backups and backup schedules are only available for Pro workspaces`. **No hay respaldo reciente ni restauración verificable confirmados de PostgreSQL o `web-volume`; la purga real sigue bloqueada.**
+
+PITR está disponible como función de Railway, pero no está habilitado en este proyecto. Según Railway, usa almacenamiento de bucket y egreso facturados; habilitarlo no crea cobertura retroactiva. Consultar el plan y el costo real antes de decidir. Referencias: [SSH](https://docs.railway.com/cli/ssh), [respaldos de volúmenes](https://docs.railway.com/volumes/backups), [PITR](https://docs.railway.com/volumes/point-in-time-recovery), [agenda de Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onschedule).

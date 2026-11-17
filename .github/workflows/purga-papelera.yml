@@ -1,0 +1,75 @@
+name: Purga de papelera Railway
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+      timezone: America/Mexico_City
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: Modo de ejecución
+        required: true
+        type: choice
+        default: dry-run
+        options:
+          - dry-run
+          - real
+
+permissions: {}
+
+concurrency:
+  group: purga-papelera-production
+  cancel-in-progress: false
+
+jobs:
+  purgar:
+    if: github.event_name == 'workflow_dispatch' && (inputs.modo == 'dry-run' || vars.PURGA_PAPELERA_ACTIVA == 'true') || github.event_name == 'schedule' && vars.PURGA_PAPELERA_ACTIVA == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RAILWAY_SSH_PRIVATE_KEY: ${{ secrets.RAILWAY_SSH_PRIVATE_KEY }}
+      RAILWAY_SSH_KNOWN_HOSTS: ${{ secrets.RAILWAY_SSH_KNOWN_HOSTS }}
+      RAILWAY_WEB_SSH_USER: ${{ vars.RAILWAY_WEB_SSH_USER }}
+      PURGA_ACTIVA: ${{ vars.PURGA_PAPELERA_ACTIVA }}
+      PURGA_MODO: ${{ github.event_name == 'schedule' && 'real' || inputs.modo }}
+    steps:
+      - name: Preparar acceso SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$RAILWAY_SSH_PRIVATE_KEY"
+          test -n "$RAILWAY_SSH_KNOWN_HOSTS"
+          test -n "$RAILWAY_WEB_SSH_USER"
+          install -d -m 700 "$RUNNER_TEMP/railway-ssh"
+          printf '%s\n' "$RAILWAY_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/railway-ssh/key"
+          printf '%s\n' "$RAILWAY_SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/railway-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/railway-ssh/key" "$RUNNER_TEMP/railway-ssh/known_hosts"
+
+      - name: Verificar web y ejecutar purga
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh_options=(
+            -T -i "$RUNNER_TEMP/railway-ssh/key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$RUNNER_TEMP/railway-ssh/known_hosts"
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=3
+          )
+          if [[ "$PURGA_MODO" == 'dry-run' ]]; then
+            comando='cd /app && test -f manage.py && python manage.py purgar_papelera --dry-run'
+          elif [[ "$PURGA_MODO" == 'real' && "$PURGA_ACTIVA" == 'true' ]]; then
+            comando='cd /app && test -f manage.py && python manage.py purgar_papelera'
+          else
+            echo 'Modo no autorizado' >&2
+            exit 1
+          fi
+          inicio=$(date +%s)
+          estado=fallo
+          trap 'codigo=$?; duracion=$(( $(date +%s) - inicio )); printf "modo=%s estado=%s codigo=%s duracion_segundos=%s\n" "$PURGA_MODO" "$estado" "$codigo" "$duracion" | tee -a "$GITHUB_STEP_SUMMARY"' EXIT
+          timeout --signal=TERM --kill-after=30s 50m \
+            ssh "${ssh_options[@]}" "$RAILWAY_WEB_SSH_USER@ssh.railway.com" "$comando"
+          estado=correcto

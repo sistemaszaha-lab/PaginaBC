@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import timedelta
 
 from collections import Counter
+from time import monotonic
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError, connection, transaction
 from django.db.models import ProtectedError, RestrictedError
 from django.db.models.deletion import Collector
 from django.utils import timezone
@@ -21,6 +22,38 @@ from solicitudes_app.trash import (
 
 class Command(BaseCommand):
     help = "Elimina definitivamente los elementos de la papelera que superaron la retención."
+
+    # Bloqueo de sesión compartido por todas las invocaciones del comando en PostgreSQL.
+    # Se libera también si el proceso termina o pierde la conexión.
+    LOCK_KEY = (24402, 1)
+
+    def execute(self, *args, **options):
+        inicio = monotonic()
+        dry_run = bool(options.get("dry_run"))
+        estado = "error"
+        bloqueo = False
+        self.stdout.write(f"Inicio purga_papelera: modo={'dry-run' if dry_run else 'real'}.")
+        try:
+            if connection.vendor == "postgresql":
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_try_advisory_lock(%s, %s)", self.LOCK_KEY)
+                    bloqueo = cursor.fetchone()[0]
+                if not bloqueo:
+                    raise CommandError("Ya hay otra ejecución de purgar_papelera en curso.")
+            resultado = super().execute(*args, **options)
+            estado = "correcto"
+            return resultado
+        finally:
+            if bloqueo:
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT pg_advisory_unlock(%s, %s)", self.LOCK_KEY)
+                except DatabaseError as exc:
+                    self.stderr.write(f"No se pudo liberar el bloqueo de purga: {exc}.")
+            self.stdout.write(
+                f"Fin purga_papelera: modo={'dry-run' if dry_run else 'real'}, "
+                f"estado={estado}, duracion_segundos={monotonic() - inicio:.2f}."
+            )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -98,6 +131,15 @@ class Command(BaseCommand):
                     if dry_run:
                         self.stdout.write(f"{tipo} #{objeto.pk}: potencialmente eliminable.")
                         continue
+                    def registrar_error_archivo(nombre, exc):
+                        nonlocal errores, errores_modelo
+                        errores += 1
+                        errores_modelo += 1
+                        self.stderr.write(
+                            f"{tipo} #{objeto.pk}: registro eliminado, pero falló "
+                            f"el borrado del archivo {nombre} ({exc})."
+                        )
+
                     try:
                         with transaction.atomic():
                             actual = (
@@ -110,7 +152,9 @@ class Command(BaseCommand):
                                     f"{tipo} #{objeto.pk}: omitido; ya no está vencido."
                                 )
                                 continue
-                            eliminar_definitivamente(actual)
+                            eliminar_definitivamente(
+                                actual, on_storage_error=registrar_error_archivo
+                            )
                     except (TrashOperationError, DatabaseError) as exc:
                         errores_modelo += 1
                         errores += 1

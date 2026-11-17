@@ -263,7 +263,7 @@ def _archivos_para_eliminar(objeto, related_name: str | None):
 
 
 @transaction.atomic
-def eliminar_definitivamente(objeto, usuario=None):
+def eliminar_definitivamente(objeto, usuario=None, *, on_storage_error=None):
     tipo = _get_tipo_from_object(objeto)
     if getattr(objeto, "eliminado_en", None) is None:
         raise TrashOperationError(
@@ -285,8 +285,16 @@ def eliminar_definitivamente(objeto, usuario=None):
     # cualquier rollback conservan los archivos. Un error del storage se registra
     # sin afirmar que una eliminación ya confirmada en BD se puede revertir.
     for storage, nombre in archivos:
+        def borrar_archivo(storage=storage, nombre=nombre):
+            try:
+                storage.delete(nombre)
+            except Exception as exc:
+                if on_storage_error is None:
+                    raise
+                on_storage_error(nombre, exc)
+
         transaction.on_commit(
-            lambda storage=storage, nombre=nombre: storage.delete(nombre), robust=True
+            borrar_archivo, robust=on_storage_error is None
         )
 
 
