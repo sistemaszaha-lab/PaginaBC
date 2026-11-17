@@ -2,7 +2,7 @@
 
 Estado al 17 de noviembre de 2026: **preparada localmente; desactivada**. No se ha ejecutado ninguna purga real.
 
-Un dry-run ejecutado por Railway SSH dentro de `web` el 17 de noviembre terminó con código 0 y **472 vencidos potencialmente eliminables**, sin protegidos ni errores: 3 etiquetas, 201 operaciones, 12 garantías, 82 cotizaciones del panel, 163 cuentas de gastos, 1 solicitud, 1 cotización de referencia, 1 referencia y 8 documentos. La salida confirmó: `Simulación de solo lectura completada; no se eliminó ningún elemento.` Esta prueba fue desde la CLI local; todavía falta la prueba completa desde GitHub Actions.
+Un dry-run ejecutado por SSH directo dentro de `web` sobre el despliegue actualizado el 17 de noviembre terminó con código 0 en **95.85 segundos** y **472 vencidos potencialmente eliminables**, sin protegidos ni errores: 3 etiquetas, 201 operaciones, 12 garantías, 82 cotizaciones del panel, 163 cuentas de gastos, 1 solicitud, 1 cotización de referencia, 1 referencia y 8 documentos. La salida confirmó: `Simulación de solo lectura completada; no se eliminó ningún elemento.` Todavía falta la prueba completa desde GitHub Actions.
 
 ## Comportamiento
 
