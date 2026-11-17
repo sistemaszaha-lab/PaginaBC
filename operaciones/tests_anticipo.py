@@ -136,11 +136,27 @@ class AnticipoTests(TestCase):
         self.assertEqual(copia.referencia_anticipo_codigo, "BC265350")
         self.assertEqual(op.referencia_origen.referencia, "BC263350")
 
+    def test_codigo_historico_en_segmento_independiente_del_titulo(self):
+        op = self.crear_operacion(None, None)
+        op.titulo = "Almacén 3 // BC265179 // Piezas (importación) // 2026"
+        op.save(update_fields=["titulo"])
+        self.assertTrue(operacion_elegible_para_anticipo(op))
+        request = RequestFactory().get("/operaciones/")
+        request.user = self.usuario
+        self.assertIn("Solicitar factura por anticipo", _render_card_html(request, op))
+        response = self.client.post(reverse("operaciones:solicitar_factura_anticipo", args=[op.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            CuentaGastos.objects.get(operacion_anticipo_origen=op).referencia_anticipo_codigo,
+            "BC265179",
+        )
+
     def test_titulo_sin_codigo_completo_o_al_inicio_no_es_elegible_sin_referencia(self):
         for titulo in (
             "BC265", "BC2650", "BC2660", "BC265000", "BC2650001",
             "BC265123X", "BC265123_OLD",
-            "Operación BC265123", "BC261123",
+            "Operación BC265123", "BC261123", "Texto // BC2650 // resto",
+            "BC265123 // BC266123",
         ):
             with self.subTest(titulo=titulo):
                 op = self.crear_operacion(None, None)

@@ -100,14 +100,24 @@ def codigo_anticipo_operacion(operacion):
     if operacion is None or operacion.eliminado_en is not None:
         return None
 
-    # En producción el consecutivo visible encabeza el título. Las copias
-    # antiguas perdieron referencia_origen y algunas conservan otra referencia.
+    # En producción el consecutivo suele encabezar el título; también hay
+    # títulos históricos con el código como segmento independiente entre //.
+    # Las copias antiguas pueden carecer de referencia_origen.
     titulo = (operacion.titulo or "").strip()
-    if re.match(r"BC[0-9]", titulo, re.IGNORECASE):
-        match_titulo = _CODIGO_REFERENCIA.match(titulo)
-        if match_titulo and match_titulo.group(1) in {"5", "6"} and int(match_titulo.group(2)) > 0:
-            return match_titulo.group(0).upper()
-        return None
+    codigos_titulo = []
+    for indice, segmento in enumerate(titulo.split("//")):
+        segmento = segmento.strip()
+        if not re.match(r"BC[0-9]", segmento, re.IGNORECASE):
+            continue
+        match_titulo = (
+            _CODIGO_REFERENCIA.match(segmento) if indice == 0
+            else _CODIGO_REFERENCIA.fullmatch(segmento)
+        )
+        if not match_titulo or match_titulo.group(1) not in {"5", "6"} or int(match_titulo.group(2)) == 0:
+            return None
+        codigos_titulo.append(match_titulo.group(0).upper())
+    if codigos_titulo:
+        return codigos_titulo[0] if len(codigos_titulo) == 1 else None
 
     referencia = operacion.referencia_origen
     if referencia is None or referencia.eliminado_en is not None:
