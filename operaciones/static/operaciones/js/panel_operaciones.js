@@ -1707,6 +1707,25 @@
 
     root.addEventListener('click', (e) => {
 
+      const anticipoButton = e.target.closest('[data-operacion-solicitar-anticipo="1"]');
+      if (anticipoButton) {
+        e.preventDefault();
+        if (anticipoButton.disabled || !window.confirm('¿Solicitar factura por anticipo en Cuenta de Gastos?')) return;
+        anticipoButton.disabled = true;
+        postForm(anticipoButton.dataset.anticipoUrl, new FormData())
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo solicitar la factura por anticipo.');
+            anticipoButton.textContent = 'Factura por anticipo solicitada';
+            showInlineNotification(data.message, 'success');
+          })
+          .catch((error) => {
+            anticipoButton.disabled = false;
+            showInlineNotification(error.message, 'danger');
+          });
+        return;
+      }
+
       const quickEditOpenButton = e.target.closest('[data-operacion-quick-edit-open="1"]');
       if (quickEditOpenButton) {
         e.preventDefault();

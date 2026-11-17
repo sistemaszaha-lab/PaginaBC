@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlencode
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, JsonResponse
@@ -24,10 +25,10 @@ from .trash import (
     eliminar_definitivamente,
     get_trash_config,
     obtener_elemento_papelera,
-    obtener_elementos_eliminados,
     obtener_resumen_papelera,
     restaurar_desde_papelera,
 )
+from .trash_queries import consultar_papelera
 
 
 FILTER_CHOICES = (
@@ -121,31 +122,40 @@ def papelera(request: HttpRequest):
     tipo = _normalize_tipo(request.GET.get("tipo"))
     if tipo and tipo not in TRASH_MODELS:
         tipo = ""
-
-    items = []
-    for item in obtener_elementos_eliminados(tipo or None):
-        obj = obtener_elemento_papelera(item["tipo"], item["id"])
-        if obj is None:
-            continue
-        if not _can_access_item(request.user, item["tipo"], obj):
-            continue
+    busqueda = (request.GET.get("q") or "").strip()
+    items, page = consultar_papelera(
+        request.user, tipo=tipo, busqueda=busqueda, pagina=request.GET.get("pagina", 1)
+    )
+    for item in items:
         item["tipo_label"] = FILTER_LABELS.get(item["tipo"], item["tipo"])
-        item["puede_restaurar"] = _can_access_item(request.user, item["tipo"], obj)
-        item["puede_eliminar_definitivamente"] = _can_delete_permanently(
-            request.user, item["tipo"], obj
-        )
-        items.append(item)
+        item["puede_restaurar"] = True
+        item["puede_eliminar_definitivamente"] = _es_admin(request.user)
+
+    def list_url(*, selected_tipo="", number=None):
+        params = {}
+        if selected_tipo:
+            params["tipo"] = selected_tipo
+        if busqueda:
+            params["q"] = busqueda
+        if number is not None:
+            params["pagina"] = number
+        return f"?{urlencode(params)}" if params else request.path
 
     context = {
         "current": "papelera",
         "papelera_items": items,
-        "papelera_total": len(items),
+        "papelera_total": page.paginator.count,
         "papelera_tipo_actual": tipo,
+        "papelera_busqueda": busqueda,
+        "papelera_page": page,
+        "papelera_previous_url": list_url(selected_tipo=tipo, number=page.previous_page_number()) if page.has_previous() else "",
+        "papelera_next_url": list_url(selected_tipo=tipo, number=page.next_page_number()) if page.has_next() else "",
         "papelera_filtros": [
             {
                 "value": value,
                 "label": label,
                 "active": value == tipo,
+                "url": list_url(selected_tipo=value),
             }
             for value, label in FILTER_CHOICES
         ],

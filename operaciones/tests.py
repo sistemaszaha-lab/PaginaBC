@@ -428,8 +428,9 @@ class OperacionesDetalleModalTests(TestCase):
         self.assertIn('data-operacion-detail-close="1"', modal_html)
         self.assertIn('for="id_titulo"', detalle_html)
         self.assertIn('for="id_asignados"', modal_html)
-        self.assertIn('for="id_descripcion"', modal_html)
-        self.assertIn("Operacion maritima de importacion.", modal_html)
+        # La descripcion se retiro del formulario en 0fc5ac0; el modal no la edita.
+        self.assertNotIn('for="id_descripcion"', modal_html)
+        self.assertNotIn("Operacion maritima de importacion.", modal_html)
         self.assertNotIn('data-operacion-options-section="1"', modal_html)
 
     def test_detalle_operacion_modal_renderiza_csrf(self):
@@ -488,7 +489,7 @@ class OperacionesDetalleModalTests(TestCase):
         self.assertIn(etiqueta, self.operacion.etiquetas.all())
         self.assertIn('data-panel-operacion-card="1"', resp.json()["html"])
 
-    def test_editar_operacion_guarda_descripcion_y_conserva_relaciones(self):
+    def test_editar_operacion_ignora_descripcion_fuera_del_formulario_y_conserva_relaciones(self):
         User = get_user_model()
         usuario_2 = User.objects.create_user(username="tester_desc", password="pass")
         from operaciones.models import OperacionEtiqueta
@@ -515,7 +516,7 @@ class OperacionesDetalleModalTests(TestCase):
 
         self.assertEqual(resp.status_code, 200)
         self.operacion.refresh_from_db()
-        self.assertEqual(self.operacion.descripcion, "Nueva descripcion\ncon multiples lineas.")
+        self.assertEqual(self.operacion.descripcion, "Descripcion inicial")
         self.assertEqual(self.operacion.titulo, "Operacion editable")
         self.assertEqual(self.operacion.prioridad, "ALTA")
         self.assertEqual(str(self.operacion.fecha_vencimiento), "2026-05-22")
@@ -1226,7 +1227,8 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="operaciones-inline-form"', count=1)
         self.assertContains(response, 'name="titulo"')
-        self.assertContains(response, 'name="descripcion"')
+        # El formulario inline ya no ofrece descripcion (commit 0fc5ac0).
+        self.assertNotContains(response, 'name="descripcion"')
         self.assertContains(response, 'name="cliente"')
         self.assertContains(response, 'name="prioridad"')
         self.assertContains(response, 'name="fecha_vencimiento"')
@@ -1354,7 +1356,7 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertEqual(operacion.cliente, cliente)
         self.assertEqual(operacion.prioridad, Operacion.Prioridad.ALTA)
 
-    def test_crea_operacion_con_descripcion_archivos_y_enlaces(self):
+    def test_crea_operacion_sin_descripcion_desde_formulario_inline_con_archivos_y_enlaces(self):
         archivo = SimpleUploadedFile(
             "evidencia.pdf",
             b"%PDF-1.4 test file",
@@ -1377,7 +1379,7 @@ class OperacionesInlineCreateTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         operacion = Operacion.objects.get(pk=response.json()["id"])
-        self.assertEqual(operacion.descripcion, "Descripcion extensa")
+        self.assertEqual(operacion.descripcion, "")
         self.assertEqual(operacion.archivos.count(), 1)
         self.assertEqual(operacion.enlaces.count(), 1)
         self.assertEqual(operacion.enlaces.first().titulo, "Factura")
@@ -1564,7 +1566,9 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertIn("if (shouldInsertCard && !insertCardFromHtml(targetColumn, data.html))", javascript)
         self.assertNotIn("root.addEventListener('click', (e) => {\n      const applyFilterButton = e.target.closest('[data-operaciones-user-filter-apply=\"1\"]');", javascript)
         self.assertNotIn("e.target.form?.submit();", javascript)
-        self.assertNotIn("window.location.reload()", javascript)
+        # La recarga al cambiar visibilidad de columnas sigue siendo necesaria.
+        inline_create_js = javascript.split("function createOperacionInline(form) {", 1)[1].split("function ", 1)[0]
+        self.assertNotIn("window.location.reload()", inline_create_js)
 
     def test_javascript_tom_select_se_inicializa_y_destruye_una_sola_vez(self):
         response = self.client.get(reverse("operaciones:panel_operaciones"))
@@ -1573,7 +1577,9 @@ class OperacionesInlineCreateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("if (select.tomselect) return;", javascript)
         self.assertIn("if (select.tomselect) select.tomselect.destroy();", javascript)
-        self.assertEqual(javascript.count("root.addEventListener('submit', (e) => {"), 1)
+        # El formulario inline usa delegacion en document para funcionar en el modal.
+        self.assertIn("document.addEventListener('submit', (e) => {", javascript)
+        self.assertEqual(javascript.count("const inlineForm = e.target.closest('[data-operacion-inline-form=\"1\"]');"), 1)
 
     def test_javascript_comentarios_usa_delegacion_en_document_para_drawer_y_modal(self):
         response = self.client.get(reverse("operaciones:panel_operaciones"))
@@ -2695,7 +2701,7 @@ class OperacionesElementosAccionAjaxTests(TestCase):
         self.client.force_login(self.owner)
         self.create_url = reverse("operaciones:crear_elemento_accion", args=[self.operacion.id])
 
-    def test_detalle_renderiza_seccion_estado_vacio_descripcion_y_etiquetas(self):
+    def test_detalle_renderiza_seccion_estado_vacio_y_etiquetas_sin_descripcion(self):
         response = self.client.get(
             reverse("operaciones:detalle_operacion", args=[self.operacion.id]),
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
@@ -2705,7 +2711,7 @@ class OperacionesElementosAccionAjaxTests(TestCase):
         html = response.json()["html"]
         self.assertIn('data-operacion-action-section="1"', html)
         self.assertIn("Sin elementos de acci", html)
-        self.assertIn("Descripcion viva", html)
+        self.assertNotIn("Descripcion viva", html)
         self.assertIn("Tag accion", html)
 
     def test_input_de_creacion_expone_name_texto_y_sin_control_duplicado(self):
@@ -2922,7 +2928,7 @@ class OperacionesElementosAccionAjaxTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.operacion.refresh_from_db()
-        self.assertEqual(self.operacion.descripcion, "Descripcion viva actualizada")
+        self.assertEqual(self.operacion.descripcion, "Descripcion viva")
         self.assertEqual(self.operacion.elementos_accion.count(), 1)
 
     def test_eliminacion_logica_de_operacion_no_elimina_elementos(self):

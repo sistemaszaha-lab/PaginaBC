@@ -163,6 +163,14 @@ class CuentaGastos(models.Model):
         on_delete=models.PROTECT, related_name="cuenta_gastos_flete",
         editable=False,
     )
+    operacion_anticipo_origen = models.OneToOneField(
+        "operaciones.Operacion", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="cuenta_gastos_anticipo",
+        editable=False,
+    )
+    referencia_anticipo_codigo = models.CharField(
+        max_length=50, blank=True, default="", db_default="", editable=False,
+    )
     vobo_angie_origen = models.OneToOneField(
         "self", null=True, blank=True,
         on_delete=models.PROTECT, related_name="cuenta_gastos_solicitud_geo",

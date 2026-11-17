@@ -62,5 +62,6 @@ urlpatterns = [
     path("<int:operacion_id>/opcion/crear/", views.crear_opcion_operacion, name="crear_opcion_operacion"),
     path("<int:operacion_id>/opcion/<int:opcion_id>/quitar/", views.quitar_opcion_operacion, name="quitar_opcion_operacion"),
     path("<int:operacion_id>/mover/", views.mover_operacion, name="mover_operacion"),
+    path("<int:operacion_id>/solicitar-factura-anticipo/", views.solicitar_factura_anticipo, name="solicitar_factura_anticipo"),
     path("<int:operacion_id>/eliminar/", views.eliminar_operacion, name="eliminar_operacion"),
 ]

@@ -17,10 +17,16 @@
 
     <div id="trashFeedback"></div>
 
+    <form method="get" action="{% url 'papelera' %}" class="d-flex gap-2" role="search">
+        {% if papelera_tipo_actual %}<input type="hidden" name="tipo" value="{{ papelera_tipo_actual }}">{% endif %}
+        <input type="search" class="form-control" name="q" value="{{ papelera_busqueda }}" placeholder="Buscar por título o cliente" aria-label="Buscar en la papelera">
+        <button type="submit" class="btn btn-outline-primary">Buscar</button>
+    </form>
+
     <div class="d-flex flex-wrap gap-2">
         {% for filtro in papelera_filtros %}
         <a
-            href="{% if filtro.value %}?tipo={{ filtro.value }}{% else %}{% url 'papelera' %}{% endif %}"
+            href="{{ filtro.url }}"
             class="btn {% if filtro.active %}btn-primary{% else %}btn-outline-secondary{% endif %} btn-sm"
         >
             {{ filtro.label }}
@@ -102,6 +108,13 @@
     <div class="border rounded-3 p-4 bg-body text-center text-muted d-none" data-trash-empty-state>
         La papelera está vacía.
     </div>
+    {% endif %}
+    {% if papelera_page.paginator.num_pages > 1 %}
+    <nav aria-label="Páginas de la papelera" class="d-flex align-items-center justify-content-center gap-3">
+        {% if papelera_previous_url %}<a class="btn btn-outline-secondary btn-sm" href="{{ papelera_previous_url }}">Anterior</a>{% endif %}
+        <span class="text-muted small">Página {{ papelera_page.number }} de {{ papelera_page.paginator.num_pages }}</span>
+        {% if papelera_next_url %}<a class="btn btn-outline-secondary btn-sm" href="{{ papelera_next_url }}">Siguiente</a>{% endif %}
+    </nav>
     {% endif %}
 </div>
 {% endblock %}

@@ -179,6 +179,7 @@ def _cuenta_queryset():
             "creado_por",
             "columna",
             "operacion_origen__referencia_origen",
+            "operacion_anticipo_origen__referencia_origen",
         )\
         .prefetch_related(
             "asignados",

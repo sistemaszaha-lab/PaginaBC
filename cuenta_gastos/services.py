@@ -6,6 +6,7 @@ ese código debe invocar este servicio dentro de la misma transacción.
 """
 
 import logging
+import re
 import time
 
 from django.db import IntegrityError, OperationalError, connection, transaction
@@ -51,11 +52,16 @@ def _columna_activa_por_codigo(modelo, codigo, modulo, error_class):
 
 
 def _clonar_cuenta_gastos(
-    origen, columna_destino, usuario, *, operacion_flete=None, vobo_angie=None
+    origen, columna_destino, usuario, *, operacion_flete=None,
+    operacion_anticipo=None, vobo_angie=None
 ):
     """Núcleo compartido de creación y relaciones para tarjetas copiadas."""
     cuenta = CuentaGastos.objects.create(
         operacion_flete_origen=operacion_flete,
+        operacion_anticipo_origen=operacion_anticipo,
+        referencia_anticipo_codigo=(
+            operacion_anticipo.referencia_origen.referencia if operacion_anticipo else ""
+        ),
         vobo_angie_origen=vobo_angie,
         titulo=origen.titulo,
         descripcion=origen.descripcion,
@@ -81,6 +87,69 @@ def _clonar_cuenta_gastos(
         cuenta.opciones.add(opcion_cuenta)
     crear_copia_vobo_angie_si_corresponde(cuenta, creado_por=usuario)
     return cuenta
+
+
+def operacion_elegible_para_anticipo(operacion):
+    """Comprueba el tipo estructurado y el código completo de su referencia."""
+    referencia = operacion.referencia_origen
+    if referencia is None or referencia.eliminado_en is not None:
+        return False
+    # El formulario de Referencias es la fuente de la asignación servicio → dígito.
+    from solicitudes.forms import ReferenciaForm
+
+    tipo = ReferenciaForm.CODIGOS_OPERACION.get(referencia.servicio)
+    if tipo not in {"5", "6"}:
+        return False
+    match = re.fullmatch(r"BC\d{2}([1-6])(\d{3,})", referencia.referencia or "")
+    return bool(
+        match and match.group(1) == tipo
+        and int(match.group(2)) == referencia.consecutivo
+    )
+
+
+def _crear_copia_anticipo_desde_operacion(operacion, *, creado_por):
+    with transaction.atomic():
+        origen = (
+            Operacion.objects.select_for_update(of=("self",))
+            .select_related("cliente", "referencia_origen")
+            .get(pk=operacion.pk)
+        )
+        if origen.eliminado_en is not None or not operacion_elegible_para_anticipo(origen):
+            raise CuentaGastosTransferError(
+                "La operación no tiene una referencia válida de tipo 5 o 6."
+            )
+        columna = _columna_activa_por_codigo(
+            CuentaGastosColumna, CuentaGastos.Estado.FACTURA_ANTICIPO,
+            "Cuenta de Gastos", CuentaGastosTransferError,
+        )
+        existente = CuentaGastos.objects.filter(operacion_anticipo_origen=origen).first()
+        if existente is not None:
+            return existente, False
+        try:
+            with transaction.atomic():
+                cuenta = _clonar_cuenta_gastos(
+                    origen, columna, creado_por, operacion_anticipo=origen,
+                )
+        except IntegrityError:
+            cuenta = CuentaGastos.objects.filter(operacion_anticipo_origen=origen).first()
+            if cuenta is None:
+                raise
+            return cuenta, False
+        return cuenta, True
+
+
+def crear_copia_anticipo_desde_operacion(operacion, *, creado_por):
+    """Crea una copia manual idempotente en Factura por Anticipo."""
+    for intento in range(5):
+        try:
+            return _crear_copia_anticipo_desde_operacion(
+                operacion, creado_por=creado_por,
+            )
+        except OperationalError as exc:
+            if (connection.vendor != "sqlite" or "locked" not in str(exc).casefold()
+                    or intento == 4):
+                raise
+            time.sleep(0.025 * (intento + 1))
 
 
 def _crear_copia_flete_desde_operacion(operacion, *, creado_por):

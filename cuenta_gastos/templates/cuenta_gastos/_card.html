@@ -49,7 +49,8 @@
         </div>
 
         <div class="cuenta-card__meta">
-            {% with operacion_origen=cuenta.operacion_origen %}
+            {% if cuenta.referencia_anticipo_codigo %}<span class="cuenta-card__origin-detail">{{ cuenta.referencia_anticipo_codigo }}</span>{% endif %}
+            {% with operacion_origen=cuenta.operacion_origen|default:cuenta.operacion_anticipo_origen %}
                 {% with referencia_origen=operacion_origen.referencia_origen %}
                     {% if referencia_origen %}
                         <div data-cuenta-inline-slot="prioridad">

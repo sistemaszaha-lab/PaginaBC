@@ -59,8 +59,10 @@ from .services import (
 from cuenta_gastos.services import (
     CuentaGastosTransferError,
     CuentaGastosFleteTransferError,
+    crear_copia_anticipo_desde_operacion,
     crear_copia_flete_desde_operacion,
     crear_cuenta_gastos_desde_operacion_si_corresponde,
+    operacion_elegible_para_anticipo,
 )
 
 User = get_user_model()
@@ -224,7 +226,7 @@ def _operacion_queryset():
         Operacion.objects.filter(eliminado_en__isnull=True)
         .select_related("cliente", "creado_por", "columna", "referencia_origen")
         .prefetch_related(
-            "asignados",
+            Prefetch("asignados", queryset=User.objects.order_by("pk")),
             "etiquetas",
             Prefetch(
                 "elementos_accion",
@@ -253,6 +255,29 @@ def _board_queryset(usuario=None):
     return queryset.order_by(*OPERACION_ORDERING)
 
 
+def _permisos_anticipo_tarjetas(usuario):
+    """Calcula una vez los permisos del usuario para renderizar tarjetas."""
+    if not usuario or not usuario.is_authenticated or es_solo_lectura(usuario):
+        return False, False
+    if usuario.is_superuser or usuario.is_staff:
+        return True, True
+    acceso_global = usuario.groups.filter(
+        Q(name__icontains="admin") | Q(name__icontains="ejecutivo")
+    ).exists()
+    return True, acceso_global
+
+
+def _puede_solicitar_anticipo_en_tarjeta(usuario, operacion, permisos):
+    puede_escribir, acceso_global = permisos
+    if not puede_escribir:
+        return False
+    if not acceso_global and operacion.creado_por_id != usuario.pk:
+        # _operacion_queryset() ya precarga asignados para todas las tarjetas.
+        if not any(asignado.pk == usuario.pk for asignado in operacion.asignados.all()):
+            return False
+    return operacion_elegible_para_anticipo(operacion)
+
+
 def _columnas_kanban(usuario=None):
     columnas = [c for c in _columnas_activas() if usuario is None or _puede_ver_columna(usuario, c)]
     operaciones = list(
@@ -275,7 +300,11 @@ def _columnas_kanban(usuario=None):
     )
     items_por_estado = {columna.codigo: [] for columna in columnas}
     totales = {columna.codigo: 0 for columna in columnas}
+    permisos_anticipo = _permisos_anticipo_tarjetas(usuario)
     for operacion in operaciones:
+        operacion.puede_solicitar_anticipo = _puede_solicitar_anticipo_en_tarjeta(
+            usuario, operacion, permisos_anticipo,
+        )
         if operacion.estado in items_por_estado:
             items_por_estado[operacion.estado].append(operacion)
             totales[operacion.estado] = operacion.total_columna
@@ -649,6 +678,9 @@ def _get_operacion_para_copia(pk: int) -> Operacion:
 def _render_card_html(request, operacion):
     # Las respuestas AJAX reutilizan la misma tarjeta enriquecida del tablero.
     operacion = _operacion_queryset().filter(pk=operacion.pk).first() or operacion
+    operacion.puede_solicitar_anticipo = _puede_solicitar_anticipo_en_tarjeta(
+        request.user, operacion, _permisos_anticipo_tarjetas(request.user),
+    )
     return render_to_string(
         "operaciones/_operacion_card.html",
         {
@@ -1963,6 +1995,30 @@ def eliminar_etiqueta(request, etiqueta_id):
     etiqueta = get_object_or_404(OperacionEtiqueta, pk=etiqueta_id, eliminado_en__isnull=True)
     enviar_a_papelera(etiqueta, request.user)
     return JsonResponse({"ok": True, "id": etiqueta.pk})
+
+@login_required
+@require_POST
+def solicitar_factura_anticipo(request, operacion_id):
+    operacion = get_object_or_404(_operacion_queryset(), pk=operacion_id)
+    if es_solo_lectura(request.user) or not _puede_modificar_operacion(request.user, operacion):
+        return JsonResponse({"ok": False, "error": "No tienes permisos."}, status=403)
+    if not operacion_elegible_para_anticipo(operacion):
+        return JsonResponse(
+            {"ok": False, "error": "La operación no tiene una referencia válida de tipo 5 o 6."},
+            status=400,
+        )
+    try:
+        cuenta, creada = crear_copia_anticipo_desde_operacion(
+            operacion, creado_por=request.user,
+        )
+    except CuentaGastosTransferError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({
+        "ok": True, "creada": creada, "cuenta_gastos_id": cuenta.pk,
+        "message": ("Solicitud enviada a Cuenta de Gastos." if creada
+                    else "La factura por anticipo ya fue solicitada."),
+    })
+
 
 @login_required
 @require_POST

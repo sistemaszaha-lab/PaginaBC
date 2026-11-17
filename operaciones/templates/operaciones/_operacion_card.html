@@ -116,6 +116,16 @@
       </div>
     </div>
 
+    {% if operacion.puede_solicitar_anticipo %}
+      <div class="operacion-card-guarantee">
+        <button type="button" class="btn btn-sm btn-outline-primary w-100"
+          data-operacion-solicitar-anticipo="1"
+          data-anticipo-url="{% url 'operaciones:solicitar_factura_anticipo' operacion.id %}">
+          Solicitar factura por anticipo
+        </button>
+      </div>
+    {% endif %}
+
     <div class="operacion-card-move operaciones-card__state-control">
       <select
         id="operacion-estado-{{ operacion.id }}"

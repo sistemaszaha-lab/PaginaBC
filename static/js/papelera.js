@@ -63,7 +63,6 @@
 
   function updateEmptyState() {
     const items = visibleItems();
-    if (totalCount) totalCount.textContent = String(items.length);
     if (emptyState) {
       emptyState.classList.toggle("d-none", items.length > 0);
     }
@@ -85,7 +84,7 @@
       body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => ({ ok: false, message: "Respuesta inválida del servidor." }));
-    if (!response.ok || data.ok === false) {
+    if (!response.ok || (data.ok === false && !Array.isArray(data.errores))) {
       throw new Error(data.message || "No se pudo completar la operación.");
     }
     return data;
@@ -108,8 +107,17 @@
 
   function removeItems(items) {
     items.forEach((item) => item.remove());
+    if (totalCount) {
+      totalCount.textContent = String(Math.max(0, Number(totalCount.textContent) - items.length));
+    }
     updateSelectionState();
     updateEmptyState();
+  }
+
+  function removeProcessedItems(items, data) {
+    const failed = new Set((data.errores || []).map((item) => `${item.tipo}:${item.id}`));
+    removeItems(items.filter((item) => !failed.has(`${item.tipo}:${item.id}`)).map((item) => item.element));
+    showMessage(data.message || "Se procesó la selección.", data.ok === false ? "warning" : "success");
   }
 
   selectVisible?.addEventListener("change", function () {
@@ -173,8 +181,7 @@
       const data = await postJson(window.trashConfig.restoreSelectionUrl, {
         items: items.map(({ tipo, id }) => ({ tipo, id })),
       });
-      removeItems(items.map((item) => item.element));
-      showMessage(data.message || "Se restauraron los elementos seleccionados.", "success");
+      removeProcessedItems(items, data);
     } catch (error) {
       showMessage(error.message, "danger");
     } finally {
@@ -191,8 +198,7 @@
       const data = await postJson(window.trashConfig.deleteSelectionUrl, {
         items: items.map(({ tipo, id }) => ({ tipo, id })),
       });
-      removeItems(items.map((item) => item.element));
-      showMessage(data.message || "Se eliminaron definitivamente los elementos seleccionados.", "success");
+      removeProcessedItems(items, data);
     } catch (error) {
       showMessage(error.message, "danger");
     } finally {

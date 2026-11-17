@@ -29,6 +29,7 @@ class TrashModelConfig:
     fecha_attr: str | None = None
     responsable_attr: str | None = None
     archivo_related_name: str | None = None
+    archivo_attr: str | None = None
     select_related: tuple[str, ...] = ()
     prefetch_related: tuple[str, ...] = ()
 
@@ -141,6 +142,7 @@ TRASH_MODELS: dict[str, TrashModelConfig] = {
         titulo_attr="nombre_original",
         fecha_attr="fecha_subida",
         responsable_attr="subido_por",
+        archivo_attr="archivo",
         select_related=("subido_por", "eliminado_por"),
     ),
 }
@@ -269,6 +271,10 @@ def eliminar_definitivamente(objeto, usuario=None):
         )
     config = get_trash_config(tipo)
     archivos = _archivos_para_eliminar(objeto, config.archivo_related_name)
+    if config.archivo_attr:
+        archivo = getattr(objeto, config.archivo_attr)
+        if archivo:
+            archivos.append((archivo.storage, archivo.name))
     try:
         objeto.delete()
     except (ProtectedError, RestrictedError) as exc:
