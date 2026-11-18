@@ -278,10 +278,13 @@ def _puede_solicitar_anticipo_en_tarjeta(usuario, operacion, permisos):
     return operacion_elegible_para_anticipo(operacion)
 
 
-def _columnas_kanban(usuario=None):
-    columnas = [c for c in _columnas_activas() if usuario is None or _puede_ver_columna(usuario, c)]
+def _columnas_kanban(usuario_filtro=None, *, usuario_autenticado):
+    columnas = [
+        c for c in _columnas_activas()
+        if usuario_filtro is None or _puede_ver_columna(usuario_filtro, c)
+    ]
     operaciones = list(
-        _board_queryset(usuario)
+        _board_queryset(usuario_filtro)
         .annotate(
             posicion_columna=Window(
                 expression=RowNumber(),
@@ -300,10 +303,10 @@ def _columnas_kanban(usuario=None):
     )
     items_por_estado = {columna.codigo: [] for columna in columnas}
     totales = {columna.codigo: 0 for columna in columnas}
-    permisos_anticipo = _permisos_anticipo_tarjetas(usuario)
+    permisos_anticipo = _permisos_anticipo_tarjetas(usuario_autenticado)
     for operacion in operaciones:
         operacion.puede_solicitar_anticipo = _puede_solicitar_anticipo_en_tarjeta(
-            usuario, operacion, permisos_anticipo,
+            usuario_autenticado, operacion, permisos_anticipo,
         )
         if operacion.estado in items_por_estado:
             items_por_estado[operacion.estado].append(operacion)
@@ -754,20 +757,20 @@ def _preservar_campos_no_enviados(form, post_data, *field_names):
 @login_required
 def panel_operaciones(request):
     if "usuario" in request.GET:
-        usuario = _get_usuario_filter(request)
+        usuario_filtro = _get_usuario_filter(request)
     else:
         # ADMIN/EJECUTIVO start on their own operations, while SOLO_LECTURA
         # retains its complete visibility.  A GET filter remains an explicit
         # selection and is never a permission restriction.
-        usuario = None if es_solo_lectura(request.user) else request.user
-    columnas = _columnas_kanban(usuario)
+        usuario_filtro = None if es_solo_lectura(request.user) else request.user
+    columnas = _columnas_kanban(usuario_filtro, usuario_autenticado=request.user)
 
     return render(request, "operaciones/panel_operaciones.html", {
         "columnas": columnas,
         "estados": _columnas_estado_choices(),
         "columnas_activas": _columnas_activas(),
         "columna_create_form": OperacionColumnaCreateForm(),
-        "usuarios_filtro": _usuarios_filtro(usuario.id if usuario else None),
+        "usuarios_filtro": _usuarios_filtro(usuario_filtro.id if usuario_filtro else None),
         "etiquetas_generadas": OperacionEtiqueta.objects.filter(eliminado_en__isnull=True).order_by("nombre", "id"),
         "current": "panel_operaciones",
         "today": timezone.localdate(),
@@ -786,14 +789,14 @@ def panel_operaciones(request):
 @require_GET
 def tablero_partial(request):
     if "usuario" in request.GET:
-        usuario = _get_usuario_filter(request)
+        usuario_filtro = _get_usuario_filter(request)
     else:
-        usuario = None if es_solo_lectura(request.user) else request.user
+        usuario_filtro = None if es_solo_lectura(request.user) else request.user
     return render(
         request,
         "operaciones/_tablero.html",
         {
-            "columnas": _columnas_kanban(usuario),
+            "columnas": _columnas_kanban(usuario_filtro, usuario_autenticado=request.user),
             "estados": _columnas_estado_choices(),
             "today": timezone.localdate(),
             "csrf_token": get_token(request),

@@ -326,7 +326,7 @@ class OperacionesPanelOrdenTarjetasTests(TestCase):
     def _columna(self, codigo):
         from .views import _columnas_kanban
 
-        columnas = _columnas_kanban(self.user)
+        columnas = _columnas_kanban(self.user, usuario_autenticado=self.user)
         return next(columna for columna in columnas if columna["codigo"] == codigo)
 
     def _crear_operacion(self, titulo, estado, *, posicion=0, etd=None, eta=None):

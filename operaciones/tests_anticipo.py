@@ -151,6 +151,96 @@ class AnticipoTests(TestCase):
             "BC265179",
         )
 
+    def test_tablero_y_recarga_muestran_boton_de_tarjeta_bc265_sin_referencia(self):
+        # Reproduce la forma de una tarjeta real: código entre segmentos,
+        # sin referencia_origen y asignada a alguien distinto del creador.
+        op = self.crear_operacion(None, None)
+        op.titulo = "PEDIMENTO A3 // BC265179 // Cliente // Detalles"
+        op.creado_por = self.otro
+        op.save(update_fields=["titulo", "creado_por"])
+        url_anticipo = reverse("operaciones:solicitar_factura_anticipo", args=[op.pk])
+        for url in (reverse("operaciones:panel_operaciones"),
+                    reverse("operaciones:tablero_partial")):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                html = response.content.decode()
+                self.assertIn(f'id="panel-operacion-{op.pk}"', html)
+                self.assertIn('data-operacion-solicitar-anticipo="1"', html)
+                self.assertIn(f'data-anticipo-url="{url_anticipo}"', html)
+
+        self.client.force_login(self.otro)
+        response = self.client.get(reverse("operaciones:tablero_partial"))
+        self.assertNotIn(f'data-anticipo-url="{url_anticipo}"', response.content.decode())
+
+        self.otro.groups.add(Group.objects.get_or_create(name="SOLO_LECTURA")[0])
+        response = self.client.get(reverse("operaciones:panel_operaciones"))
+        self.assertIn(f'id="panel-operacion-{op.pk}"', response.content.decode())
+        self.assertNotIn(f'data-anticipo-url="{url_anticipo}"', response.content.decode())
+
+    def test_filtros_del_tablero_conservan_permisos_del_usuario_autenticado(self):
+        self.usuario.is_superuser = True
+        self.usuario.is_staff = True
+        self.usuario.save(update_fields=["is_superuser", "is_staff"])
+        normal = get_user_model().objects.create_user(username="anticipo-asignado")
+        solo_lectura = get_user_model().objects.create_user(username="anticipo-lectura")
+        solo_lectura.groups.add(Group.objects.get_or_create(name="SOLO_LECTURA")[0])
+
+        historica = self.crear_operacion(None, None)
+        historica.titulo = "PEDIMENTO A3 // BC265179 // Cliente // Detalles"
+        historica.save(update_fields=["titulo"])
+        historica.asignados.add(normal)
+        otra = self.crear_operacion(None, None)
+        otra.titulo = "BC266391 // Otra operación"
+        otra.save(update_fields=["titulo"])
+        no_elegible = self.crear_operacion(None, None)
+        no_elegible.titulo = "Operación sin código BC"
+        no_elegible.save(update_fields=["titulo"])
+        no_elegible.asignados.add(normal)
+
+        panel = reverse("operaciones:panel_operaciones")
+        partial = reverse("operaciones:tablero_partial")
+
+        def comprobar(url, filtro, presentes, con_boton):
+            response = self.client.get(
+                url, {"usuario": filtro},
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest" if url == partial else "",
+            )
+            self.assertEqual(response.status_code, 200)
+            html = response.content.decode()
+            for operacion in (historica, otra, no_elegible):
+                self.assertEqual(
+                    f'id="panel-operacion-{operacion.pk}"' in html,
+                    operacion in presentes,
+                )
+                self.assertEqual(
+                    f'data-anticipo-url="{reverse("operaciones:solicitar_factura_anticipo", args=[operacion.pk])}"' in html,
+                    operacion in con_boton,
+                )
+
+        # La recarga de JavaScript pasa usuario= al seleccionar «Todos».
+        for url in (panel, partial):
+            with self.subTest(perfil="admin_todos", url=url):
+                comprobar(url, "", (historica, otra, no_elegible), (historica, otra))
+            with self.subTest(perfil="admin_filtro_especifico", url=url):
+                comprobar(url, str(normal.pk), (historica, no_elegible), (historica,))
+        comprobar(partial, "", (historica, otra, no_elegible), (historica, otra))
+
+        self.client.force_login(normal)
+        for url in (panel, partial):
+            with self.subTest(perfil="normal_todos", url=url):
+                comprobar(url, "", (historica, otra, no_elegible), (historica,))
+
+        self.client.force_login(self.otro)
+        for url in (panel, partial):
+            with self.subTest(perfil="sin_permiso", url=url):
+                comprobar(url, "", (historica, otra, no_elegible), ())
+
+        self.client.force_login(solo_lectura)
+        for url in (panel, partial):
+            with self.subTest(perfil="solo_lectura", url=url):
+                comprobar(url, "", (historica, otra, no_elegible), ())
+
     def test_titulo_sin_codigo_completo_o_al_inicio_no_es_elegible_sin_referencia(self):
         for titulo in (
             "BC265", "BC2650", "BC2660", "BC265000", "BC2650001",
@@ -181,7 +271,10 @@ class AnticipoTests(TestCase):
         op.titulo = "BC265235 // Tarjeta previa"
         op.creado_por = self.otro
         op.save(update_fields=["titulo", "creado_por"])
-        tarjetas = [item for columna in _columnas_kanban(self.usuario) for item in columna["items"]]
+        tarjetas = [
+            item for columna in _columnas_kanban(self.usuario, usuario_autenticado=self.usuario)
+            for item in columna["items"]
+        ]
         self.assertTrue(next(item for item in tarjetas if item.pk == op.pk).puede_solicitar_anticipo)
         response = self.client.post(reverse("operaciones:solicitar_factura_anticipo", args=[op.pk]))
         self.assertEqual(response.status_code, 200)
@@ -203,7 +296,10 @@ class AnticipoTests(TestCase):
         )
         op1 = self.crear_operacion("BC265001", "comercializador_importacion")
         op2 = self.crear_operacion("BC276002", "comercializador_exportacion", consecutivo=2, columna=otra_columna)
-        tarjetas = [item for columna in _columnas_kanban(self.usuario) for item in columna["items"]]
+        tarjetas = [
+            item for columna in _columnas_kanban(self.usuario, usuario_autenticado=self.usuario)
+            for item in columna["items"]
+        ]
         self.assertTrue(next(item for item in tarjetas if item.pk == op1.pk).puede_solicitar_anticipo)
         self.assertTrue(next(item for item in tarjetas if item.pk == op2.pk).puede_solicitar_anticipo)
         request = RequestFactory().get("/operaciones/")
@@ -262,11 +358,11 @@ class AnticipoTests(TestCase):
 
         agregar(1)
         with CaptureQueriesContext(connection) as pocas:
-            primera = _columnas_kanban(self.usuario)
+            primera = _columnas_kanban(self.usuario, usuario_autenticado=self.usuario)
         for numero in range(2, 22):
             agregar(numero)
         with CaptureQueriesContext(connection) as muchas:
-            segunda = _columnas_kanban(self.usuario)
+            segunda = _columnas_kanban(self.usuario, usuario_autenticado=self.usuario)
         tarjetas = [item for columna in segunda for item in columna["items"]]
         self.assertEqual(sum(len(columna["items"]) for columna in primera), 1)
         self.assertEqual(len(tarjetas), 21)
