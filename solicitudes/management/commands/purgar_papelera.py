@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import os
 
 from collections import Counter
 from time import monotonic
@@ -17,6 +18,7 @@ from solicitudes_app.trash import (
     TrashOperationError,
     eliminar_definitivamente,
     get_deleted_queryset,
+    procesar_archivo_pendiente,
 )
 
 
@@ -32,7 +34,7 @@ class Command(BaseCommand):
         dry_run = bool(options.get("dry_run"))
         estado = "error"
         bloqueo = False
-        self.stdout.write(f"Inicio purga_papelera: modo={'dry-run' if dry_run else 'real'}.")
+        self.stdout.write(f"Inicio purga_papelera: fecha={timezone.now().isoformat()}, entorno={os.getenv('RAILWAY_ENVIRONMENT_NAME', 'local')}, modo={'dry-run' if dry_run else 'real'}.")
         try:
             if connection.vendor == "postgresql":
                 with connection.cursor() as cursor:
@@ -49,10 +51,10 @@ class Command(BaseCommand):
                     with connection.cursor() as cursor:
                         cursor.execute("SELECT pg_advisory_unlock(%s, %s)", self.LOCK_KEY)
                 except DatabaseError as exc:
-                    self.stderr.write(f"No se pudo liberar el bloqueo de purga: {exc}.")
+                    self.stderr.write(f"No se pudo liberar el bloqueo de purga: {type(exc).__name__}.")
             self.stdout.write(
                 f"Fin purga_papelera: modo={'dry-run' if dry_run else 'real'}, "
-                f"estado={estado}, duracion_segundos={monotonic() - inicio:.2f}."
+                f"estado={estado}, fecha={timezone.now().isoformat()}, duracion_segundos={monotonic() - inicio:.2f}."
             )
 
     def add_arguments(self, parser):
@@ -80,6 +82,16 @@ class Command(BaseCommand):
         except (ProtectedError, RestrictedError) as exc:
             politica = "PROTECT" if isinstance(exc, ProtectedError) else "RESTRICT"
             return f"{politica}: {exc.args[0]}"
+        # SET_NULL conserva el hijo, pero la purga automática no debe romper
+        # vínculos con tarjetas activas. No cambia la eliminación manual.
+        for relacion in objeto._meta.related_objects:
+            modelo = relacion.related_model
+            if any(c.name == "eliminado_en" for c in modelo._meta.fields):
+                if modelo.objects.filter(**{
+                    relacion.field.name: objeto,
+                    "eliminado_en__isnull": True,
+                }).exists():
+                    return f"dependencia activa: {modelo._meta.label}.{relacion.field.name}"
         return None
 
     def handle(self, *args, **options):
@@ -93,6 +105,17 @@ class Command(BaseCommand):
 
         eliminados = 0
         errores = 0
+        archivos = Counter()
+        from solicitudes.models import ArchivoPurgaPendiente
+        self.stdout.write(f"Archivos pendientes de reintento: {ArchivoPurgaPendiente.objects.count()}.")
+        if not dry_run:
+            def error_pendiente(nombre, exc):
+                nonlocal errores
+                errores += 1
+                self.stderr.write(f"Error al reintentar archivo pendiente ({type(exc).__name__}).")
+            for pendiente in ArchivoPurgaPendiente.objects.order_by('pk').iterator(chunk_size=200):
+                procesar_archivo_pendiente(pendiente, on_storage_error=error_pendiente,
+                                          on_storage_result=lambda estado: archivos.update([estado]))
 
         for tipo, config in TRASH_MODELS.items():
             queryset = get_deleted_queryset(config.model).filter(
@@ -103,6 +126,9 @@ class Command(BaseCommand):
             protegidos = 0
             potenciales = 0
             errores_modelo = 0
+            eliminados_modelo = 0
+            mas_antiguo = queryset.order_by("eliminado_en").values_list("eliminado_en", flat=True).first()
+            self.stdout.write(f"{tipo}: fecha_mas_antigua={mas_antiguo.isoformat() if mas_antiguo else '-'}.")
             ultimo_pk = 0
             while True:
                 # Páginas por PK evitan cargar toda la papelera en memoria.
@@ -119,7 +145,7 @@ class Command(BaseCommand):
                     except DatabaseError as exc:
                         errores_modelo += 1
                         errores += 1
-                        self.stderr.write(f"{tipo} #{objeto.pk}: error al revisar relaciones ({exc}).")
+                        self.stderr.write(f"{tipo} #{objeto.pk}: error al revisar relaciones ({type(exc).__name__}).")
                         continue
                     if motivo:
                         protegidos += 1
@@ -137,7 +163,7 @@ class Command(BaseCommand):
                         errores_modelo += 1
                         self.stderr.write(
                             f"{tipo} #{objeto.pk}: registro eliminado, pero falló "
-                            f"el borrado del archivo {nombre} ({exc})."
+                            f"el borrado del archivo ({type(exc).__name__})."
                         )
 
                     try:
@@ -152,24 +178,42 @@ class Command(BaseCommand):
                                     f"{tipo} #{objeto.pk}: omitido; ya no está vencido."
                                 )
                                 continue
+                            # Serializa restauraciones de tarjetas dependientes
+                            # antes de revalidar SET_NULL y relaciones compartidas.
+                            for relacion in actual._meta.related_objects:
+                                modelo = relacion.related_model
+                                if any(c.name == "eliminado_en" for c in modelo._meta.fields):
+                                    list(modelo.objects.select_for_update().filter(
+                                        **{relacion.field.name: actual}
+                                    ).values_list('pk', flat=True))
+                            motivo = self._evaluar_relaciones(actual)
+                            if motivo:
+                                protegidos += 1
+                                self.stdout.write(f"{tipo} #{objeto.pk}: protegido al revalidar ({motivo}).")
+                                continue
                             eliminar_definitivamente(
-                                actual, on_storage_error=registrar_error_archivo
+                                actual, on_storage_error=registrar_error_archivo,
+                                on_storage_result=lambda estado: archivos.update([estado]),
                             )
                     except (TrashOperationError, DatabaseError) as exc:
                         errores_modelo += 1
                         errores += 1
-                        self.stderr.write(f"{tipo} #{objeto.pk}: no se pudo purgar ({exc}).")
+                        detalle = type(exc).__name__ if isinstance(exc, DatabaseError) else str(exc)
+                        self.stderr.write(f"{tipo} #{objeto.pk}: no se pudo purgar ({detalle}).")
                         continue
                     eliminados += 1
+                    eliminados_modelo += 1
 
             self.stdout.write(
                 f"{tipo}: vencidos={vencidos}, "
                 f"potencialmente_eliminables={potenciales}, "
                 f"protegidos={protegidos}, errores={errores_modelo}."
             )
+            self.stdout.write(f"{tipo}: eliminados={eliminados_modelo}.")
             for motivo, cantidad in sorted(motivos.items()):
                 self.stdout.write(f"  {cantidad} bloqueado(s) por {motivo}")
 
+        self.stdout.write(f"Archivos: eliminados={archivos['eliminado']}, compartidos={archivos['compartido']}, ausentes={archivos['ausente']}.")
         if dry_run:
             self.stdout.write(self.style.WARNING("Simulación de solo lectura completada; no se eliminó ningún elemento."))
             if errores:

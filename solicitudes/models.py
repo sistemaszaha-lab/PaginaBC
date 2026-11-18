@@ -380,6 +380,16 @@ class MovimientoReferencia(models.Model):
             raise ValidationError({"monto": "El monto debe ser mayor que cero."})
 
 
+class ArchivoPurgaPendiente(models.Model):
+    """Trabajo durable: sobrevive a una interrupción entre commit y storage.delete."""
+    modelo = models.CharField(max_length=120)
+    nombre = models.CharField(max_length=500)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['modelo', 'nombre'], name='purga_archivo_unico')]
+
+
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="perfil")
     segundo_nombre = models.CharField(max_length=150, blank=True, default="")

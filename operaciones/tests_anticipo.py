@@ -202,8 +202,9 @@ class AnticipoTests(TestCase):
         partial = reverse("operaciones:tablero_partial")
 
         def comprobar(url, filtro, presentes, con_boton):
+            params = {} if filtro is None else {"usuario": filtro}
             response = self.client.get(
-                url, {"usuario": filtro},
+                url, params,
                 HTTP_X_REQUESTED_WITH="XMLHttpRequest" if url == partial else "",
             )
             self.assertEqual(response.status_code, 200)
@@ -220,6 +221,8 @@ class AnticipoTests(TestCase):
 
         # La recarga de JavaScript pasa usuario= al seleccionar «Todos».
         for url in (panel, partial):
+            with self.subTest(perfil="admin_sin_filtro_explicito", url=url):
+                comprobar(url, None, (historica, otra, no_elegible), (historica, otra))
             with self.subTest(perfil="admin_todos", url=url):
                 comprobar(url, "", (historica, otra, no_elegible), (historica, otra))
             with self.subTest(perfil="admin_filtro_especifico", url=url):
@@ -228,8 +231,14 @@ class AnticipoTests(TestCase):
 
         self.client.force_login(normal)
         for url in (panel, partial):
+            with self.subTest(perfil="ejecutivo_sin_filtro_explicito", url=url):
+                comprobar(url, None, (historica, no_elegible), (historica,))
             with self.subTest(perfil="normal_todos", url=url):
                 comprobar(url, "", (historica, otra, no_elegible), (historica,))
+            with self.subTest(perfil="ejecutivo_filtro_especifico", url=url):
+                comprobar(url, str(normal.pk), (historica, no_elegible), (historica,))
+            with self.subTest(perfil="ejecutivo_filtra_admin", url=url):
+                comprobar(url, str(self.usuario.pk), (historica, otra, no_elegible), (historica,))
 
         self.client.force_login(self.otro)
         for url in (panel, partial):

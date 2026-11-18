@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from django.apps import apps
 from django.db import transaction
-from django.db.models import ProtectedError, QuerySet, RestrictedError
+from django.db.models import FileField, ProtectedError, QuerySet, RestrictedError
 from django.utils import timezone
 
 
@@ -215,6 +215,7 @@ def _resolver_columna_restauracion(objeto):
 @transaction.atomic
 def enviar_a_papelera(objeto, usuario):
     _get_tipo_from_object(objeto)
+    _bloquear_y_actualizar(objeto)
     if getattr(objeto, "eliminado_en", None) is not None:
         raise TrashOperationError("El elemento ya está en la papelera.")
     objeto.eliminado_en = timezone.now()
@@ -233,6 +234,7 @@ def restaurar_desde_papelera(objeto, usuario=None):
     Las copias existentes y sus vínculos se conservan sin recrearlas.
     """
     _get_tipo_from_object(objeto)
+    _bloquear_y_actualizar(objeto)
     if getattr(objeto, "eliminado_en", None) is None:
         raise TrashOperationError("El elemento no está en la papelera.")
 
@@ -251,6 +253,24 @@ def restaurar_desde_papelera(objeto, usuario=None):
     return objeto
 
 
+def _bloquear_y_actualizar(objeto):
+    # Una instancia obtenida antes de otra restauración/eliminación puede estar obsoleta.
+    if not type(objeto).objects.select_for_update().filter(pk=objeto.pk).exists():
+        raise TrashOperationError("El elemento ya no existe.")
+    objeto.refresh_from_db()
+
+
+def archivo_en_uso(nombre):
+    # Conservador: incluye todos los FileField y registros, incluso en papelera.
+    # Los módulos usan distintas instancias de storage para el mismo volumen.
+    return any(
+        modelo._base_manager.filter(**{campo.name: nombre}).exists()
+        for modelo in apps.get_models()
+        for campo in modelo._meta.concrete_fields
+        if isinstance(campo, FileField)
+    )
+
+
 def _archivos_para_eliminar(objeto, related_name: str | None):
     if not related_name:
         return []
@@ -262,9 +282,28 @@ def _archivos_para_eliminar(objeto, related_name: str | None):
             for archivo in manager.all() if archivo.archivo]
 
 
+def procesar_archivo_pendiente(pendiente, *, on_storage_error=None, on_storage_result=None):
+    try:
+        storage = apps.get_model(pendiente.modelo)._meta.get_field('archivo').storage
+        if archivo_en_uso(pendiente.nombre):
+            estado = 'compartido'
+        else:
+            existia = storage.exists(pendiente.nombre)
+            storage.delete(pendiente.nombre)
+            estado = 'eliminado' if existia else 'ausente'
+        pendiente.delete()
+        if on_storage_result:
+            on_storage_result(estado)
+    except Exception as exc:
+        if on_storage_error is None:
+            raise
+        on_storage_error(pendiente.nombre, exc)
+
+
 @transaction.atomic
-def eliminar_definitivamente(objeto, usuario=None, *, on_storage_error=None):
+def eliminar_definitivamente(objeto, usuario=None, *, on_storage_error=None, on_storage_result=None):
     tipo = _get_tipo_from_object(objeto)
+    _bloquear_y_actualizar(objeto)
     if getattr(objeto, "eliminado_en", None) is None:
         raise TrashOperationError(
             "El elemento debe estar en la papelera antes de eliminarse definitivamente."
@@ -275,6 +314,14 @@ def eliminar_definitivamente(objeto, usuario=None, *, on_storage_error=None):
         archivo = getattr(objeto, config.archivo_attr)
         if archivo:
             archivos.append((archivo.storage, archivo.name))
+    pendientes = []
+    if archivos:
+        modelo_archivo = (getattr(objeto, config.archivo_related_name).model
+                          if config.archivo_related_name else type(objeto))
+        cola = apps.get_model('solicitudes', 'ArchivoPurgaPendiente')
+        for nombre in dict.fromkeys(nombre for _, nombre in archivos):
+            pendiente, _ = cola.objects.get_or_create(modelo=modelo_archivo._meta.label, nombre=nombre)
+            pendientes.append(pendiente)
     try:
         objeto.delete()
     except (ProtectedError, RestrictedError) as exc:
@@ -284,14 +331,10 @@ def eliminar_definitivamente(objeto, usuario=None, *, on_storage_error=None):
     # Solo después del commit exterior: PROTECT, RESTRICT, una FK diferida o
     # cualquier rollback conservan los archivos. Un error del storage se registra
     # sin afirmar que una eliminación ya confirmada en BD se puede revertir.
-    for storage, nombre in archivos:
-        def borrar_archivo(storage=storage, nombre=nombre):
-            try:
-                storage.delete(nombre)
-            except Exception as exc:
-                if on_storage_error is None:
-                    raise
-                on_storage_error(nombre, exc)
+    for pendiente in pendientes:
+        def borrar_archivo(pendiente=pendiente):
+            procesar_archivo_pendiente(pendiente, on_storage_error=on_storage_error,
+                                      on_storage_result=on_storage_result)
 
         transaction.on_commit(
             borrar_archivo, robust=on_storage_error is None

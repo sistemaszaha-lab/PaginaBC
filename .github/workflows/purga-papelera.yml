@@ -2,8 +2,7 @@ name: Purga de papelera Railway
 
 on:
   schedule:
-    - cron: '0 3 * * *'
-      timezone: America/Mexico_City
+    - cron: '0 9 * * *'
   workflow_dispatch:
     inputs:
       modo:
@@ -40,6 +39,7 @@ jobs:
           test -n "$RAILWAY_SSH_PRIVATE_KEY"
           test -n "$RAILWAY_SSH_KNOWN_HOSTS"
           test -n "$RAILWAY_WEB_SSH_USER"
+          [[ "$RAILWAY_WEB_SSH_USER" =~ ^[a-zA-Z0-9.-]+$ ]]
           install -d -m 700 "$RUNNER_TEMP/railway-ssh"
           printf '%s\n' "$RAILWAY_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/railway-ssh/key"
           printf '%s\n' "$RAILWAY_SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/railway-ssh/known_hosts"
@@ -60,16 +60,23 @@ jobs:
             -o ServerAliveCountMax=3
           )
           if [[ "$PURGA_MODO" == 'dry-run' ]]; then
-            comando='cd /app && test -f manage.py && python manage.py purgar_papelera --dry-run'
+            argumentos='--dry-run'
           elif [[ "$PURGA_MODO" == 'real' && "$PURGA_ACTIVA" == 'true' ]]; then
-            comando='cd /app && test -f manage.py && python manage.py purgar_papelera'
+            argumentos=''
           else
             echo 'Modo no autorizado' >&2
             exit 1
           fi
+          comando='test "$RAILWAY_PROJECT_ID" = d9db3386-5a92-4ead-b214-ad145a41bc41 && test "$RAILWAY_ENVIRONMENT_ID" = 9d5d64ff-4d30-411c-9c94-812a9ec4f1e8 && test "$RAILWAY_SERVICE_ID" = 1aa82ec5-d355-4bf9-bf50-8d7be05adda7 && test "$RAILWAY_VOLUME_MOUNT_PATH" = /app/uploads && cd /app && test -f manage.py && python manage.py purgar_papelera'
+          comando="$comando $argumentos"
           inicio=$(date +%s)
           estado=fallo
           trap 'codigo=$?; duracion=$(( $(date +%s) - inicio )); printf "modo=%s estado=%s codigo=%s duracion_segundos=%s\n" "$PURGA_MODO" "$estado" "$codigo" "$duracion" | tee -a "$GITHUB_STEP_SUMMARY"' EXIT
           timeout --signal=TERM --kill-after=30s 50m \
             ssh "${ssh_options[@]}" "$RAILWAY_WEB_SSH_USER@ssh.railway.com" "$comando"
           estado=correcto
+
+      - name: Limpiar credenciales temporales
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/railway-ssh"
